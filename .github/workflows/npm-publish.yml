@@ -1,0 +1,10 @@
+name: Node.js Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    uses: ./.github/workflows/npm-publish-reusable.yml
+    secrets: inherit
