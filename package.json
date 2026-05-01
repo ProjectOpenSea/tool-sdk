@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "SDK and CLI for building ERC-XXXX compliant AI agent tools",
   "bin": {
