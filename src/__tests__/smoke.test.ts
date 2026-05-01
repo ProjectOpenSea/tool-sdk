@@ -280,7 +280,7 @@ describe("smoke command", () => {
     logSpy.mockRestore()
   })
 
-  it("prints timeout-specific error when request times out", async () => {
+  it("prints timeout-specific error when probe times out", async () => {
     const timeoutError = new DOMException("Signal timed out.", "TimeoutError")
     vi.stubGlobal(
       "fetch",
@@ -311,7 +311,7 @@ describe("smoke command", () => {
     }
 
     const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
-    expect(errorOutput).toContain("Request timed out after 30s")
+    expect(errorOutput).toContain("Endpoint probe timed out after 10s")
 
     exitSpy.mockRestore()
     errorSpy.mockRestore()
@@ -352,6 +352,154 @@ describe("smoke command", () => {
     const messageB64 = token.slice(0, dotIndex)
     const messageStr = Buffer.from(messageB64, "base64url").toString("utf-8")
     expect(messageStr).toContain("Chain ID: 8453")
+
+    logSpy.mockRestore()
+  })
+
+  it("exits before SIWE signing when probe returns 405", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 405 })),
+    )
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    try {
+      await smokeCommand.parseAsync([
+        "node",
+        "smoke",
+        "--endpoint",
+        "https://example.com/api/invoke",
+        "--as",
+        TEST_KEY,
+      ])
+    } catch {
+      // expected process.exit
+    }
+
+    const allOutput = [
+      ...logSpy.mock.calls.map(c => c[0]),
+      ...errorSpy.mock.calls.map(c => c[0]),
+    ].join("\n")
+    expect(allOutput).toContain("FAIL")
+    expect(allOutput).toContain("405")
+    expect(allOutput).not.toContain("Building SIWE message")
+
+    exitSpy.mockRestore()
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("exits before SIWE signing when probe returns 404", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    )
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    try {
+      await smokeCommand.parseAsync([
+        "node",
+        "smoke",
+        "--endpoint",
+        "https://example.com/api/invoke",
+        "--as",
+        TEST_KEY,
+      ])
+    } catch {
+      // expected process.exit
+    }
+
+    const allOutput = [
+      ...logSpy.mock.calls.map(c => c[0]),
+      ...errorSpy.mock.calls.map(c => c[0]),
+    ].join("\n")
+    expect(allOutput).toContain("FAIL")
+    expect(allOutput).toContain("handler not found")
+    expect(allOutput).not.toContain("Building SIWE message")
+
+    exitSpy.mockRestore()
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("proceeds to SIWE when probe returns 401", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    await smokeCommand.parseAsync([
+      "node",
+      "smoke",
+      "--endpoint",
+      "https://example.com/api/invoke",
+      "--as",
+      TEST_KEY,
+    ])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Endpoint probe:")
+    expect(output).toContain("PASS")
+    expect(output).toContain("Building SIWE message")
+
+    logSpy.mockRestore()
+  })
+
+  it("proceeds to SIWE when probe warns (200 without auth)", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 200 })
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    await smokeCommand.parseAsync([
+      "node",
+      "smoke",
+      "--endpoint",
+      "https://example.com/api/invoke",
+      "--as",
+      TEST_KEY,
+    ])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("WARN")
+    expect(output).toContain("gate may not be enforcing")
+    expect(output).toContain("Building SIWE message")
 
     logSpy.mockRestore()
   })

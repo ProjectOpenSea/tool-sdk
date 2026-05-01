@@ -1,6 +1,8 @@
 # @opensea/tool-sdk
 
-SDK and CLI for building [ERC-XXXX](../tool-registry/eip-xxxx-tool-registry.md) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
+SDK and CLI for building [ERC-XXXX](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-xxxx-tool-registry.md) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
+
+Pairs with the onchain reference implementation at [ProjectOpenSea/tool-registry](https://github.com/ProjectOpenSea/tool-registry) — the `ToolRegistry` contract and example access predicates this SDK reads from and writes to.
 
 ## Quick Start
 
@@ -701,4 +703,4 @@ app.post("/api", toExpressHandler(handler))
 
 ## ERC Spec
 
-See the full [ERC-XXXX Tool Registry specification](../tool-registry/eip-xxxx-tool-registry.md) for details on manifest schema, origin binding, creator binding, and consumer verification.
+See the full [ERC-XXXX Tool Registry specification](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-xxxx-tool-registry.md) for details on manifest schema, origin binding, creator binding, and consumer verification.

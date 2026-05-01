@@ -299,4 +299,84 @@ describe("inspect command", () => {
     logSpy.mockRestore()
     errorSpy.mockRestore()
   })
+
+  it("prints endpoint probe PASS when POST returns 401", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(JSON.stringify(VALID_MANIFEST), { status: 200 })
+        }
+        return new Response(null, { status: 401 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Endpoint probe:")
+    expect(output).toContain("PASS")
+
+    logSpy.mockRestore()
+  })
+
+  it("prints endpoint probe WARN when POST returns 200", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+      ),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Endpoint probe:")
+    expect(output).toContain("WARN")
+
+    logSpy.mockRestore()
+  })
+
+  it("prints endpoint probe FAIL on 405 but does not exit non-zero", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(JSON.stringify(VALID_MANIFEST), { status: 200 })
+        }
+        return new Response(null, { status: 405 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+
+    const allOutput = [
+      ...logSpy.mock.calls.map(c => c[0]),
+      ...errorSpy.mock.calls.map(c => c[0]),
+    ].join("\n")
+    expect(allOutput).toContain("Endpoint probe:")
+    expect(allOutput).toContain("FAIL")
+    expect(allOutput).toContain("405")
+
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
 })

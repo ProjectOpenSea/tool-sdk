@@ -18,6 +18,7 @@ import {
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain } from "./get-chain.js"
+import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
 
 interface InspectOptions {
   toolId: string
@@ -273,6 +274,18 @@ export const inspectCommand = new Command("inspect")
     console.log(`  Name: ${manifest.name}`)
     console.log(`  Endpoint: ${manifest.endpoint}`)
 
+    if (
+      manifest.pricing &&
+      manifest.pricing.length > 0 &&
+      config.accessPredicate !== zeroAddress
+    ) {
+      console.log(
+        pc.yellow(
+          "\n  ⚠ This tool uses both a payment gate and an access predicate. Clients must satisfy both — SIWE authentication for the predicate AND x402 payment.",
+        ),
+      )
+    }
+
     const computedHash = computeManifestHash(manifest)
     console.log(pc.cyan("\nHash cross-check:"))
     console.log(`  Onchain:   ${config.manifestHash}`)
@@ -284,4 +297,7 @@ export const inspectCommand = new Command("inspect")
       console.error(pc.red("  Result:    MISMATCH"))
       process.exit(1)
     }
+
+    const probeResult = await probeEndpoint(manifest.endpoint)
+    printProbeResult(probeResult)
   })

@@ -22,12 +22,12 @@ export const TOOL_REGISTRY: Deployment = {
 }
 
 export const ERC721_OWNER_PREDICATE: Deployment = {
-  address: "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
+  address: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769",
   chains: [8453],
 }
 
 export const ERC1155_OWNER_PREDICATE: Deployment = {
-  address: "0x4961A1bee290b48Aee8EAC04d38E965f3636F549",
+  address: "0xc179b9d4D9B7ffe0CdA608134729f72003380A7e",
   chains: [8453],
 }
 

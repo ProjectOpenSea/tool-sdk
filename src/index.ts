@@ -6,6 +6,8 @@ export {
   createBankrAccount,
   createExternalSignerAccount,
 } from "./lib/client/external-signer.js"
+export type { PaidAuthenticatedFetchOptions } from "./lib/client/paid-authenticated-fetch.js"
+export { paidAuthenticatedFetch } from "./lib/client/paid-authenticated-fetch.js"
 export type { AuthenticatedFetchOptions } from "./lib/client/siwe-auth.js"
 export {
   authenticatedFetch,

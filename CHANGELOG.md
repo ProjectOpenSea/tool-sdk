@@ -1,5 +1,13 @@
 # @opensea/tool-sdk
 
+## 0.2.0
+
+### Minor Changes
+
+- 997510c: Add endpoint probe to verify, inspect, and smoke commands to catch routing defects (405, 404) before signing or declaring success
+- dca9933: Add paidAuthenticatedFetch for predicate+paywall composite gates; add --paid flag to smoke command; add inspect warning for composite-gated tools
+- 181f647: Point ERC721_OWNER_PREDICATE / ERC1155_OWNER_PREDICATE at v0.2 deployments on Base. The new predicates implement `getRequirements()` (F18 access-requirement introspection); existing v0.1 addresses are no longer canonical. Tools registered against the v0.1 ToolRegistry are unaffected — only the predicate addresses moved. Tools that delegated access to the v0.1 predicates will need `setAccessPredicate` to repoint at the new addresses.
+
 ## 0.1.2
 
 ### Patch Changes

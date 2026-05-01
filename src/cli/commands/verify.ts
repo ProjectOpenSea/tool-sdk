@@ -2,6 +2,7 @@ import { Command } from "commander"
 import pc from "picocolors"
 import { validateManifest } from "../../lib/manifest/index.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
+import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
 
 export const verifyCommand = new Command("verify")
   .description("Verify a deployed well-known tool endpoint")
@@ -76,4 +77,11 @@ export const verifyCommand = new Command("verify")
       console.log(`  Tags: ${manifest.tags.join(", ")}`)
     }
     console.log(`  Manifest Hash: ${hash}`)
+
+    const probeResult = await probeEndpoint(manifest.endpoint)
+    printProbeResult(probeResult)
+
+    if (probeResult.level === "fail") {
+      process.exit(1)
+    }
   })
