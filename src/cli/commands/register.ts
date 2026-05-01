@@ -100,7 +100,7 @@ export const registerCommand = new Command("register")
     if (!registryAddr) {
       console.error(
         pc.red(
-          `Error: ToolRegistry is not deployed on ${options.network}. See https://github.com/ProjectOpenSea/opensea-devtools/blob/main/packages/tool-registry/README.md for supported chains.`,
+          `Error: ToolRegistry is not deployed on ${options.network}. See https://github.com/ProjectOpenSea/tool-registry#readme for supported chains.`,
         ),
       )
       process.exit(1)

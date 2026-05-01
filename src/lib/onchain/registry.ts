@@ -41,7 +41,7 @@ export class ToolRegistryClient {
     const addr = deploymentAddress(TOOL_REGISTRY, this.chain.id)
     if (!addr) {
       throw new Error(
-        `ToolRegistry is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/opensea-devtools/blob/main/packages/tool-registry/README.md for supported chains.`,
+        `ToolRegistry is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/tool-registry#readme for supported chains.`,
       )
     }
     this.registryAddress = addr

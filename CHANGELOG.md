@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.1.2
+
+### Patch Changes
+
+- Add `repository` field to `package.json` so npm provenance can validate the bundle against the public mirror at `https://github.com/ProjectOpenSea/tool-sdk`. The 0.1.1 tag/release exists but never reached npm because of this missing field; 0.1.2 is the first version actually on npm.
+
 ## 0.1.1
 
 ### Patch Changes
