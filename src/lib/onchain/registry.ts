@@ -14,7 +14,7 @@ import {
 import { base } from "viem/chains"
 import type { ToolManifest } from "../manifest/types.js"
 import { computeManifestHash } from "./hash.js"
-import { IToolRegistryABI } from "./abis.js"
+import { IToolRegistryABI, ToolRegisteredEvent } from "./abis.js"
 import { TOOL_REGISTRY, deploymentAddress } from "./chains.js"
 
 interface ToolConfig {
@@ -111,6 +111,22 @@ export class ToolRegistryClient {
     })
   }
 
+  async name(): Promise<string> {
+    return this.publicClient.readContract({
+      address: this.registryAddress,
+      abi: IToolRegistryABI,
+      functionName: "name",
+    })
+  }
+
+  async version(): Promise<string> {
+    return this.publicClient.readContract({
+      address: this.registryAddress,
+      abi: IToolRegistryABI,
+      functionName: "version",
+    })
+  }
+
   async registerTool(params: {
     metadataURI: string
     manifest: ToolManifest
@@ -174,6 +190,42 @@ export class ToolRegistryClient {
       functionName: "updateToolMetadata",
       args: [toolId, newURI, manifestHash],
     })
+  }
+
+  async listToolsByCreator(
+    creator: Address,
+    options?: { fromBlock?: bigint; toBlock?: bigint },
+  ): Promise<
+    {
+      toolId: bigint
+      accessPredicate: Address
+      metadataURI: string
+      manifestHash: Hex
+      txHash: Hash
+      blockNumber: bigint
+    }[]
+  > {
+    const toBlock = options?.toBlock ?? "latest"
+    const fromBlock =
+      options?.fromBlock ??
+      (await this.publicClient.getBlockNumber()) - 10_000n
+
+    const logs = await this.publicClient.getLogs({
+      address: this.registryAddress,
+      event: ToolRegisteredEvent,
+      args: { creator },
+      fromBlock,
+      toBlock,
+    })
+
+    return logs.map((log) => ({
+      toolId: log.args.toolId!,
+      accessPredicate: log.args.accessPredicate!,
+      metadataURI: log.args.metadataURI!,
+      manifestHash: log.args.manifestHash!,
+      txHash: log.transactionHash!,
+      blockNumber: log.blockNumber!,
+    }))
   }
 
   async setAccessPredicate(

@@ -15,6 +15,27 @@ export const IToolRegistryABI = [
     ],
   },
   {
+    type: "event",
+    name: "ToolMetadataUpdated",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "newURI", type: "string", indexed: false },
+      { name: "newHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "AccessPredicateUpdated",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      {
+        name: "newPredicate",
+        type: "address",
+        indexed: true,
+      },
+    ],
+  },
+  {
     type: "function",
     name: "registerTool",
     inputs: [
@@ -112,12 +133,45 @@ export const IToolRegistryABI = [
   },
 ] as const
 
+export const ToolRegisteredEvent = IToolRegistryABI.find(
+  (e) => e.type === "event" && e.name === "ToolRegistered",
+)!
+
 export const IAccessPredicateABI = [
+  {
+    type: "function",
+    name: "hasAccess",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "account", type: "address" },
+      { name: "data", type: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
   {
     type: "function",
     name: "name",
     inputs: [],
     outputs: [{ type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getRequirements",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [
+      {
+        name: "requirements",
+        type: "tuple[]",
+        components: [
+          { name: "kind", type: "bytes4" },
+          { name: "data", type: "bytes" },
+          { name: "label", type: "string" },
+        ],
+      },
+      { name: "logic", type: "uint8" },
+    ],
     stateMutability: "view",
   },
 ] as const
@@ -187,6 +241,122 @@ export const ERC1155OwnerPredicateABI = [
         components: [
           { name: "collection", type: "address" },
           { name: "tokenIds", type: "uint256[]" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+] as const
+
+export const SubscriptionPredicateABI = [
+  {
+    type: "event",
+    name: "ToolGatingConfigured",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "collection", type: "address", indexed: true },
+      { name: "minTier", type: "uint8", indexed: false },
+    ],
+  },
+  {
+    type: "function",
+    name: "configureToolGating",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "collection", type: "address" },
+      { name: "minTier", type: "uint8" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getToolGatingConfig",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "collection", type: "address" },
+          { name: "minTier", type: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getSubscriptionStatus",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "account", type: "address" },
+    ],
+    outputs: [
+      { name: "hasNft", type: "bool" },
+      { name: "tier", type: "uint8" },
+      { name: "requiredTier", type: "uint8" },
+      { name: "expiration", type: "uint64" },
+      { name: "active", type: "bool" },
+    ],
+    stateMutability: "view",
+  },
+] as const
+
+export const CompositePredicateABI = [
+  {
+    type: "event",
+    name: "CompositionSet",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "op", type: "uint8", indexed: false },
+      {
+        name: "terms",
+        type: "tuple[]",
+        indexed: false,
+        components: [
+          { name: "predicate", type: "address" },
+          { name: "negate", type: "bool" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "setComposition",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "op", type: "uint8" },
+      {
+        name: "terms",
+        type: "tuple[]",
+        components: [
+          { name: "predicate", type: "address" },
+          { name: "negate", type: "bool" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getOp",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getTerms",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple[]",
+        components: [
+          { name: "predicate", type: "address" },
+          { name: "negate", type: "bool" },
         ],
       },
     ],

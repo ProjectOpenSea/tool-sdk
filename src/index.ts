@@ -2,9 +2,14 @@ export type { ExpressRequest, ExpressResponse } from "./lib/adapters/express.js"
 export { toExpressHandler } from "./lib/adapters/express.js"
 export type { VercelRequest, VercelResponse } from "./lib/adapters/vercel.js"
 export { toVercelHandler } from "./lib/adapters/vercel.js"
+export {
+  createBankrAccount,
+  createExternalSignerAccount,
+} from "./lib/client/external-signer.js"
 export type { AuthenticatedFetchOptions } from "./lib/client/siwe-auth.js"
 export {
   authenticatedFetch,
+  createSiweAuthHeader,
   createSiweMessage,
 } from "./lib/client/siwe-auth.js"
 export type {
@@ -20,12 +25,22 @@ export {
   validateManifest,
 } from "./lib/manifest/index.js"
 export {
+  AccessRequirementSchema,
+  AccessSchema,
+  AttestationSchema,
   PricingEntrySchema,
+  ReproducibleBuildSchema,
   ToolManifestSchema,
+  VerifiabilitySchema,
 } from "./lib/manifest/schema.js"
 export type {
+  Access,
+  AccessRequirement,
+  Attestation,
   PricingEntry,
+  ReproducibleBuild,
   ToolManifest,
+  Verifiability,
 } from "./lib/manifest/types.js"
 export type { NFTGateConfig } from "./lib/middleware/nft-gate.js"
 export { nftGate } from "./lib/middleware/nft-gate.js"
@@ -57,9 +72,12 @@ export {
   x402UsdcPricing,
 } from "./lib/middleware/x402-facilitators.js"
 export {
+  CompositePredicateABI,
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
+  IAccessPredicateABI,
   IToolRegistryABI,
+  SubscriptionPredicateABI,
 } from "./lib/onchain/abis.js"
 export type {
   CheckToolAccessOptions,

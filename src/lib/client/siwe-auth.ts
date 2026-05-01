@@ -55,6 +55,22 @@ export function createSiweMessage(params: {
   })
 }
 
+/**
+ * Construct an `Authorization: SIWE <base64url(message)>.<signature>` header
+ * value from a pre-signed SIWE message. Useful for agent wallets (Bankr, MPC,
+ * HSM) that sign via an external API rather than a local viem Account.
+ */
+export function createSiweAuthHeader(
+  message: string,
+  signature: `0x${string}`,
+): string {
+  const encodedMessage = btoa(message)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "")
+  return `SIWE ${encodedMessage}.${signature}`
+}
+
 export interface AuthenticatedFetchOptions extends RequestInit {
   account: Account
   expirationMinutes?: number
@@ -80,7 +96,7 @@ export async function authenticatedFetch(
 
   if (!account.signMessage) {
     throw new Error(
-      "account.signMessage is required — use a Local Account (e.g. privateKeyToAccount)",
+      "account.signMessage is required — use privateKeyToAccount, createExternalSignerAccount, or createBankrAccount",
     )
   }
 
@@ -97,18 +113,13 @@ export async function authenticatedFetch(
   })
 
   const signature = await account.signMessage({ message })
-
-  const encodedMessage = btoa(message)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "")
-  const token = `${encodedMessage}.${signature}`
+  const authHeader = createSiweAuthHeader(message, signature)
 
   return fetch(url, {
     ...fetchOptions,
     headers: {
       ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),
-      Authorization: `SIWE ${token}`,
+      Authorization: authHeader,
     },
   })
 }

@@ -3,10 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 // Hardhat/Anvil account #0 — deterministic test key, never holds real funds
 const PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+const BANKR_ADDRESS = "0x8b8e1C20E0630De8C60f0e0D5C3e9C7c20F0c20e"
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  delete process.env.TOOL_SDK_PRIVATE_KEY
+  delete process.env.BANKR_API_KEY
 })
 
 describe("auth command", () => {
@@ -61,7 +64,6 @@ describe("auth command", () => {
     expect(calls[0].headers["content-type"]).toBe("application/json")
 
     logSpy.mockRestore()
-    delete process.env.TOOL_SDK_PRIVATE_KEY
   })
 
   it("prints hint on 401 auth failure", async () => {
@@ -93,7 +95,6 @@ describe("auth command", () => {
     expect(output).toContain("SIWE authentication failed")
 
     logSpy.mockRestore()
-    delete process.env.TOOL_SDK_PRIVATE_KEY
   })
 
   it("prints hint on 403 with predicate address and toolId", async () => {
@@ -131,6 +132,108 @@ describe("auth command", () => {
     expect(output).toContain("tool-sdk inspect --tool-id 42")
 
     logSpy.mockRestore()
-    delete process.env.TOOL_SDK_PRIVATE_KEY
+  })
+})
+
+function stubBankrFetch() {
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (typeof url === "string" && url.includes("/wallet/info")) {
+      return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
+        status: 200,
+      })
+    }
+    if (typeof url === "string" && url.includes("/wallet/sign")) {
+      return new Response(JSON.stringify({ signature: "0xdeadbeef" }), {
+        status: 200,
+      })
+    }
+    // Tool endpoint
+    const headers = Object.fromEntries(
+      Object.entries(init?.headers ?? {}),
+    ) as Record<string, string>
+    return new Response(JSON.stringify({ result: "ok", headers }), {
+      status: 200,
+    })
+  })
+}
+
+describe("auth command with --bankr-key", () => {
+  it("uses Bankr signer when BANKR_API_KEY is set", async () => {
+    const fetchMock = stubBankrFetch()
+    vi.stubGlobal("fetch", fetchMock)
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.BANKR_API_KEY = "test-bankr-key"
+
+    const { authCommand } = await import("../cli/commands/auth.js")
+
+    await authCommand.parseAsync([
+      "node",
+      "auth",
+      "https://tool.example.com/api",
+      "--body",
+      "{}",
+    ])
+
+    // Should have called /wallet/info first
+    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/info")
+
+    // Should print the Bankr address
+    const output = logSpy.mock.calls.map(c => c.join(" ")).join("\n")
+    expect(output.toLowerCase()).toContain(BANKR_ADDRESS.toLowerCase())
+
+    logSpy.mockRestore()
+  })
+
+  it("errors when both --key and --bankr-key are provided", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit")
+    })
+
+    process.env.TOOL_SDK_PRIVATE_KEY = PRIVATE_KEY
+    process.env.BANKR_API_KEY = "test-bankr-key"
+
+    const { authCommand } = await import("../cli/commands/auth.js")
+
+    await expect(
+      authCommand.parseAsync([
+        "node",
+        "auth",
+        "https://tool.example.com/api",
+        "--body",
+        "{}",
+      ]),
+    ).rejects.toThrow("process.exit")
+
+    const output = errorSpy.mock.calls.map(c => c.join(" ")).join("\n")
+    expect(output).toContain("Both --key and --bankr-key")
+    expect(exitSpy).toHaveBeenCalledWith(1)
+  })
+
+  it("shows updated error when neither key is provided", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit")
+    })
+
+    const { authCommand } = await import("../cli/commands/auth.js")
+
+    await expect(
+      authCommand.parseAsync([
+        "node",
+        "auth",
+        "https://tool.example.com/api",
+        "--body",
+        "{}",
+      ]),
+    ).rejects.toThrow("process.exit")
+
+    const output = errorSpy.mock.calls.map(c => c.join(" ")).join("\n")
+    expect(output).toContain("TOOL_SDK_PRIVATE_KEY")
+    expect(output).toContain("BANKR_API_KEY")
+    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 })

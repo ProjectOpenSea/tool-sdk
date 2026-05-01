@@ -35,8 +35,15 @@ export function execCmd(
       stdio,
     }).trim()
   } catch (err) {
-    const error = err as { stderr?: string; message?: string }
-    const message = error.stderr?.trim() || error.message || "Unknown error"
+    const error = err as {
+      stderr?: string
+      stdout?: string
+      message?: string
+    }
+    const captured = [error.stderr?.trim(), error.stdout?.trim()]
+      .filter(Boolean)
+      .join("\n")
+    const message = captured || error.message || "Unknown error"
     throw new Error(message)
   }
 }
@@ -64,6 +71,12 @@ export function parseEnvExample(filePath: string): EnvVar[] {
   return vars
 }
 
+const SENSITIVE_PATTERN = /(?:_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE)$/i
+
+export function isSensitiveEnvVar(name: string): boolean {
+  return SENSITIVE_PATTERN.test(name)
+}
+
 export function extractDeploymentUrl(output: string): string | undefined {
   for (const line of output.split("\n")) {
     const match = line.match(/https:\/\/[\w-]+\.vercel\.app/)
@@ -71,6 +84,26 @@ export function extractDeploymentUrl(output: string): string | undefined {
       return match[0]
     }
   }
+  return undefined
+}
+
+export async function tryRecoverDeployUrl(
+  errorMessage: string,
+  cwd: string,
+): Promise<string | undefined> {
+  const url = extractDeploymentUrl(errorMessage)
+  if (!url) return undefined
+
+  const manifestUrl = await deriveManifestUrl(url, cwd)
+  if (!manifestUrl) return url
+
+  try {
+    const response = await fetch(manifestUrl, { redirect: "manual" })
+    if (response.status === 200) return url
+  } catch {
+    // manifest unreachable
+  }
+
   return undefined
 }
 
@@ -114,7 +147,10 @@ export const deployCommand = new Command("deploy")
   .description("Deploy a tool-sdk project to a hosting platform")
   .requiredOption("--host <host>", "Hosting platform (vercel)")
   .option("--non-interactive", "Read env var values from environment (for CI)")
-  .option("-y, --yes", "Auto-confirm prompts (e.g., vercel link)")
+  .option(
+    "-y, --yes",
+    "(deprecated, no-op — vercel link is now auto-confirmed)",
+  )
   .action(async (options: DeployOptions) => {
     if (options.host !== "vercel") {
       console.error(
@@ -143,9 +179,10 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
     process.exit(1)
   }
 
+  let vercelScope = ""
   try {
-    const user = execCmd("npx vercel whoami", { silent: true })
-    console.log(pc.green(`  Logged in as ${user}`))
+    vercelScope = execCmd("npx vercel whoami", { silent: true })
+    console.log(pc.green(`  Logged in as ${vercelScope}`))
   } catch {
     console.error(pc.red("Error: Not logged in to Vercel."))
     console.error(pc.dim("  Run: npx vercel login"))
@@ -159,10 +196,37 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
   if (existsSync(projectJsonPath)) {
     console.log(pc.green("  Project already linked"))
   } else {
-    console.log(pc.dim("  Linking project..."))
+    const pkgPath = resolve(cwd, "package.json")
+    let projectName = ""
     try {
-      const linkArgs = options.yes ? "--yes" : ""
-      execCmd(`npx vercel link ${linkArgs}`.trim(), {
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+          name?: string
+        }
+        if (pkg.name) {
+          projectName = pkg.name.replace(/^@[^/]+\//, "")
+        }
+      }
+    } catch {
+      // Malformed package.json — fall through with empty projectName
+    }
+
+    const linkParts = ["npx vercel link", "--yes"]
+    if (projectName) {
+      linkParts.push(`--project=${projectName}`)
+    }
+    if (vercelScope) {
+      linkParts.push(`--scope=${vercelScope}`)
+    }
+    const linkCmd = linkParts.join(" ")
+
+    console.log(
+      pc.dim(
+        `  Linking project ${projectName || "(unnamed)"} under scope ${vercelScope || "(default)"}...`,
+      ),
+    )
+    try {
+      execCmd(linkCmd, {
         inheritStderr: true,
       })
       console.log(pc.green("  Project linked"))
@@ -208,11 +272,17 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
           }
         } else {
           const clack = await import("@clack/prompts")
-          const result = await clack.text({
-            message: `${envVar.name}${envVar.comment ? pc.dim(` (${envVar.comment})`) : ""}:`,
-            placeholder: envVar.comment || undefined,
-            validate: v => (!v.trim() ? "Value is required" : undefined),
-          })
+          const message = `${envVar.name}${envVar.comment ? pc.dim(` (${envVar.comment})`) : ""}:`
+          const result = isSensitiveEnvVar(envVar.name)
+            ? await clack.password({
+                message,
+                validate: v => (!v.trim() ? "Value is required" : undefined),
+              })
+            : await clack.text({
+                message,
+                placeholder: envVar.comment || undefined,
+                validate: v => (!v.trim() ? "Value is required" : undefined),
+              })
           if (clack.isCancel(result)) {
             clack.cancel("Cancelled")
             process.exit(0)
@@ -265,12 +335,21 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
     deploymentUrl = url
     console.log(pc.green(`  Deployed to: ${deploymentUrl}`))
   } catch (err) {
-    console.error(pc.red("Error: First deploy failed."))
-    console.error(
-      pc.dim(`  ${err instanceof Error ? err.message : String(err)}`),
-    )
-    console.error(pc.dim("  Try running: npx vercel deploy --prod"))
-    process.exit(1)
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const recovered = await tryRecoverDeployUrl(errMsg, cwd)
+    if (recovered) {
+      deploymentUrl = recovered
+      console.log(
+        pc.yellow(
+          `  Warning: deploy exited non-zero but issued URL: ${deploymentUrl}`,
+        ),
+      )
+    } else {
+      console.error(pc.red("Error: First deploy failed."))
+      console.error(pc.dim(`  ${errMsg}`))
+      console.error(pc.dim("  Try running: npx vercel deploy --prod"))
+      process.exit(1)
+    }
   }
 
   // Step 6: Set TOOL_ENDPOINT
@@ -332,12 +411,21 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
     }
     console.log(pc.green(`  Redeployed to: ${deploymentUrl}`))
   } catch (err) {
-    console.error(pc.red("Error: Redeploy failed."))
-    console.error(
-      pc.dim(`  ${err instanceof Error ? err.message : String(err)}`),
-    )
-    console.error(pc.dim("  Try running: npx vercel deploy --prod --force"))
-    process.exit(1)
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const recovered = await tryRecoverDeployUrl(errMsg, cwd)
+    if (recovered) {
+      deploymentUrl = recovered
+      console.log(
+        pc.yellow(
+          `  Warning: redeploy exited non-zero but issued URL: ${deploymentUrl}`,
+        ),
+      )
+    } else {
+      console.error(pc.red("Error: Redeploy failed."))
+      console.error(pc.dim(`  ${errMsg}`))
+      console.error(pc.dim("  Try running: npx vercel deploy --prod --force"))
+      process.exit(1)
+    }
   }
 
   // Step 8: Verify

@@ -1,12 +1,14 @@
 import { Command } from "commander"
 import pc from "picocolors"
 import { privateKeyToAccount } from "viem/accounts"
+import { createBankrAccount } from "../../lib/client/external-signer.js"
 import { authenticatedFetch } from "../../lib/client/siwe-auth.js"
 import { readInput } from "./read-input.js"
 
 interface AuthOptions {
   body?: string
   key?: string
+  bankrKey?: string
 }
 
 export const authCommand = new Command("auth")
@@ -19,11 +21,28 @@ export const authCommand = new Command("auth")
     "--key <hex>",
     "Wallet private key (defaults to TOOL_SDK_PRIVATE_KEY env var). WARNING: CLI args may appear in shell history and process listings; prefer the env var for production use",
   )
+  .option(
+    "--bankr-key <api-key>",
+    "Bankr API key for agent wallet signing (defaults to BANKR_API_KEY env var)",
+  )
   .action(async (url: string, options: AuthOptions) => {
     const privateKey = options.key ?? process.env.TOOL_SDK_PRIVATE_KEY
-    if (!privateKey) {
+    const bankrKey = options.bankrKey ?? process.env.BANKR_API_KEY
+
+    if (privateKey && bankrKey) {
       console.error(
-        pc.red("Error: Provide --key or set the TOOL_SDK_PRIVATE_KEY env var"),
+        pc.red(
+          "Error: Both --key and --bankr-key provided — use one or the other",
+        ),
+      )
+      process.exit(1)
+    }
+
+    if (!privateKey && !bankrKey) {
+      console.error(
+        pc.red(
+          "Error: Provide --key / TOOL_SDK_PRIVATE_KEY or --bankr-key / BANKR_API_KEY",
+        ),
       )
       process.exit(1)
     }
@@ -57,7 +76,9 @@ export const authCommand = new Command("auth")
       process.exit(1)
     }
 
-    const account = privateKeyToAccount(privateKey as `0x${string}`)
+    const account = bankrKey
+      ? await createBankrAccount(bankrKey)
+      : privateKeyToAccount(privateKey as `0x${string}`)
 
     console.log(pc.cyan("Building SIWE message..."))
     console.log(`  Address: ${account.address}`)

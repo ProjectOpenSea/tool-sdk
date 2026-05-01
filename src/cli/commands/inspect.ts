@@ -9,9 +9,11 @@ import {
 } from "viem"
 import { validateManifest } from "../../lib/manifest/index.js"
 import {
+  CompositePredicateABI,
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   IAccessPredicateABI,
+  SubscriptionPredicateABI,
 } from "../../lib/onchain/abis.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
@@ -126,6 +128,81 @@ export const inspectCommand = new Command("inspect")
               `  Warning: Failed to read collection tokens: ${err instanceof Error ? err.message : String(err)}`,
             ),
           )
+        }
+      } else if (predicateName === "SubscriptionPredicate") {
+        try {
+          const gatingConfig = await publicClient.readContract({
+            address: config.accessPredicate,
+            abi: SubscriptionPredicateABI,
+            functionName: "getToolGatingConfig",
+            args: [toolId],
+          })
+          console.log(`  Subscription collection: ${gatingConfig.collection}`)
+          console.log(
+            `  Min tier: ${gatingConfig.minTier === 0 ? "any active subscription" : gatingConfig.minTier}`,
+          )
+        } catch (err) {
+          console.error(
+            pc.yellow(
+              `  Warning: Failed to read subscription config: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          )
+        }
+      } else if (predicateName === "CompositePredicate") {
+        try {
+          const [op, terms] = await Promise.all([
+            publicClient.readContract({
+              address: config.accessPredicate,
+              abi: CompositePredicateABI,
+              functionName: "getOp",
+              args: [toolId],
+            }),
+            publicClient.readContract({
+              address: config.accessPredicate,
+              abi: CompositePredicateABI,
+              functionName: "getTerms",
+              args: [toolId],
+            }),
+          ])
+          console.log(`  Composite op: ${op === 0 ? "ALL (AND)" : "ANY (OR)"}`)
+          console.log(`  Terms (${terms.length}):`)
+          for (let i = 0; i < terms.length; i++) {
+            const negStr = terms[i].negate ? " (negated)" : ""
+            console.log(`    [${i}] ${terms[i].predicate}${negStr}`)
+          }
+        } catch (err) {
+          console.error(
+            pc.yellow(
+              `  Warning: Failed to read composite config: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          )
+        }
+      } else {
+        // Unknown predicate — show advisory getRequirements output
+        try {
+          const [requirements, logic] = await publicClient.readContract({
+            address: config.accessPredicate,
+            abi: IAccessPredicateABI,
+            functionName: "getRequirements",
+            args: [toolId],
+          })
+          if (requirements.length > 0) {
+            console.log(
+              pc.cyan(
+                `\n  Access requirements (${logic === 0 ? "AND" : "OR"}, advisory):`,
+              ),
+            )
+            for (let i = 0; i < requirements.length; i++) {
+              const r = requirements[i]
+              const label = r.label || "<no label>"
+              console.log(`    [${i}] kind: ${r.kind}  label: ${label}`)
+              if (r.data !== "0x") {
+                console.log(`         data: ${r.data}`)
+              }
+            }
+          }
+        } catch {
+          // predicate may not implement getRequirements
         }
       }
     }

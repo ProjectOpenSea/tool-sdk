@@ -114,6 +114,409 @@ describe("validateManifest", () => {
     const result = validateManifest(minimal)
     expect(result.success).toBe(true)
   })
+
+  it("should accept manifest with valid access block", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0x",
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect(result.data.access?.requirements).toHaveLength(1)
+  })
+
+  it("should accept access with OR logic and links", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "OR",
+        requirements: [
+          {
+            kind: "0xabcd1234",
+            data: "0x07152bfd",
+            label: "Hold any Chonk on Base",
+            links: {
+              buy: "https://opensea.io/collection/chonks",
+            },
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject access with empty requirements array", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject access with invalid kind hex", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xinvalid",
+            data: "0x",
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept manifest with self-attested standard verifiability", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "standard",
+        dataRetention: "metadata-only",
+      },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect(result.data.verifiability?.tier).toBe("self-attested")
+    expect(result.data.verifiability?.execution).toBe("standard")
+    expect(result.data.verifiability?.dataRetention).toBe("metadata-only")
+  })
+
+  it("should accept manifest with hardware-attested TEE verifiability", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        description: "Runs inside Intel SGX enclave.",
+        dataRetention: "ephemeral",
+        sourceVisibility: "open-source",
+        attestation: {
+          type: "dcap-v3",
+          endpoint: "https://tools.example.com/.well-known/attestation",
+          enclaveHash:
+            "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+          maxAge: 3600,
+          transparencyLogURI:
+            "https://rekor.sigstore.dev/api/v1/log/entries/abc123",
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect(result.data.verifiability?.tier).toBe("hardware-attested")
+    expect(result.data.verifiability?.execution).toBe("tee")
+    expect(result.data.verifiability?.attestation?.type).toBe("dcap-v3")
+    expect(result.data.verifiability?.attestation?.maxAge).toBe(3600)
+    expect(result.data.verifiability?.attestation?.transparencyLogURI).toBe(
+      "https://rekor.sigstore.dev/api/v1/log/entries/abc123",
+    )
+  })
+
+  it("should accept manifest with verifiable E2EE and reproducible build", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "e2ee",
+        dataRetention: "none",
+        sourceVisibility: "open-source",
+        attestation: {
+          type: "nitro",
+          endpoint: "https://enclave.example.com/.well-known/attestation",
+          enclaveHash: "0xabcdef1234",
+        },
+        reproducibleBuild: {
+          sourceCodeURI: "https://github.com/example/tool/tree/abc123",
+          buildInstructions: "nix build .#enclave",
+          buildHash: "0xabcdef1234",
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect(result.data.verifiability?.tier).toBe("verifiable")
+    expect(result.data.verifiability?.execution).toBe("e2ee")
+    expect(result.data.verifiability?.reproducibleBuild?.sourceCodeURI).toBe(
+      "https://github.com/example/tool/tree/abc123",
+    )
+  })
+
+  it("should accept verifiability with reverse-DNS execution value", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "io.phala.tee-sidevm",
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should accept verifiability with only tier and execution", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "standard",
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject verifiability with missing tier", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        execution: "standard",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with invalid tier", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "invalid-tier",
+        execution: "standard",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with missing execution", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        dataRetention: "none",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with empty execution", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with invalid dataRetention", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "standard",
+        dataRetention: "invalid-value",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with invalid sourceVisibility", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        sourceVisibility: "invalid-value",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with http endpoint", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          endpoint: "http://insecure.example.com/attestation",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with invalid enclaveHash", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          enclaveHash: "not-hex",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with empty type", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with description exceeding 500 chars", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "tee",
+        description: "a".repeat(501),
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with http transparencyLogURI", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          transparencyLogURI: "http://insecure.example.com/log",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with non-positive maxAge", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          maxAge: 0,
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject reproducibleBuild with http sourceCodeURI", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "tee",
+        reproducibleBuild: {
+          sourceCodeURI: "http://insecure.example.com/repo",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject reproducibleBuild with invalid buildHash", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "tee",
+        reproducibleBuild: {
+          sourceCodeURI: "https://github.com/example/tool",
+          buildHash: "not-hex",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject verifiability with empty description", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "standard",
+        description: "",
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject attestation with odd-length enclaveHash", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          enclaveHash: "0xabc",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject reproducibleBuild with odd-length buildHash", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "tee",
+        reproducibleBuild: {
+          sourceCodeURI: "https://github.com/example/tool",
+          buildHash: "0xabc",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept reproducibleBuild with only sourceCodeURI", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "tee",
+        reproducibleBuild: {
+          sourceCodeURI: "https://github.com/example/tool/tree/abc123",
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe("defineManifest", () => {

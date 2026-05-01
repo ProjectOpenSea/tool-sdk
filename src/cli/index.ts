@@ -9,6 +9,7 @@ import { initCommand } from "./commands/init.js"
 import { inspectCommand } from "./commands/inspect.js"
 import { payCommand } from "./commands/pay.js"
 import { registerCommand } from "./commands/register.js"
+import { smokeCommand } from "./commands/smoke.js"
 import { updateMetadataCommand } from "./commands/update-metadata.js"
 import { validateCommand } from "./commands/validate.js"
 import { verifyCommand } from "./commands/verify.js"
@@ -33,3 +34,4 @@ program.addCommand(payCommand)
 program.addCommand(dryRunGateCommand)
 program.addCommand(dryRunPredicateGateCommand)
 program.addCommand(inspectCommand)
+program.addCommand(smokeCommand)
