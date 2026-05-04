@@ -706,7 +706,7 @@ The SDK supports multiple wallet providers via `@opensea/wallet-adapters`. Set e
 ```typescript
 import { createWalletFromEnv } from "@opensea/tool-sdk"
 
-// Auto-detects: Privy > Fireblocks > Turnkey > PrivateKey
+// Auto-detects: Privy > Fireblocks > Turnkey > Bankr > PrivateKey
 const adapter = createWalletFromEnv()
 const address = await adapter.getAddress()
 ```

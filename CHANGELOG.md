@@ -1,5 +1,13 @@
 # @opensea/tool-sdk
 
+## 0.3.1
+
+### Patch Changes
+
+- 16f4b7e: Re-export `BankrAdapter` and `BankrConfig` from `@opensea/wallet-adapters`. `createWalletFromEnv()` already auto-detects Bankr when `BANKR_API_KEY` is set; this makes the named adapter directly importable from `@opensea/tool-sdk` for callers that need to construct it explicitly.
+- Updated dependencies [a81071b]
+  - @opensea/wallet-adapters@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes

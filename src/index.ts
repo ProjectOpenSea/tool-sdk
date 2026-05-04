@@ -114,6 +114,7 @@ export type {
   WalletProvider,
 } from "./lib/wallet/index.js"
 export {
+  BankrAdapter,
   createWalletForProvider,
   createWalletFromEnv,
   FireblocksAdapter,

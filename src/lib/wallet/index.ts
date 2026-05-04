@@ -1,4 +1,5 @@
 export type {
+  BankrConfig,
   SignMessageRequest,
   SignTypedDataRequest,
   TransactionRequest,
@@ -8,6 +9,7 @@ export type {
   WalletProvider,
 } from "@opensea/wallet-adapters"
 export {
+  BankrAdapter,
   createWalletForProvider,
   createWalletFromEnv,
   FireblocksAdapter,
