@@ -34,17 +34,22 @@ export class ToolRegistryClient {
     chain?: Chain
     rpcUrl?: string
     walletClient?: WalletClient<Transport, Chain, Account>
+    registryAddress?: `0x${string}`
   }) {
     this.chain = config.chain ?? base
     this.walletClient = config.walletClient
 
-    const addr = deploymentAddress(TOOL_REGISTRY, this.chain.id)
-    if (!addr) {
-      throw new Error(
-        `ToolRegistry is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/tool-registry#readme for supported chains.`,
-      )
+    if (config.registryAddress) {
+      this.registryAddress = config.registryAddress
+    } else {
+      const addr = deploymentAddress(TOOL_REGISTRY, this.chain.id)
+      if (!addr) {
+        throw new Error(
+          `ToolRegistry is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/tool-registry#readme for supported chains.`,
+        )
+      }
+      this.registryAddress = addr
     }
-    this.registryAddress = addr
     this.publicClient = createPublicClient({
       chain: this.chain,
       transport: http(config.rpcUrl),

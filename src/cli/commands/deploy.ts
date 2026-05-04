@@ -87,6 +87,21 @@ export function extractDeploymentUrl(output: string): string | undefined {
   return undefined
 }
 
+export function fetchExistingEnvVars(): Set<string> {
+  try {
+    const output = execCmd("npx vercel env ls production --json", {
+      silent: true,
+    })
+    const envList = JSON.parse(output) as { key: string }[]
+    return new Set(envList.map(e => e.key))
+  } catch {
+    console.log(
+      pc.dim("  Could not fetch existing env vars, falling back to prompts"),
+    )
+    return new Set()
+  }
+}
+
 export async function tryRecoverDeployUrl(
   errorMessage: string,
   cwd: string,
@@ -106,7 +121,6 @@ export async function tryRecoverDeployUrl(
 
   return undefined
 }
-
 async function deriveManifestUrl(
   deploymentUrl: string,
   cwd: string,
@@ -256,8 +270,14 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
         pc.dim("  Only TOOL_ENDPOINT found — it will be set automatically"),
       )
     } else {
-      // Step 4: Prompt for env vars
+      const existingEnvNames = fetchExistingEnvVars()
+
       for (const envVar of filteredVars) {
+        if (existingEnvNames.has(envVar.name)) {
+          console.log(pc.dim(`  ${envVar.name} already set, skipping`))
+          continue
+        }
+
         let value: string
 
         if (options.nonInteractive) {

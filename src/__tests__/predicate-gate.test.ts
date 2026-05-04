@@ -14,10 +14,15 @@ const mockGetToolConfig = vi.fn(async () => ({
   accessPredicate: TEST_PREDICATE,
 }))
 
+const mockConstructorArgs = vi.fn()
+
 vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
     tryHasAccess = mockTryHasAccess
     getToolConfig = mockGetToolConfig
+    constructor(config: Record<string, unknown>) {
+      mockConstructorArgs(config)
+    }
   },
 }))
 
@@ -53,6 +58,7 @@ beforeEach(() => {
     manifestHash: "0x0",
     accessPredicate: TEST_PREDICATE,
   })
+  mockConstructorArgs.mockReset()
 })
 
 afterEach(() => {
@@ -370,5 +376,31 @@ describe("predicateGate", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("passes registryAddress to ToolRegistryClient when provided", async () => {
+    const customRegistry =
+      "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    predicateGate({ toolId: TEST_TOOL_ID, registryAddress: customRegistry })
+
+    expect(mockConstructorArgs).toHaveBeenCalledWith(
+      expect.objectContaining({ registryAddress: customRegistry }),
+    )
+  })
+
+  it("does not pass a concrete registryAddress when omitted", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    predicateGate({ toolId: TEST_TOOL_ID })
+
+    expect(mockConstructorArgs).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        registryAddress: expect.any(String),
+      }),
+    )
   })
 })

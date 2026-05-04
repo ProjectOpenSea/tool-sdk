@@ -8,7 +8,8 @@ const BANKR_ADDRESS = "0x8b8e1C20E0630De8C60f0e0D5C3e9C7c20F0c20e"
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  delete process.env.TOOL_SDK_PRIVATE_KEY
+  delete process.env.PRIVATE_KEY
+  delete process.env.RPC_URL
   delete process.env.BANKR_API_KEY
 })
 
@@ -28,7 +29,8 @@ describe("auth command", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    process.env.TOOL_SDK_PRIVATE_KEY = PRIVATE_KEY
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { authCommand } = await import("../cli/commands/auth.js")
 
@@ -66,6 +68,45 @@ describe("auth command", () => {
     logSpy.mockRestore()
   })
 
+  it("sends SIWE header when using --wallet-provider flag", async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = []
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const headers = Object.fromEntries(
+        Object.entries(init?.headers ?? {}),
+      ) as Record<string, string>
+      calls.push({ url: url as string, headers })
+
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 })
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { authCommand } = await import("../cli/commands/auth.js")
+
+    await authCommand.parseAsync([
+      "node",
+      "auth",
+      "https://tool.example.com/api",
+      "--wallet-provider",
+      "private-key",
+      "--body",
+      "{}",
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    const authHeader = calls[0].headers.Authorization
+    expect(authHeader).toBeDefined()
+    expect(authHeader).toMatch(/^SIWE /)
+
+    logSpy.mockRestore()
+  })
+
   it("prints hint on 401 auth failure", async () => {
     vi.stubGlobal(
       "fetch",
@@ -79,7 +120,8 @@ describe("auth command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    process.env.TOOL_SDK_PRIVATE_KEY = PRIVATE_KEY
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { authCommand } = await import("../cli/commands/auth.js")
 
@@ -114,7 +156,8 @@ describe("auth command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    process.env.TOOL_SDK_PRIVATE_KEY = PRIVATE_KEY
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { authCommand } = await import("../cli/commands/auth.js")
 
@@ -185,34 +228,32 @@ describe("auth command with --bankr-key", () => {
     logSpy.mockRestore()
   })
 
-  it("errors when both --key and --bankr-key are provided", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    vi.spyOn(console, "log").mockImplementation(() => {})
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("process.exit")
-    })
+  it("prefers Bankr when both PRIVATE_KEY and BANKR_API_KEY are set", async () => {
+    const fetchMock = stubBankrFetch()
+    vi.stubGlobal("fetch", fetchMock)
 
-    process.env.TOOL_SDK_PRIVATE_KEY = PRIVATE_KEY
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
     process.env.BANKR_API_KEY = "test-bankr-key"
 
     const { authCommand } = await import("../cli/commands/auth.js")
 
-    await expect(
-      authCommand.parseAsync([
-        "node",
-        "auth",
-        "https://tool.example.com/api",
-        "--body",
-        "{}",
-      ]),
-    ).rejects.toThrow("process.exit")
+    await authCommand.parseAsync([
+      "node",
+      "auth",
+      "https://tool.example.com/api",
+      "--body",
+      "{}",
+    ])
 
-    const output = errorSpy.mock.calls.map(c => c.join(" ")).join("\n")
-    expect(output).toContain("Both --key and --bankr-key")
-    expect(exitSpy).toHaveBeenCalledWith(1)
+    // Bankr path: first call should be /wallet/info
+    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/info")
+
+    logSpy.mockRestore()
   })
 
-  it("shows updated error when neither key is provided", async () => {
+  it("shows error when no wallet env vars are set", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     vi.spyOn(console, "log").mockImplementation(() => {})
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
@@ -232,7 +273,7 @@ describe("auth command with --bankr-key", () => {
     ).rejects.toThrow("process.exit")
 
     const output = errorSpy.mock.calls.map(c => c.join(" ")).join("\n")
-    expect(output).toContain("TOOL_SDK_PRIVATE_KEY")
+    expect(output).toContain("PRIVATE_KEY")
     expect(output).toContain("BANKR_API_KEY")
     expect(exitSpy).toHaveBeenCalledWith(1)
   })

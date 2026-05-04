@@ -519,6 +519,254 @@ describe("validateManifest", () => {
   })
 })
 
+describe("validateManifest — JSON Schema structure", () => {
+  it("should accept valid JSON Schema with type, properties, and required", () => {
+    const result = validateManifest(validManifest)
+    expect(result.success).toBe(true)
+  })
+
+  it("should accept empty inputs/outputs", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: {},
+      outputs: {},
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should accept array-type schema with items", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: {
+        type: "array",
+        items: { type: "string" },
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should accept schema without type field", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: { properties: { foo: { type: "string" } } },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject inputs with non-string type", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: { type: 123 },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      "inputs.type must be a string or an array of strings",
+    )
+  })
+
+  it("should reject outputs with non-string type", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: { type: true },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      "outputs.type must be a string or an array of strings",
+    )
+  })
+
+  it("should reject properties that is not an object", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: { type: "object", properties: "not-an-object" },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("inputs.properties must be an object")
+  })
+
+  it("should reject properties that is an array", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: { type: "object", properties: [] },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("outputs.properties must be an object")
+  })
+
+  it("should reject a property value that is not an object", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: {
+        type: "object",
+        properties: { bad: "string-instead-of-schema" },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("inputs.properties.bad must be an object")
+  })
+
+  it("should reject required that is not an array", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: {
+        type: "object",
+        properties: { a: { type: "string" } },
+        required: "a",
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("outputs.required must be an array of strings")
+  })
+
+  it("should reject required containing non-strings", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: {
+        type: "object",
+        properties: { a: { type: "string" } },
+        required: [1, 2],
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("inputs.required must be an array of strings")
+  })
+
+  it("should reject items that is not an object", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: { type: "array", items: "string" },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("outputs.items must be an object")
+  })
+
+  it("should reject items that is an array", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: { type: "array", items: [{ type: "string" }] },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain("outputs.items must be an object")
+  })
+
+  it("should validate nested property schemas recursively", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: {
+        type: "object",
+        properties: {
+          nested: {
+            type: "object",
+            properties: {
+              deep: { type: 42 },
+            },
+          },
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      "inputs.properties.nested.properties.deep.type must be a string or an array of strings",
+    )
+  })
+
+  it("should validate nested items schemas recursively", () => {
+    const result = validateManifest({
+      ...validManifest,
+      outputs: {
+        type: "array",
+        items: {
+          type: "object",
+          required: { not: "an-array" },
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      "outputs.items.required must be an array of strings",
+    )
+  })
+
+  it("should report multiple structural errors at once", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: { type: 123, required: "bad" },
+      outputs: { properties: "bad" },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    expect(result.error.issues.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it("should accept type as an array of strings (Draft-7 union)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: {
+        type: "object",
+        properties: {
+          nullable: { type: ["string", "null"] },
+        },
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject type as an array containing non-strings", () => {
+    const result = validateManifest({
+      ...validManifest,
+      inputs: { type: ["string", 42] },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      "inputs.type must be a string or an array of strings",
+    )
+  })
+
+  it("should reject schemas exceeding maximum nesting depth", () => {
+    let nested: Record<string, unknown> = { type: "string" }
+    for (let i = 0; i < 35; i++) {
+      nested = {
+        type: "object",
+        properties: { x: nested },
+      }
+    }
+    const result = validateManifest({
+      ...validManifest,
+      inputs: nested,
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(
+      messages.some(m => m.includes("exceeds maximum nesting depth")),
+    ).toBe(true)
+  })
+})
+
 describe("defineManifest", () => {
   it("should return the same manifest", () => {
     const result = defineManifest(

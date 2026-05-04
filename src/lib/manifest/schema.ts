@@ -7,6 +7,119 @@ export const PricingEntrySchema = z.object({
   protocol: z.string(),
 })
 
+const MAX_SCHEMA_DEPTH = 32
+
+/**
+ * Recursively validates that a value conforms to basic JSON Schema
+ * structural invariants (Draft-7).
+ */
+function validateJsonSchemaStructure(
+  schema: Record<string, unknown>,
+  ctx: z.core.$RefinementCtx,
+  path: string,
+  depth = 0,
+): void {
+  if (depth > MAX_SCHEMA_DEPTH) {
+    ctx.addIssue({
+      code: "custom",
+      message: `${path} exceeds maximum nesting depth of ${MAX_SCHEMA_DEPTH}`,
+    })
+    return
+  }
+
+  if (
+    "type" in schema &&
+    typeof schema.type !== "string" &&
+    !(
+      Array.isArray(schema.type) &&
+      (schema.type as unknown[]).every(
+        item => typeof item === "string",
+      )
+    )
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: `${path}.type must be a string or an array of strings`,
+    })
+  }
+
+  if ("properties" in schema) {
+    if (
+      typeof schema.properties !== "object" ||
+      schema.properties === null ||
+      Array.isArray(schema.properties)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${path}.properties must be an object`,
+      })
+    } else {
+      for (const [key, value] of Object.entries(
+        schema.properties as Record<string, unknown>,
+      )) {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          Array.isArray(value)
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${path}.properties.${key} must be an object`,
+          })
+        } else {
+          validateJsonSchemaStructure(
+            value as Record<string, unknown>,
+            ctx,
+            `${path}.properties.${key}`,
+            depth + 1,
+          )
+        }
+      }
+    }
+  }
+
+  if (
+    "required" in schema &&
+    (!Array.isArray(schema.required) ||
+      !(schema.required as unknown[]).every(
+        item => typeof item === "string",
+      ))
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: `${path}.required must be an array of strings`,
+    })
+  }
+
+  if ("items" in schema) {
+    if (
+      typeof schema.items !== "object" ||
+      schema.items === null ||
+      Array.isArray(schema.items)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${path}.items must be an object`,
+      })
+    } else {
+      validateJsonSchemaStructure(
+        schema.items as Record<string, unknown>,
+        ctx,
+        `${path}.items`,
+        depth + 1,
+      )
+    }
+  }
+}
+
+function jsonSchemaField(fieldName: string) {
+  return z
+    .record(z.string(), z.unknown())
+    .superRefine((val, ctx) => {
+      validateJsonSchemaStructure(val, ctx, fieldName)
+    })
+}
+
 export const AccessRequirementLinksSchema = z
   .record(z.string(), z.string())
   .optional()
@@ -97,8 +210,8 @@ export const ToolManifestSchema = z.object({
     ),
   image: z.string().url().optional(),
   tags: z.array(z.string()).optional(),
-  inputs: z.record(z.string(), z.unknown()),
-  outputs: z.record(z.string(), z.unknown()),
+  inputs: jsonSchemaField("inputs"),
+  outputs: jsonSchemaField("outputs"),
   creatorAddress: z
     .string()
     .regex(/^0x[0-9a-fA-F]{40}$/, "must be EVM address"),

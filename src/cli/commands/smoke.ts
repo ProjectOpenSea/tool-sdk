@@ -1,6 +1,7 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { privateKeyToAccount } from "viem/accounts"
+import { type Address, getAddress } from "viem"
+import { createExternalSignerAccount } from "../../lib/client/external-signer.js"
 import { authenticatedFetch } from "../../lib/client/siwe-auth.js"
 import type { PaymentRequirements } from "../../lib/client/x402-payment.js"
 import { signX402Payment } from "../../lib/client/x402-payment.js"
@@ -13,6 +14,7 @@ import {
   createWalletForProvider,
   createWalletFromEnv,
   WALLET_PROVIDERS,
+  type WalletAdapter,
   type WalletProvider,
 } from "../../lib/wallet/index.js"
 import { getChain } from "./get-chain.js"
@@ -30,7 +32,6 @@ const DEFAULT_MAX_AMOUNT = "1000000"
 interface SmokeOptions {
   toolId?: string
   endpoint: string
-  as?: string
   input?: string
   expect?: string
   chain?: string
@@ -45,31 +46,19 @@ export const smokeCommand = new Command("smoke")
   )
   .option("--tool-id <id>", "Onchain tool ID (included in log output)")
   .requiredOption("--endpoint <url>", "Production endpoint URL")
-  .option(
-    "--as <private-key>",
-    "Private key to sign SIWE with (defaults to TOOL_SDK_PRIVATE_KEY env var). WARNING: CLI args may appear in shell history and process listings; prefer the env var for production use",
-  )
   .option("--input <json>", "JSON body (inline or @path)", "{}")
   .option("--expect <status>", "Expected HTTP status code", "200")
-  .option("--chain <name>", "Chain for SIWE message", "base")
+  .option("--chain <name>", "Chain for wallet client and SIWE message", "base")
   .option("--paid", "Handle x402 payment challenge after SIWE authentication")
   .option(
     "--wallet-provider <provider>",
-    `Wallet provider for x402 signing: ${WALLET_PROVIDERS.join(", ")}`,
+    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
   )
   .option(
     "--max-amount <amount>",
     "Maximum payment amount in base units (default: 1000000 = 1 USDC)",
   )
   .action(async (options: SmokeOptions) => {
-    const privateKey = options.as ?? process.env.TOOL_SDK_PRIVATE_KEY
-    if (!privateKey) {
-      console.error(
-        pc.red("Error: Provide --as or set the TOOL_SDK_PRIVATE_KEY env var"),
-      )
-      process.exit(1)
-    }
-
     const expectedStatus = Number.parseInt(options.expect ?? "200", 10)
     if (
       Number.isNaN(expectedStatus) ||
@@ -128,7 +117,44 @@ export const smokeCommand = new Command("smoke")
     }
 
     const chain = getChain(options.chain ?? "base")
-    const account = privateKeyToAccount(privateKey as `0x${string}`)
+
+    let adapter: WalletAdapter
+    try {
+      adapter = options.walletProvider
+        ? createWalletForProvider(options.walletProvider as WalletProvider)
+        : createWalletFromEnv()
+    } catch {
+      console.error(
+        pc.red(
+          "Error: Set PRIVATE_KEY (or other wallet env vars) or use --wallet-provider",
+        ),
+      )
+      process.exit(1)
+    }
+    let address: Address
+    try {
+      address = getAddress(await adapter.getAddress()) as Address
+    } catch (err) {
+      console.error(pc.red("Error: Failed to retrieve wallet address"))
+      console.error(pc.dim(err instanceof Error ? err.message : String(err)))
+      process.exit(1)
+    }
+    const { signMessage } = adapter
+    if (!signMessage) {
+      console.error(
+        pc.red(
+          "Error: Selected wallet provider does not support message signing",
+        ),
+      )
+      process.exit(1)
+    }
+    const account = createExternalSignerAccount({
+      address,
+      signMessage: async (message: string) => {
+        const sig = await signMessage.call(adapter, { message })
+        return sig as `0x${string}`
+      },
+    })
 
     console.log(pc.cyan("Smoke test configuration:"))
     if (toolId !== undefined) {
@@ -230,14 +256,10 @@ export const smokeCommand = new Command("smoke")
         process.exit(1)
       }
 
-      const wallet = options.walletProvider
-        ? createWalletForProvider(options.walletProvider as WalletProvider)
-        : createWalletFromEnv()
-
       console.log(pc.cyan("\nSigning x402 payment..."))
 
       const xPayment = await signX402Payment({
-        signer: wallet,
+        signer: adapter,
         paymentRequirements: requirements,
       })
 

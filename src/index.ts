@@ -94,6 +94,11 @@ export {
   TOOL_REGISTRY,
 } from "./lib/onchain/chains.js"
 export { computeManifestHash } from "./lib/onchain/hash.js"
+export type { PredicateClientConfig } from "./lib/onchain/predicate-clients.js"
+export {
+  ERC721OwnerPredicateClient,
+  ERC1155OwnerPredicateClient,
+} from "./lib/onchain/predicate-clients.js"
 export { ToolRegistryClient } from "./lib/onchain/registry.js"
 export { deriveSlug } from "./lib/utils.js"
 export type {

@@ -17,6 +17,8 @@ vi.mock("viem", async importOriginal => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  delete process.env.PRIVATE_KEY
+  delete process.env.RPC_URL
 })
 
 describe("smoke command", () => {
@@ -29,6 +31,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -39,8 +43,6 @@ describe("smoke command", () => {
       "2",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
       "--input",
       "{}",
       "--expect",
@@ -68,6 +70,8 @@ describe("smoke command", () => {
     }) as never)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -79,8 +83,6 @@ describe("smoke command", () => {
         "2",
         "--endpoint",
         "https://example.com/api/invoke",
-        "--as",
-        TEST_KEY,
         "--expect",
         "200",
       ])
@@ -106,6 +108,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -116,8 +120,6 @@ describe("smoke command", () => {
       "2",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
       "--expect",
       "403",
     ])
@@ -140,6 +142,8 @@ describe("smoke command", () => {
     )
 
     vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -150,8 +154,6 @@ describe("smoke command", () => {
       "2",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const headers = new Headers(capturedInit?.headers)
@@ -172,6 +174,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -182,8 +186,6 @@ describe("smoke command", () => {
       "2",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
@@ -193,14 +195,15 @@ describe("smoke command", () => {
     logSpy.mockRestore()
   })
 
-  it("falls back to TOOL_SDK_PRIVATE_KEY env var", async () => {
+  it("falls back to PRIVATE_KEY env var", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
         async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       ),
     )
-    process.env.TOOL_SDK_PRIVATE_KEY = TEST_KEY
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
 
@@ -218,12 +221,11 @@ describe("smoke command", () => {
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("PASS")
 
-    delete process.env.TOOL_SDK_PRIVATE_KEY
     logSpy.mockRestore()
   })
 
-  it("exits 1 when no private key is provided", async () => {
-    delete process.env.TOOL_SDK_PRIVATE_KEY
+  it("exits 1 when no wallet env vars are set", async () => {
+    delete process.env.PRIVATE_KEY
 
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
       throw new Error("process.exit called")
@@ -246,7 +248,7 @@ describe("smoke command", () => {
     }
 
     const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
-    expect(errorOutput).toContain("TOOL_SDK_PRIVATE_KEY")
+    expect(errorOutput).toContain("PRIVATE_KEY")
 
     exitSpy.mockRestore()
     errorSpy.mockRestore()
@@ -261,6 +263,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -269,8 +273,6 @@ describe("smoke command", () => {
       "smoke",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
@@ -294,6 +296,8 @@ describe("smoke command", () => {
     }) as never)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -303,8 +307,6 @@ describe("smoke command", () => {
         "smoke",
         "--endpoint",
         "https://example.com/api/invoke",
-        "--as",
-        TEST_KEY,
       ])
     } catch {
       // expected process.exit
@@ -328,6 +330,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -338,8 +342,6 @@ describe("smoke command", () => {
       "2",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
@@ -367,6 +369,8 @@ describe("smoke command", () => {
     }) as never)
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -376,8 +380,6 @@ describe("smoke command", () => {
         "smoke",
         "--endpoint",
         "https://example.com/api/invoke",
-        "--as",
-        TEST_KEY,
       ])
     } catch {
       // expected process.exit
@@ -407,6 +409,8 @@ describe("smoke command", () => {
     }) as never)
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -416,8 +420,6 @@ describe("smoke command", () => {
         "smoke",
         "--endpoint",
         "https://example.com/api/invoke",
-        "--as",
-        TEST_KEY,
       ])
     } catch {
       // expected process.exit
@@ -450,6 +452,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -458,8 +462,6 @@ describe("smoke command", () => {
       "smoke",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
@@ -484,6 +486,8 @@ describe("smoke command", () => {
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
 
     const { smokeCommand } = await import("../cli/commands/smoke.js")
 
@@ -492,8 +496,6 @@ describe("smoke command", () => {
       "smoke",
       "--endpoint",
       "https://example.com/api/invoke",
-      "--as",
-      TEST_KEY,
     ])
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")

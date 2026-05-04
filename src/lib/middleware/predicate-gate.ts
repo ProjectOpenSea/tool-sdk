@@ -25,6 +25,11 @@ export interface PredicateGateConfig {
    * documents a use for it.
    */
   data?: `0x${string}`
+  /**
+   * Override the canonical registry address. Useful for local development
+   * against a forked Anvil node or a custom deploy.
+   */
+  registryAddress?: `0x${string}`
 }
 
 /**
@@ -53,7 +58,11 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
     transport: http(rpcUrl),
   })
 
-  const registry = new ToolRegistryClient({ chain, rpcUrl })
+  const registry = new ToolRegistryClient({
+    chain,
+    rpcUrl,
+    registryAddress: config.registryAddress,
+  })
 
   /**
    * Lifetime of the cached predicate address used in 403 bodies. Short enough

@@ -21,14 +21,16 @@ pnpm run type-check  # TypeScript type checking
 | `src/index.ts` | Library entry point — public `tool-sdk` exports |
 | `src/cli.ts` | CLI entry point (Commander program wiring) |
 | `src/types.ts` | Shared public types |
-| `src/cli/commands/` | CLI commands: `register`, `validate`, `verify`, `hash`, `init` |
+| `src/cli/commands/` | CLI commands: `auth`, `deploy`, `dry-run-gate`, `dry-run-predicate-gate`, `export`, `hash`, `init`, `inspect`, `pay`, `register`, `smoke`, `update-metadata`, `validate`, `verify` |
 | `src/lib/onchain/abis.ts` | TypeScript ABI definitions mirroring Solidity interfaces |
 | `src/lib/onchain/chains.ts` | Deployed contract addresses per chain |
 | `src/lib/onchain/registry.ts` | `ToolRegistryClient` — onchain interaction wrapper |
 | `src/lib/onchain/hash.ts` | JCS keccak256 manifest hashing |
+| `src/lib/onchain/access.ts` | Access-check helpers for tool gating |
+| `src/lib/onchain/predicate-clients.ts` | Typed clients for predicate contracts |
 | `src/lib/manifest/` | Manifest schema, validation, types |
 | `src/lib/handler/` | `createToolHandler` — Web Request/Response handler factory |
-| `src/lib/middleware/` | Gating middleware (NFT gate, x402, well-known endpoint) |
+| `src/lib/middleware/` | Gating middleware (NFT gate, predicate gate, x402, x402 facilitators, well-known endpoint) |
 | `src/lib/wallet/` | Re-exports from `@opensea/wallet-adapters` (adapters, types, and viem bridge) |
 | `src/lib/adapters/` | Framework adapters (Vercel, Cloudflare, Express) |
 | `src/lib/utils.ts` | Shared utilities used across `lib/` |

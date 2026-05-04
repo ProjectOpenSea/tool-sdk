@@ -1,14 +1,25 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { privateKeyToAccount } from "viem/accounts"
-import { createBankrAccount } from "../../lib/client/external-signer.js"
+import type { Account } from "viem"
+import { type Address, getAddress } from "viem"
+import {
+  createBankrAccount,
+  createExternalSignerAccount,
+} from "../../lib/client/external-signer.js"
 import { authenticatedFetch } from "../../lib/client/siwe-auth.js"
+import {
+  createWalletForProvider,
+  createWalletFromEnv,
+  WALLET_PROVIDERS,
+  type WalletAdapter,
+  type WalletProvider,
+} from "../../lib/wallet/index.js"
 import { readInput } from "./read-input.js"
 
 interface AuthOptions {
   body?: string
-  key?: string
   bankrKey?: string
+  walletProvider?: string
 }
 
 export const authCommand = new Command("auth")
@@ -18,34 +29,15 @@ export const authCommand = new Command("auth")
   .argument("<url>", "Tool endpoint URL")
   .option("--body <json>", "JSON body (inline string or @path/to/file.json)")
   .option(
-    "--key <hex>",
-    "Wallet private key (defaults to TOOL_SDK_PRIVATE_KEY env var). WARNING: CLI args may appear in shell history and process listings; prefer the env var for production use",
+    "--wallet-provider <provider>",
+    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
   )
   .option(
     "--bankr-key <api-key>",
     "Bankr API key for agent wallet signing (defaults to BANKR_API_KEY env var)",
   )
   .action(async (url: string, options: AuthOptions) => {
-    const privateKey = options.key ?? process.env.TOOL_SDK_PRIVATE_KEY
     const bankrKey = options.bankrKey ?? process.env.BANKR_API_KEY
-
-    if (privateKey && bankrKey) {
-      console.error(
-        pc.red(
-          "Error: Both --key and --bankr-key provided — use one or the other",
-        ),
-      )
-      process.exit(1)
-    }
-
-    if (!privateKey && !bankrKey) {
-      console.error(
-        pc.red(
-          "Error: Provide --key / TOOL_SDK_PRIVATE_KEY or --bankr-key / BANKR_API_KEY",
-        ),
-      )
-      process.exit(1)
-    }
 
     let inputBody = "{}"
     if (options.body) {
@@ -76,9 +68,49 @@ export const authCommand = new Command("auth")
       process.exit(1)
     }
 
-    const account = bankrKey
-      ? await createBankrAccount(bankrKey)
-      : privateKeyToAccount(privateKey as `0x${string}`)
+    let account: Account
+
+    if (bankrKey) {
+      account = await createBankrAccount(bankrKey)
+    } else {
+      let adapter: WalletAdapter
+      try {
+        adapter = options.walletProvider
+          ? createWalletForProvider(options.walletProvider as WalletProvider)
+          : createWalletFromEnv()
+      } catch {
+        console.error(
+          pc.red(
+            "Error: Set PRIVATE_KEY (or other wallet env vars), use --wallet-provider, or pass --bankr-key / BANKR_API_KEY",
+          ),
+        )
+        process.exit(1)
+      }
+      let address: Address
+      try {
+        address = getAddress(await adapter.getAddress()) as Address
+      } catch (err) {
+        console.error(pc.red("Error: Failed to retrieve wallet address"))
+        console.error(pc.dim(err instanceof Error ? err.message : String(err)))
+        process.exit(1)
+      }
+      const { signMessage } = adapter
+      if (!signMessage) {
+        console.error(
+          pc.red(
+            "Error: Selected wallet provider does not support message signing",
+          ),
+        )
+        process.exit(1)
+      }
+      account = createExternalSignerAccount({
+        address,
+        signMessage: async (message: string) => {
+          const sig = await signMessage.call(adapter, { message })
+          return sig as `0x${string}`
+        },
+      })
+    }
 
     console.log(pc.cyan("Building SIWE message..."))
     console.log(`  Address: ${account.address}`)
