@@ -12,6 +12,8 @@ export type GateMiddleware = {
 
 export interface ToolContext {
   callerAddress?: `0x${string}`
+  /** When a delegated agent call is verified, this holds the agent's address. */
+  agentAddress?: `0x${string}`
   gates: {
     nft?: { granted: boolean }
     predicate?: { granted: boolean }
@@ -24,5 +26,6 @@ export interface ToolContext {
       settlementTxHash?: string
     }
   }
+  manifest: import("./lib/manifest/types.js").ToolManifest
   request: Request
 }

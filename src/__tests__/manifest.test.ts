@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { defineManifest, validateManifest } from "../lib/manifest/index.js"
+import type { ManifestDefinition } from "../lib/manifest/index.js"
+import {
+  defineManifest,
+  resolveManifest,
+  validateManifest,
+} from "../lib/manifest/index.js"
 
 const validManifest = {
   type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
@@ -768,10 +773,133 @@ describe("validateManifest — JSON Schema structure", () => {
 })
 
 describe("defineManifest", () => {
-  it("should return the same manifest", () => {
-    const result = defineManifest(
-      validManifest as ReturnType<typeof defineManifest>,
-    )
+  it("should return the same manifest with static values", () => {
+    const result = defineManifest(validManifest as ManifestDefinition)
     expect(result).toEqual(validManifest)
+  })
+
+  it("should accept resolver functions for endpoint, creatorAddress, pricing", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      endpoint: env => env.TOOL_ENDPOINT!,
+      creatorAddress: env => env.CREATOR_ADDRESS!,
+      pricing: env => [
+        {
+          amount: env.PRICE_AMOUNT!,
+          asset: "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          recipient: env.PRICE_RECIPIENT!,
+          protocol: "x402",
+        },
+      ],
+    })
+    expect(typeof definition.endpoint).toBe("function")
+    expect(typeof definition.creatorAddress).toBe("function")
+    expect(typeof definition.pricing).toBe("function")
+  })
+})
+
+describe("resolveManifest", () => {
+  it("should pass through a static-only manifest unchanged", () => {
+    const definition = defineManifest(validManifest as ManifestDefinition)
+    const resolved = resolveManifest(definition, {})
+    expect(resolved.endpoint).toBe("https://tools.example.com/nft-price-oracle")
+    expect(resolved.creatorAddress).toBe(
+      "0xabcdefabcdef1234567890abcdefabcdef123456",
+    )
+    expect(resolved.name).toBe("nft-price-oracle")
+  })
+
+  it("should resolve function-valued fields with provided env", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      endpoint: env => env.TOOL_ENDPOINT!,
+      creatorAddress: env => env.CREATOR!,
+    })
+    const env = {
+      TOOL_ENDPOINT: "https://my-worker.example.com/tool",
+      CREATOR: "0x1234567890abcdef1234567890abcdef12345678",
+    }
+    const resolved = resolveManifest(definition, env)
+    expect(resolved.endpoint).toBe("https://my-worker.example.com/tool")
+    expect(resolved.creatorAddress).toBe(
+      "0x1234567890abcdef1234567890abcdef12345678",
+    )
+  })
+
+  it("should resolve a mixed manifest (some static, some resolver)", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      endpoint: env => env.TOOL_ENDPOINT!,
+      creatorAddress: "0xabcdefabcdef1234567890abcdefabcdef123456",
+      pricing: env => [
+        {
+          amount: env.PRICE!,
+          asset: "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          recipient: "eip155:8453:0xabcdef0123456789abcdef0123456789abcdef01",
+          protocol: "x402",
+        },
+      ],
+    })
+    const env = {
+      TOOL_ENDPOINT: "https://resolved.example.com/tool",
+      PRICE: "50000",
+    }
+    const resolved = resolveManifest(definition, env)
+    expect(resolved.endpoint).toBe("https://resolved.example.com/tool")
+    expect(resolved.creatorAddress).toBe(
+      "0xabcdefabcdef1234567890abcdefabcdef123456",
+    )
+    expect(resolved.pricing).toEqual([
+      {
+        amount: "50000",
+        asset: "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        recipient: "eip155:8453:0xabcdef0123456789abcdef0123456789abcdef01",
+        protocol: "x402",
+      },
+    ])
+  })
+
+  it("should throw a descriptive error when a resolver returns undefined", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      endpoint: env => env.MISSING_VAR as string,
+    })
+    expect(() => resolveManifest(definition, {})).toThrow(
+      /Resolver for "endpoint" returned undefined/,
+    )
+  })
+
+  it("should throw a descriptive error when a resolver returns null", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      creatorAddress: () => null as unknown as string,
+    })
+    expect(() => resolveManifest(definition, {})).toThrow(
+      /Resolver for "creatorAddress" returned null/,
+    )
+  })
+
+  it("should throw when a resolver returns a schema-invalid value", () => {
+    const definition = defineManifest({
+      ...validManifest,
+      endpoint: () => "http://not-https.example.com",
+    })
+    expect(() => resolveManifest(definition, {})).toThrow(
+      /Resolved manifest is invalid/,
+    )
+  })
+
+  it("should leave pricing undefined when not provided", () => {
+    const definition = defineManifest({
+      type: validManifest.type,
+      name: validManifest.name,
+      description: validManifest.description,
+      endpoint: validManifest.endpoint,
+      inputs: validManifest.inputs,
+      outputs: validManifest.outputs,
+      creatorAddress: validManifest.creatorAddress,
+    })
+    const resolved = resolveManifest(definition, {})
+    expect(resolved.pricing).toBeUndefined()
   })
 })

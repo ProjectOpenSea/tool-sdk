@@ -1,5 +1,39 @@
 # @opensea/tool-sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- ef922d8: Migrate `auth` and `smoke` CLI commands from `TOOL_SDK_PRIVATE_KEY` / `privateKeyToAccount` to `createWalletFromEnv()` from `@opensea/wallet-adapters`. Both commands now use `PRIVATE_KEY` (via wallet-adapters) instead of the non-standard `TOOL_SDK_PRIVATE_KEY` env var, and accept the `--wallet-provider` flag for explicit provider selection. This makes wallet configuration consistent across all CLI commands (`auth`, `pay`, `smoke`, `register`, `update-metadata`).
+
+  **Breaking:** `--key` (auth), `--as` (smoke), and `TOOL_SDK_PRIVATE_KEY` env var have been removed. Use `PRIVATE_KEY` + `RPC_URL` env vars or `--wallet-provider` instead.
+
+- f6ef66e: feat: add delegated agent auth via delegate.xyz for predicate-gated tools
+- 80bfd16: feat(manifest): validate inputs/outputs as well-formed JSON Schema
+- fde8ef0: feat: add ERC721OwnerPredicateClient and ERC1155OwnerPredicateClient for managing predicate collections
+- 6b31470: feat(predicate-gate): accept registryAddress override for local development
+
+  `PredicateGateConfig` and `ToolRegistryClient` now accept an optional `registryAddress` field. When provided, the middleware and client use the given address instead of looking up the canonical `TOOL_REGISTRY` deployment. This enables local development against a forked Anvil node or a custom registry deploy without monkey-patching the SDK.
+
+- 1368f61: feat: support runtime env resolution in defineManifest for Cloudflare Workers
+
+### Patch Changes
+
+- 1b3a388: feat(init): update Vercel template with agent-friendly discovery page and llms.txt
+
+  The `tool-sdk init` template now scaffolds an index.html that serves as an
+  llms.txt-style discovery page — showing agents the manifest location, endpoint,
+  auth requirements (SIWE), input/output schemas, and SDK usage examples. Also adds
+  a `/llms.txt` plaintext file following the llms.txt spec for direct LLM consumption.
+
+  Updated to use `createWalletFromEnv` / `walletAdapterToClient` from
+  `@opensea/wallet-adapters` instead of raw `privateKeyToAccount`. Added coverage
+  for x402 payment flows (`pay` command, `paidAuthenticatedFetch`), smoke-testing,
+  and multi-provider wallet configuration (Privy, Turnkey, Fireblocks).
+
+- b5307e4: fix(deploy): skip blank-valued env vars in .env.local.example during deploy wizard
+- 7da1fae: fix(deploy): skip env var prompts for vars already set in Vercel
+
 ## 0.2.0
 
 ### Minor Changes

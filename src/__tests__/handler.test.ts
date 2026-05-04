@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { z } from "zod/v4"
 import { ToolHandlerError } from "../index.js"
 import { createToolHandler } from "../lib/handler/index.js"
-import type { ToolManifest } from "../lib/manifest/types.js"
+import type { ManifestDefinition } from "../lib/manifest/index.js"
 import type { GateMiddleware } from "../types.js"
 
 const testManifest = {
@@ -13,7 +13,7 @@ const testManifest = {
   inputs: {},
   outputs: {},
   creatorAddress: "0xabcdefabcdef1234567890abcdefabcdef123456",
-} as ToolManifest
+} as ManifestDefinition
 
 const InputSchema = z.object({ query: z.string() })
 const OutputSchema = z.object({ result: z.string() })

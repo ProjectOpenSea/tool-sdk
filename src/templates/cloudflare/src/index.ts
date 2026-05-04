@@ -1,17 +1,22 @@
-import { createWellKnownHandler } from "@opensea/tool-sdk"
-import { toolHandler } from "./handler.js"
+import { createWellKnownHandler, resolveManifest } from "@opensea/tool-sdk"
+import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
+import { toolConfig } from "./handler.js"
 import { manifest } from "./manifest.js"
 
-const wellKnownHandler = createWellKnownHandler(manifest)
+const worker = toCloudflareHandler(toolConfig)
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Record<string, string | undefined>,
+  ): Promise<Response> {
     const url = new URL(request.url)
 
     if (url.pathname.startsWith("/.well-known/ai-tool/")) {
-      return wellKnownHandler(request)
+      const resolved = resolveManifest(manifest, env)
+      return createWellKnownHandler(resolved)(request)
     }
 
-    return toolHandler(request)
+    return worker.fetch(request, env)
   },
 }

@@ -2,6 +2,7 @@ export type { ExpressRequest, ExpressResponse } from "./lib/adapters/express.js"
 export { toExpressHandler } from "./lib/adapters/express.js"
 export type { VercelRequest, VercelResponse } from "./lib/adapters/vercel.js"
 export { toVercelHandler } from "./lib/adapters/vercel.js"
+
 export {
   createBankrAccount,
   createExternalSignerAccount,
@@ -22,8 +23,10 @@ export { paidFetch, signX402Payment } from "./lib/client/x402-payment.js"
 export { ToolHandlerError } from "./lib/handler/error.js"
 export type { ToolHandlerConfig } from "./lib/handler/index.js"
 export { createToolHandler } from "./lib/handler/index.js"
+export type { EnvResolver, ManifestDefinition } from "./lib/manifest/index.js"
 export {
   defineManifest,
+  resolveManifest,
   validateManifest,
 } from "./lib/manifest/index.js"
 export {
@@ -78,6 +81,7 @@ export {
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   IAccessPredicateABI,
+  IDelegateRegistryABI,
   IToolRegistryABI,
   SubscriptionPredicateABI,
 } from "./lib/onchain/abis.js"
@@ -88,6 +92,7 @@ export type {
 export { checkToolAccess } from "./lib/onchain/access.js"
 export type { Deployment } from "./lib/onchain/chains.js"
 export {
+  DELEGATE_REGISTRY,
   deploymentAddress,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,

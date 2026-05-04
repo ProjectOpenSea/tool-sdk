@@ -356,6 +356,42 @@ Authorization header format: `SIWE <base64url(siwe-message)>.<hex-signature>`
 > Tool operators requiring stronger replay protection should implement
 > server-side nonce tracking.
 
+#### Delegated agent access (delegate.xyz)
+
+An AI agent can call a predicate-gated tool **on behalf of** an NFT holder
+without the holder's private key. The holder delegates to the agent at
+[delegate.xyz](https://delegate.xyz) (onchain, one TX, revocable anytime),
+and the agent includes the holder's address in the request:
+
+```typescript
+import { authenticatedFetch } from "@opensea/tool-sdk"
+
+const response = await authenticatedFetch(toolUrl, {
+  method: "POST",
+  headers: {
+    "X-Delegate-For": holderAddress,      // holder who delegated
+  },
+  account: agentAccount,
+  body: JSON.stringify({ query: "hello" }),
+})
+```
+
+When `X-Delegate-For` is present, the middleware:
+
+1. Verifies the agent's SIWE signature normally
+2. Calls `checkDelegateForAll(agent, holder)` on the [delegate.xyz DelegateRegistry](https://docs.delegate.xyz)
+3. If valid, runs the access predicate against the **holder** (not the agent)
+4. Sets `ctx.callerAddress = holderAddress` and `ctx.agentAddress = agentAddress`
+
+| Outcome | Status | Body |
+| --- | --- | --- |
+| Invalid `X-Delegate-For` format | `400` | `{ error }` |
+| Delegation not found onchain | `403` | `{ error, hint }` |
+| Delegate registry call failed | `502` | `{ error }` |
+
+See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the
+full delegation walkthrough.
+
 ### Client-side access preview
 
 Off-chain helper for clients that want to gate UI before invocation. Same

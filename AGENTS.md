@@ -43,15 +43,21 @@ When reviewing changes to this package, verify:
 
 1. **ABI completeness**: `abis.ts` must include every function and event from the corresponding Solidity interfaces in `../tool-registry/src/interfaces/`. If the Solidity interface adds a function, `abis.ts` must add it too. Missing ABI entries mean SDK consumers cannot call those functions.
 
-2. **Address sync**: Addresses in `chains.ts` must match `../tool-registry/README.md`. After a new deploy, both files must be updated together.
+2. **Address sync**: Addresses in `chains.ts` must match `../tool-registry/README.md`. After a new deploy, both files must be updated together. Also update `SKILLS.md` — it hardcodes contract addresses in the "Deployed Contracts" table and code examples.
 
-3. **Dead code after refactors**: When removing features (e.g., dropping a predicate factory), verify that all related imports, constants, and references are also removed. Check for unused imports at the top of refactored files.
+3. **SKILLS.md sync**: `SKILLS.md` hardcodes requirement-type selectors (`kind` values from `IRequirementTypes.sol`) and contract addresses. When any of these change in `tool-registry`, update `SKILLS.md` in the same PR:
+   - Deployed addresses → "Deployed Contracts" table + code examples
+   - `IRequirementTypes.sol` selectors → `kind` fields in "Known Predicates" section
+   - New predicates in `../tool-registry/examples/` → new entry in "Known Predicates"
+   - CLI commands added/removed in `src/cli/index.ts` → CLI commands table in Section 9
 
-4. **CLI error messages**: Error messages shown to SDK consumers should not reference internal file paths (e.g., "Update chains.ts"). Link to the README or provide actionable instructions instead.
+4. **Dead code after refactors**: When removing features (e.g., dropping a predicate factory), verify that all related imports, constants, and references are also removed. Check for unused imports at the top of refactored files.
 
-5. **Multi-step CLI flows**: Commands that require multiple onchain transactions (e.g., `register --nft-gate` does `registerTool` then `setCollections`) must handle partial failure gracefully — print recovery instructions if the second TX fails.
+5. **CLI error messages**: Error messages shown to SDK consumers should not reference internal file paths (e.g., "Update chains.ts"). Link to the README or provide actionable instructions instead.
 
-6. **`--dry-run` accuracy**: Dry-run output must reflect the full onchain footprint. If the command sends multiple transactions, the dry-run should mention all of them.
+6. **Multi-step CLI flows**: Commands that require multiple onchain transactions (e.g., `register --nft-gate` does `registerTool` then `setCollections`) must handle partial failure gracefully — print recovery instructions if the second TX fails.
+
+7. **`--dry-run` accuracy**: Dry-run output must reflect the full onchain footprint. If the command sends multiple transactions, the dry-run should mention all of them.
 
 ## Conventions
 

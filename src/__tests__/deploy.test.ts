@@ -42,7 +42,6 @@ describe("parseEnvExample", () => {
         "SECRET_TOKEN=your-secret",
         "",
         "TOOL_ENDPOINT=https://example.vercel.app",
-        "EMPTY_VAR=",
       ].join("\n"),
     )
 
@@ -51,7 +50,25 @@ describe("parseEnvExample", () => {
       { name: "API_KEY", comment: "your-api-key-here" },
       { name: "SECRET_TOKEN", comment: "your-secret" },
       { name: "TOOL_ENDPOINT", comment: "https://example.vercel.app" },
-      { name: "EMPTY_VAR", comment: "" },
+    ])
+  })
+
+  it("should skip blank-valued env vars", () => {
+    const filePath = join(fixturesDir, ".env.blank-values")
+    writeFileSync(
+      filePath,
+      [
+        "WALLET_PERSONALITY_TOOL_ID=",
+        "API_KEY=your-api-key-here",
+        "ANOTHER_EMPTY=",
+        "SECRET=my-secret",
+      ].join("\n"),
+    )
+
+    const vars = parseEnvExample(filePath)
+    expect(vars).toEqual([
+      { name: "API_KEY", comment: "your-api-key-here" },
+      { name: "SECRET", comment: "my-secret" },
     ])
   })
 

@@ -31,6 +31,16 @@ export const ERC1155_OWNER_PREDICATE: Deployment = {
   chains: [8453],
 }
 
+/**
+ * delegate.xyz DelegateRegistry V2. Deployed at the same deterministic address
+ * on 30+ EVM chains.
+ * @see https://docs.delegate.xyz/technical-documentation/delegate-registry/contract-addresses
+ */
+export const DELEGATE_REGISTRY: Deployment = {
+  address: "0x00000000000000447e69651d841bD8D104Bed493",
+  chains: [1, 8453, 42161, 10, 137],
+}
+
 /** Resolve a deployment to the address active on a given chain. */
 export function deploymentAddress(
   d: Deployment,

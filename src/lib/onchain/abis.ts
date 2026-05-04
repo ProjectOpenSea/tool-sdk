@@ -1,17 +1,17 @@
 export const IToolRegistryABI = [
   {
     type: "event",
-    name: "ToolRegistered",
+    name: "AccessPredicateUpdated",
     inputs: [
       { name: "toolId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      {
-        name: "accessPredicate",
-        type: "address",
-        indexed: true,
-      },
-      { name: "metadataURI", type: "string", indexed: false },
-      { name: "manifestHash", type: "bytes32", indexed: false },
+      { name: "newPredicate", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "ToolDeregistered",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
     ],
   },
   {
@@ -25,44 +25,59 @@ export const IToolRegistryABI = [
   },
   {
     type: "event",
-    name: "AccessPredicateUpdated",
+    name: "ToolRegistered",
     inputs: [
       { name: "toolId", type: "uint256", indexed: true },
-      {
-        name: "newPredicate",
-        type: "address",
-        indexed: true,
-      },
+      { name: "creator", type: "address", indexed: true },
+      { name: "accessPredicate", type: "address", indexed: true },
+      { name: "metadataURI", type: "string", indexed: false },
+      { name: "manifestHash", type: "bytes32", indexed: false },
     ],
   },
   {
-    type: "function",
-    name: "registerTool",
+    type: "error",
+    name: "InvalidAccessPredicate",
     inputs: [
-      { name: "metadataURI", type: "string" },
-      { name: "manifestHash", type: "bytes32" },
-      { name: "accessPredicate", type: "address" },
+      { name: "predicate", type: "address" },
     ],
-    outputs: [{ name: "toolId", type: "uint256" }],
-    stateMutability: "nonpayable",
   },
   {
-    type: "function",
-    name: "updateToolMetadata",
-    inputs: [
-      { name: "toolId", type: "uint256" },
-      { name: "newURI", type: "string" },
-      { name: "newHash", type: "bytes32" },
-    ],
-    outputs: [],
-    stateMutability: "nonpayable",
+    type: "error",
+    name: "InvalidManifestHash",
+    inputs: [],
   },
   {
-    type: "function",
-    name: "setAccessPredicate",
+    type: "error",
+    name: "InvalidMetadataURI",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "NotToolCreator",
     inputs: [
       { name: "toolId", type: "uint256" },
-      { name: "newPredicate", type: "address" },
+      { name: "caller", type: "address" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ToolIsDeregistered",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "ToolNotFound",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "deregisterTool",
+    inputs: [
+      { name: "toolId", type: "uint256" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -70,7 +85,9 @@ export const IToolRegistryABI = [
   {
     type: "function",
     name: "getToolConfig",
-    inputs: [{ name: "toolId", type: "uint256" }],
+    inputs: [
+      { name: "toolId", type: "uint256" },
+    ],
     outputs: [
       {
         name: "",
@@ -93,7 +110,50 @@ export const IToolRegistryABI = [
       { name: "account", type: "address" },
       { name: "data", type: "bytes" },
     ],
-    outputs: [{ name: "", type: "bool" }],
+    outputs: [
+      { name: "", type: "bool" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "name",
+    inputs: [],
+    outputs: [
+      { name: "", type: "string" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "registerTool",
+    inputs: [
+      { name: "metadataURI", type: "string" },
+      { name: "manifestHash", type: "bytes32" },
+      { name: "accessPredicate", type: "address" },
+    ],
+    outputs: [
+      { name: "toolId", type: "uint256" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setAccessPredicate",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "newPredicate", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "toolCount",
+    inputs: [],
+    outputs: [
+      { name: "", type: "uint256" },
+    ],
     stateMutability: "view",
   },
   {
@@ -112,29 +172,32 @@ export const IToolRegistryABI = [
   },
   {
     type: "function",
-    name: "toolCount",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "name",
-    inputs: [],
-    outputs: [{ name: "", type: "string" }],
-    stateMutability: "view",
+    name: "updateToolMetadata",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "newURI", type: "string" },
+      { name: "newHash", type: "bytes32" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "version",
     inputs: [],
-    outputs: [{ name: "", type: "string" }],
+    outputs: [
+      { name: "", type: "string" },
+    ],
     stateMutability: "view",
   },
 ] as const
 
 export const ToolRegisteredEvent = IToolRegistryABI.find(
   (e) => e.type === "event" && e.name === "ToolRegistered",
+)!
+
+export const ToolDeregisteredEvent = IToolRegistryABI.find(
+  (e) => e.type === "event" && e.name === "ToolDeregistered",
 )!
 
 export const IAccessPredicateABI = [
@@ -360,6 +423,26 @@ export const CompositePredicateABI = [
         ],
       },
     ],
+    stateMutability: "view",
+  },
+] as const
+
+/**
+ * Minimal ABI for delegate.xyz's DelegateRegistry V2.
+ * Only includes `checkDelegateForAll` which is the function we use to verify
+ * wallet-level delegations.
+ * @see https://docs.delegate.xyz/technical-documentation/delegate-registry/idelegateregistry.sol
+ */
+export const IDelegateRegistryABI = [
+  {
+    type: "function",
+    name: "checkDelegateForAll",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "from", type: "address" },
+      { name: "rights", type: "bytes32" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "view",
   },
 ] as const

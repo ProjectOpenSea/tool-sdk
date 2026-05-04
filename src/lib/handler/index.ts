@@ -1,10 +1,12 @@
 import type { z } from "zod/v4"
 import type { GateMiddleware, ToolContext } from "../../types.js"
-import type { ToolManifest } from "../manifest/types.js"
+import type { ManifestDefinition } from "../manifest/index.js"
+import { resolveManifest } from "../manifest/index.js"
 import { ToolHandlerError } from "./error.js"
 
 export interface ToolHandlerConfig<TIn, TOut> {
-  manifest: ToolManifest
+  manifest: ManifestDefinition
+  env?: Record<string, string | undefined>
   inputSchema: z.ZodType<TIn>
   outputSchema: z.ZodType<TOut>
   gates?: GateMiddleware[]
@@ -22,6 +24,11 @@ export function createToolHandler<TIn, TOut>(
           { status: 405 },
         )
       }
+
+      const resolvedManifest = resolveManifest(
+        config.manifest,
+        config.env ?? (globalThis.process?.env as Record<string, string | undefined> ?? {}),
+      )
 
       let body: unknown
       try {
@@ -46,6 +53,7 @@ export function createToolHandler<TIn, TOut>(
 
       const ctx: ToolContext = {
         gates: {},
+        manifest: resolvedManifest,
         request,
       }
 

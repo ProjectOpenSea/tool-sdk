@@ -65,6 +65,7 @@ export function parseEnvExample(filePath: string): EnvVar[] {
 
     const name = trimmed.slice(0, eqIndex).trim()
     const rest = trimmed.slice(eqIndex + 1).trim()
+    if (!rest) continue
     vars.push({ name, comment: rest })
   }
 

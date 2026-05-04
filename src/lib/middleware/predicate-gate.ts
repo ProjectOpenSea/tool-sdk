@@ -2,6 +2,8 @@ import { type Chain, createPublicClient, http } from "viem"
 import { base } from "viem/chains"
 import { parseSiweMessage } from "viem/siwe"
 import type { GateMiddleware, ToolContext } from "../../types.js"
+import { IDelegateRegistryABI } from "../onchain/abis.js"
+import { DELEGATE_REGISTRY } from "../onchain/chains.js"
 import { ToolRegistryClient } from "../onchain/registry.js"
 
 export interface PredicateGateConfig {
@@ -30,6 +32,11 @@ export interface PredicateGateConfig {
    * against a forked Anvil node or a custom deploy.
    */
   registryAddress?: `0x${string}`
+  /**
+   * Override the delegate.xyz DelegateRegistry address. Useful for local
+   * development against a forked Anvil node.
+   */
+  delegateRegistryAddress?: `0x${string}`
 }
 
 /**
@@ -41,6 +48,12 @@ export interface PredicateGateConfig {
  * - `(ok=true, granted=false)`: returns `403` with the registered predicate
  *   address in the body so the caller can self-diagnose.
  * - `(ok=false, *)`: returns `502` (predicate misbehaved upstream).
+ *
+ * **Delegated agent access:** When the request includes an
+ * `X-Delegate-For: <holderAddress>` header, the gate verifies the caller's
+ * SIWE normally, then checks the delegate.xyz DelegateRegistry to confirm
+ * the holder has delegated to the caller. If valid, the access predicate
+ * runs against the **holder** (not the agent), and `ctx.agentAddress` is set.
  *
  * Stateless SIWE: does not track nonces. Callers should use short-lived
  * `expirationTime` in their SIWE messages to limit replay.
@@ -63,6 +76,9 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
     rpcUrl,
     registryAddress: config.registryAddress,
   })
+
+  const delegateRegistryAddress =
+    config.delegateRegistryAddress ?? DELEGATE_REGISTRY.address
 
   /**
    * Lifetime of the cached predicate address used in 403 bodies. Short enough
@@ -102,6 +118,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       ctx: Partial<ToolContext>,
     ): Promise<Response | null> {
       const authHeader = request.headers.get("Authorization")
+
       if (!authHeader || !authHeader.startsWith("SIWE ")) {
         return Response.json(
           {
@@ -206,12 +223,69 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         )
       }
 
+      // Determine whose address to check the predicate against.
+      // If the agent provides X-Delegate-For, verify the delegation onchain
+      // and run the predicate against the holder instead.
+      const delegateForRaw = request.headers.get("X-Delegate-For")
+      let predicateSubject = recoveredAddress
+      let agentAddress: `0x${string}` | undefined
+
+      if (delegateForRaw) {
+        const HEX_RE = /^0x[0-9a-fA-F]{40}$/
+        if (!HEX_RE.test(delegateForRaw)) {
+          return Response.json(
+            {
+              error:
+                "Predicate gate: invalid X-Delegate-For header (expected 0x-prefixed address)",
+            },
+            { status: 400 },
+          )
+        }
+        const holderAddress = delegateForRaw as `0x${string}`
+
+        let isDelegateValid: boolean
+        try {
+          isDelegateValid = await siweClient.readContract({
+            address: delegateRegistryAddress,
+            abi: IDelegateRegistryABI,
+            functionName: "checkDelegateForAll",
+            args: [
+              recoveredAddress,
+              holderAddress,
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+            ],
+          })
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : "unknown error"
+          return Response.json(
+            {
+              error: `Predicate gate: delegate registry call failed (${reason})`,
+            },
+            { status: 502 },
+          )
+        }
+
+        if (!isDelegateValid) {
+          return Response.json(
+            {
+              error:
+                "Predicate gate: delegate.xyz delegation not found — holder has not delegated to this agent",
+              hint: "The holder must delegate to the agent at https://delegate.xyz",
+            },
+            { status: 403 },
+          )
+        }
+
+        predicateSubject = holderAddress
+        agentAddress = recoveredAddress
+      }
+
       const data = config.data ?? "0x"
       let result: { ok: boolean; granted: boolean }
       try {
         result = await registry.tryHasAccess(
           config.toolId,
-          recoveredAddress,
+          predicateSubject,
           data,
         )
       } catch (err) {
@@ -251,7 +325,10 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         )
       }
 
-      ctx.callerAddress = recoveredAddress
+      ctx.callerAddress = predicateSubject
+      if (agentAddress) {
+        ctx.agentAddress = agentAddress
+      }
       if (ctx.gates) {
         ctx.gates.predicate = { granted: true }
       }

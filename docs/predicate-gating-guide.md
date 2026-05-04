@@ -8,7 +8,7 @@ The tool-sdk supports two independent gating mechanisms:
 
 | Gate | Purpose | How it works |
 |------|---------|--------------|
-| **Predicate gate** | Identity-based access control | Caller signs a SIWE message; the middleware recovers the address and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate |
+| **Predicate gate** | Identity-based access control | Caller signs a SIWE message; the middleware recovers the address and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate. Supports [delegated agent access](#delegated-agent-access-delegatexyz) via `X-Delegate-For` header. |
 | **x402 gate** | Payment-based access control | Caller includes an `X-Payment` header with a signed USDC transfer authorization; a facilitator verifies and settles the payment |
 
 Use predicate gating when access should be tied to **who the caller is**. Use x402 when access should be tied to **per-call payment**. You can [combine both](#combining-predicate-gating-with-x402-payment).
@@ -290,6 +290,95 @@ Expected response:
   "hint": "Include Authorization: SIWE <base64url(message)>.<signature>"
 }
 ```
+
+## Delegated agent access (delegate.xyz)
+
+An AI agent can call a predicate-gated tool **on behalf of** an NFT holder without the holder sharing their private key. The holder sets up a delegation at [delegate.xyz](https://delegate.xyz), and the agent presents the holder's address alongside its own SIWE authentication.
+
+### How it works
+
+1. **Holder** visits [delegate.xyz](https://delegate.xyz), connects their wallet, and delegates to the agent's address ("Delegate All" for full access)
+2. **Agent** authenticates with standard SIWE (proving it controls the agent wallet) and includes an `X-Delegate-For` header with the holder's address
+3. **Server** verifies the agent's SIWE, then calls `checkDelegateForAll(agent, holder)` on the [DelegateRegistry V2](https://docs.delegate.xyz) contract to confirm the delegation exists onchain
+4. If valid, the access predicate runs against the **holder** (not the agent)
+
+### Agent-side code
+
+The simplest approach is `authenticatedFetch` with an extra `X-Delegate-For` header:
+
+```typescript
+import { authenticatedFetch } from "@opensea/tool-sdk"
+import { privateKeyToAccount } from "viem/accounts"
+
+const agentAccount = privateKeyToAccount("0xAgentPrivateKey")
+
+const response = await authenticatedFetch(toolUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Delegate-For": holderAddress, // the wallet that delegated to this agent
+  },
+  account: agentAccount,
+  body: JSON.stringify({ query: "hello" }),
+})
+```
+
+For external signers (Bankr, MPC, HSM) that sign via an API, build the header manually:
+
+```typescript
+import { createSiweMessage, createSiweAuthHeader } from "@opensea/tool-sdk"
+
+const message = createSiweMessage({
+  account: agentAccount,
+  domain: new URL(toolUrl).host,
+  uri: toolUrl,
+})
+const signature = await agentAccount.signMessage({ message })
+
+const response = await fetch(toolUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: createSiweAuthHeader(message, signature),
+    "X-Delegate-For": holderAddress,
+  },
+  body: JSON.stringify({ query: "hello" }),
+})
+```
+
+### Server-side behavior
+
+No server code changes are needed — `predicateGate` handles the `X-Delegate-For` header automatically. When delegation is verified:
+
+- `ctx.callerAddress` is set to the **holder's** address (the predicate subject)
+- `ctx.agentAddress` is set to the **agent's** address (the SIWE signer)
+- `ctx.gates.predicate.granted` is `true`
+
+### Status codes
+
+| Outcome | Status | Body |
+|---------|--------|------|
+| Invalid `X-Delegate-For` format | `400` | `{ error }` |
+| Delegation not found onchain | `403` | `{ error, hint }` |
+| Delegate registry call failed | `502` | `{ error }` |
+| Holder fails access predicate | `403` | `{ error, toolId, predicate }` |
+
+### Configuration
+
+The delegate.xyz DelegateRegistry V2 is deployed at `0x00000000000000447e69651d841bD8D104Bed493` on 30+ EVM chains (including Base, Ethereum, Arbitrum, Optimism, Polygon). The middleware uses this address by default.
+
+For local development against a forked Anvil node, override the address:
+
+```typescript
+const gate = predicateGate({
+  toolId: 42n,
+  delegateRegistryAddress: "0xYourLocalForkAddress",
+})
+```
+
+### Revoking a delegation
+
+The holder can revoke the delegation at any time by visiting [delegate.xyz](https://delegate.xyz) and removing the agent. The revocation is immediate — the next request from the agent will receive a 403.
 
 ## Combining predicate gating with x402 payment
 
