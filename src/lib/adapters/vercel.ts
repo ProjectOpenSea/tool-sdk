@@ -22,7 +22,8 @@ export function toVercelHandler(
   handler: WebHandler,
 ): (req: VercelRequest, res: VercelResponse) => Promise<void> {
   return async (req, res) => {
-    const protocol = "https"
+    const forwardedProto = req.headers["x-forwarded-proto"] as string | undefined
+    const protocol = forwardedProto ?? "https"
     const host =
       (req.headers.host as string | undefined) ?? "localhost"
     const url = `${protocol}://${host}${req.url ?? "/"}`

@@ -782,6 +782,7 @@ describe("defineToolPaywall", () => {
       { gates: {} },
     )
     const body = await response?.json()
+    if (!Array.isArray(pricing)) throw new Error("expected array")
     expect(pricing[0].amount).toBe(body.accepts[0].maxAmountRequired)
   })
 
@@ -796,6 +797,7 @@ describe("defineToolPaywall", () => {
       { gates: {} },
     )
     const body = await response?.json()
+    if (!Array.isArray(pricing)) throw new Error("expected array")
     expect(pricing[0].recipient).toBe(`eip155:8453:${RECIPIENT}`)
     expect(body.accepts[0].payTo).toBe(RECIPIENT)
   })
@@ -873,6 +875,7 @@ describe("defineToolPaywall", () => {
       amountUsdc: "0.01",
       network: "base-sepolia",
     })
+    if (!Array.isArray(pricing)) throw new Error("expected array")
     expect(pricing[0].asset.startsWith("eip155:84532/")).toBe(true)
     expect(pricing[0].recipient.startsWith("eip155:84532:")).toBe(true)
   })
@@ -927,5 +930,80 @@ describe("defineToolPaywall", () => {
 
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe("https://custom-facilitator.example.com/verify")
+  })
+
+  it("accepts EnvResolver function for recipient", async () => {
+    const recipientResolver = (env: Record<string, string | undefined>) =>
+      (env.PAYOUT_ADDRESS ?? RECIPIENT) as `0x${string}`
+
+    const { pricing, gate } = defineToolPaywall({
+      recipient: recipientResolver,
+      amountUsdc: "0.01",
+    })
+
+    // pricing should be a function when recipient is a resolver
+    expect(typeof pricing).toBe("function")
+    const resolvedPricing = (
+      pricing as (env: Record<string, string | undefined>) => unknown[]
+    )({ PAYOUT_ADDRESS: RECIPIENT })
+    expect(resolvedPricing).toHaveLength(1)
+
+    // gate.check should work (resolves recipient from process.env)
+    const response = await gate.check(
+      new Request("https://tool.example.com/api", { method: "POST" }),
+      { gates: {} },
+    )
+    expect(response?.status).toBe(402)
+  })
+
+  it("calls onSettle after successful settlement", async () => {
+    const settleData: { txHash?: string; payer?: string } = {}
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+      const url = _url as string
+      if (url.includes("/verify")) {
+        return new Response(
+          JSON.stringify({
+            isValid: true,
+            payer: "0x1111111111111111111111111111111111111111",
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.includes("/settle")) {
+        return new Response(
+          JSON.stringify({ success: true, transaction: "0xabc123" }),
+          { status: 200 },
+        )
+      }
+      return new Response("", { status: 404 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { gate } = defineToolPaywall({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      onSettle: ctx => {
+        settleData.txHash = ctx.txHash
+        settleData.payer = ctx.payer
+      },
+    })
+
+    // Run check to stash payment
+    const request = new Request("https://tool.example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": headerFor(examplePayload) },
+    })
+    const checkResult = await gate.check(request, { gates: {} })
+    expect(checkResult).toBeNull()
+
+    // Simulate settle with a ToolContext that has the settlement tx
+    const ctx = {
+      gates: { x402: { paid: true, settlementTxHash: "0xabc123" } },
+      manifest: {} as import("../lib/manifest/types.js").ToolManifest,
+      request,
+    }
+    await gate.settle!(ctx as import("../types.js").ToolContext)
+
+    expect(settleData.txHash).toBe("0xabc123")
   })
 })

@@ -19,8 +19,10 @@ export interface ToolContext {
     predicate?: { granted: boolean }
     x402?: {
       paid: boolean
+      /** Payer address returned by the facilitator's /verify response. */
+      payer?: string
       /**
-       * Transaction hash of the on-chain settlement, populated by the gate's
+       * Transaction hash of the onchain settlement, populated by the gate's
        * `settle()` after the facilitator confirms.
        */
       settlementTxHash?: string

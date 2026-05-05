@@ -9,7 +9,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensea/tool-sdk": "^0.1.0",
+    "@opensea/tool-sdk": "^{{SDK_VERSION}}",
     "zod": "4.3.6"
   },
   "devDependencies": {

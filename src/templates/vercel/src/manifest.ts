@@ -1,5 +1,9 @@
 import { defineManifest } from "@opensea/tool-sdk"
 
+// Tip: Use resolver functions to read env vars at request time instead of
+// at module-init time:
+//   endpoint: env => env.TOOL_ENDPOINT!,
+//   creatorAddress: env => env.CREATOR_ADDRESS!,
 export const manifest = defineManifest({
   type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
   name: "{{TOOL_NAME}}",

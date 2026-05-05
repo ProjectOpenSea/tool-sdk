@@ -12,6 +12,8 @@ import { Command } from "commander"
 import pc from "picocolors"
 import { deriveSlug } from "../../lib/utils.js"
 
+declare const __VERSION__: string
+
 interface InitOptions {
   noInteractive?: boolean
 }
@@ -159,6 +161,7 @@ export const initCommand = new Command("init")
       TOOL_DESCRIPTION: description,
       CREATOR_ADDRESS: creatorAddress,
       TOOL_ENDPOINT: endpoint ?? `https://${name}.vercel.app`,
+      SDK_VERSION: __VERSION__,
     }
 
     copyTemplateDir(templateDir, outDir, vars)
@@ -167,6 +170,11 @@ export const initCommand = new Command("init")
     console.log("Next steps:")
     console.log(`  cd ${name}`)
     console.log("  npm install")
+    console.log(
+      pc.dim(
+        "  # If inside a pnpm workspace, use: pnpm install --ignore-workspace",
+      ),
+    )
     console.log("  # Edit src/manifest.ts and src/handler.ts")
     if (hosting === "vercel") {
       console.log("  npx vercel dev")

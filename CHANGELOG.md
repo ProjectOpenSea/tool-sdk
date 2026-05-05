@@ -1,5 +1,25 @@
 # @opensea/tool-sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- 5838915: DX improvements from canary builder feedback:
+
+  - `createWellKnownHandler` now accepts `ManifestDefinition` (with `EnvResolver` lambdas) and resolves internally on first request — eliminates the silent-failure footgun where lambda fields would serialize as `undefined`. Accepts an optional `env` parameter for non-Node runtimes (Cloudflare Workers, Bun).
+  - Well-known handler no longer 404s on pathname mismatch — relies on framework router. If you mounted `createWellKnownHandler` as a fall-through, scope it to the well-known path explicitly.
+  - `defineToolPaywall` recipient accepts `EnvResolver<Address>` so the payout address can be read from env vars at request time instead of module-load time
+  - `defineToolPaywall` returns `onSettle` callback for post-payment telemetry/logging
+  - Template `package.json` files inject the current SDK version at `init` time instead of pinning stale `^0.1.0`
+  - Vercel adapter uses `x-forwarded-proto` header (consistent with Express adapter)
+  - `describeToolAccess` helper reads a tool's predicate name and requirements from the registry; `decodeRequirement` decodes known kinds (ERC-721, ERC-1155, Subscription) into typed objects
+  - `onSettle` payer is now sourced from the facilitator's `/verify` response (reliable for pure-x402 tools) with fallback to `ctx.callerAddress`
+  - `registerTool` and `updateToolMetadata` validate URI length client-side before sending the transaction
+  - Templates include `EnvResolver` lambda examples in comments
+  - `init` command prints workspace warning for pnpm users
+
+- ba59886: Add `@opensea/tool-sdk/testing` subpath export with test utilities for tool builders: `createMockManifest`, `createMockToolContext`, `mockFetch`, and `createTestHandler`.
+
 ## 0.3.1
 
 ### Patch Changes

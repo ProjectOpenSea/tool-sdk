@@ -142,6 +142,7 @@ export class ToolRegistryClient {
         "walletClient required for write operations",
       )
     }
+    validateMetadataURI(params.metadataURI)
     const manifestHash = computeManifestHash(params.manifest)
     const predicate = params.accessPredicate ?? zeroAddress
 
@@ -186,6 +187,7 @@ export class ToolRegistryClient {
         "walletClient required for write operations",
       )
     }
+    validateMetadataURI(newURI)
     const manifestHash = computeManifestHash(manifest)
     return this.walletClient.writeContract({
       chain: this.chain,
@@ -250,5 +252,20 @@ export class ToolRegistryClient {
       functionName: "setAccessPredicate",
       args: [toolId, predicate],
     })
+  }
+}
+
+const MAX_METADATA_URI_LEN = 2048
+
+function validateMetadataURI(uri: string): void {
+  if (!uri) {
+    throw new Error("metadataURI is required")
+  }
+  const byteLength = new TextEncoder().encode(uri).length
+  if (byteLength > MAX_METADATA_URI_LEN) {
+    throw new Error(
+      `metadataURI is ${byteLength} bytes, exceeding the onchain limit of ${MAX_METADATA_URI_LEN} bytes. ` +
+        "The transaction would revert. Shorten the URI or use a URL shortener.",
+    )
   }
 }

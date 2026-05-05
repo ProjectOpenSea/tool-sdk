@@ -1,4 +1,4 @@
-import { createWellKnownHandler, resolveManifest } from "@opensea/tool-sdk"
+import { createWellKnownHandler } from "@opensea/tool-sdk"
 import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
 import { toolConfig } from "./handler.js"
 import { manifest } from "./manifest.js"
@@ -13,8 +13,7 @@ export default {
     const url = new URL(request.url)
 
     if (url.pathname.startsWith("/.well-known/ai-tool/")) {
-      const resolved = resolveManifest(manifest, env)
-      return createWellKnownHandler(resolved)(request)
+      return createWellKnownHandler(manifest, { env })(request)
     }
 
     return worker.fetch(request, env)

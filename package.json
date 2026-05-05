@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "description": "SDK and CLI for building ERC-XXXX compliant AI agent tools",
   "repository": {
@@ -18,6 +18,10 @@
     "./cloudflare": {
       "types": "./dist/adapters/cloudflare.d.ts",
       "default": "./dist/adapters/cloudflare.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "files": [

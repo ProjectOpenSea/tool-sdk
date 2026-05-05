@@ -689,6 +689,35 @@ CompositePredicate.setComposition(toolId, Op.ALL, [
 ])
 ```
 
+### SDK Helpers for Reading Predicate Requirements
+
+Use `describeToolAccess` to read a tool's predicate name, requirements, and logic from the registry, and `decodeRequirement` to decode the raw `kind`/`data` into typed objects:
+
+```typescript
+import { describeToolAccess, decodeRequirement } from "@opensea/tool-sdk"
+
+const description = await describeToolAccess({ toolId: 1n })
+// { openAccess: false, predicateName: "ERC721OwnerPredicate", requirements: [...], logic: "OR" }
+
+for (const req of description.requirements) {
+  const decoded = decodeRequirement(req)
+  switch (decoded.type) {
+    case "erc721":
+      console.log(`Requires NFT from collection ${decoded.collection}`)
+      break
+    case "erc1155":
+      console.log(`Requires token #${decoded.tokenId} from ${decoded.collection}`)
+      break
+    case "subscription":
+      console.log(`Requires subscription (min tier ${decoded.minTier}) from ${decoded.collection}`)
+      break
+    case "unknown":
+      console.log(`Unknown requirement kind ${decoded.kind}`)
+      break
+  }
+}
+```
+
 ---
 
 ## 7. Wallet Setup

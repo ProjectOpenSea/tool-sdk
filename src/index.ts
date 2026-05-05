@@ -51,6 +51,7 @@ export type { NFTGateConfig } from "./lib/middleware/nft-gate.js"
 export { nftGate } from "./lib/middleware/nft-gate.js"
 export type { PredicateGateConfig } from "./lib/middleware/predicate-gate.js"
 export { predicateGate } from "./lib/middleware/predicate-gate.js"
+export type { WellKnownHandlerOptions } from "./lib/middleware/well-known.js"
 export { createWellKnownHandler } from "./lib/middleware/well-known.js"
 export type { X402GateConfig } from "./lib/middleware/x402.js"
 /**
@@ -86,10 +87,22 @@ export {
   SubscriptionPredicateABI,
 } from "./lib/onchain/abis.js"
 export type {
+  AccessRequirementInfo,
   CheckToolAccessOptions,
   CheckToolAccessResult,
+  DecodedERC721Requirement,
+  DecodedERC1155Requirement,
+  DecodedRequirement,
+  DecodedSubscriptionRequirement,
+  DecodedUnknownRequirement,
+  DescribeToolAccessOptions,
+  ToolAccessDescription,
 } from "./lib/onchain/access.js"
-export { checkToolAccess } from "./lib/onchain/access.js"
+export {
+  checkToolAccess,
+  decodeRequirement,
+  describeToolAccess,
+} from "./lib/onchain/access.js"
 export type { Deployment } from "./lib/onchain/chains.js"
 export {
   DELEGATE_REGISTRY,

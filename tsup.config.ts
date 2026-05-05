@@ -23,6 +23,7 @@ export default defineConfig([
     entry: {
       index: "src/index.ts",
       "adapters/cloudflare": "src/lib/adapters/cloudflare.ts",
+      "testing/index": "src/testing/index.ts",
     },
     format: ["esm"],
     dts: true,

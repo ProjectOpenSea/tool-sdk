@@ -1,3 +1,4 @@
+import type { EnvResolver } from "../manifest/index.js"
 import type { PricingEntry } from "../manifest/types.js"
 import type { GateMiddleware, ToolContext } from "../../types.js"
 
@@ -300,7 +301,7 @@ function hostedX402Gate(
       }
 
       if (ctx.gates) {
-        ctx.gates.x402 = { paid: true }
+        ctx.gates.x402 = { paid: true, payer: data.payer }
       }
       stashedByCtx.set(ctx, { paymentPayload, requirements })
       return null
@@ -376,7 +377,12 @@ function hostedX402Gate(
 }
 
 export interface ToolPaywallConfig {
-  recipient: `0x${string}`
+  /**
+   * Recipient address for USDC payments. Accepts an `EnvResolver` so the
+   * address can be read from environment variables at request time instead
+   * of requiring it at module-load time.
+   */
+  recipient: EnvResolver<`0x${string}`>
   amountUsdc: string
   network?: X402Network
   facilitator?: "payai" | "cdp"
@@ -386,41 +392,99 @@ export interface ToolPaywallConfig {
   maxTimeoutSeconds?: number
   resource?: string
   facilitatorUrl?: string
+  /**
+   * Called after the facilitator confirms settlement. Use for telemetry,
+   * logging, or post-payment side-effects. Errors are caught and logged
+   * but do not affect the response.
+   */
+  onSettle?: (ctx: { txHash: string; payer?: `0x${string}` }) => void | Promise<void>
 }
 
 export function defineToolPaywall(config: ToolPaywallConfig): {
-  pricing: PricingEntry[]
+  pricing: EnvResolver<PricingEntry[]>
   gate: GateMiddleware
 } {
-  const pricing = x402UsdcPricing({
-    recipient: config.recipient,
-    amountUsdc: config.amountUsdc,
-    network: config.network,
-  })
-
-  const gateConfig: HostedX402GateConfig = {
-    recipient: config.recipient,
-    amountUsdc: config.amountUsdc,
-    network: config.network,
-    description: config.description,
-    maxTimeoutSeconds: config.maxTimeoutSeconds,
-    resource: config.resource,
-    facilitatorUrl: config.facilitatorUrl,
-  }
-
   if (config.facilitator === "cdp" && !config.createAuthHeaders) {
     throw new Error(
       "defineToolPaywall: createAuthHeaders is required when facilitator is 'cdp'",
     )
   }
 
-  const gate =
-    config.facilitator === "cdp"
-      ? cdpX402Gate({
-          ...gateConfig,
-          createAuthHeaders: config.createAuthHeaders,
+  const resolveRecipient = (env?: Record<string, string | undefined>): `0x${string}` => {
+    if (typeof config.recipient === "function") {
+      const resolved = config.recipient(
+        env ?? (globalThis.process?.env as Record<string, string | undefined> ?? {}),
+      )
+      if (!resolved) {
+        throw new Error(
+          "defineToolPaywall: recipient resolver returned a falsy value. " +
+            "Check that the required environment variable is set.",
+        )
+      }
+      return resolved
+    }
+    return config.recipient
+  }
+
+  const pricing: EnvResolver<PricingEntry[]> =
+    typeof config.recipient === "function"
+      ? (env) =>
+          x402UsdcPricing({
+            recipient: resolveRecipient(env),
+            amountUsdc: config.amountUsdc,
+            network: config.network,
+          })
+      : x402UsdcPricing({
+          recipient: config.recipient,
+          amountUsdc: config.amountUsdc,
+          network: config.network,
         })
-      : payaiX402Gate(gateConfig)
+
+  let cachedGate: GateMiddleware | undefined
+  let cachedRecipient: `0x${string}` | undefined
+
+  function getInnerGate(): GateMiddleware {
+    const recipient = resolveRecipient()
+    if (cachedGate && cachedRecipient === recipient) return cachedGate
+    const gateConfig: HostedX402GateConfig = {
+      recipient,
+      amountUsdc: config.amountUsdc,
+      network: config.network,
+      description: config.description,
+      maxTimeoutSeconds: config.maxTimeoutSeconds,
+      resource: config.resource,
+      facilitatorUrl: config.facilitatorUrl,
+    }
+    cachedRecipient = recipient
+    cachedGate =
+      config.facilitator === "cdp"
+        ? cdpX402Gate({ ...gateConfig, createAuthHeaders: config.createAuthHeaders })
+        : payaiX402Gate(gateConfig)
+    return cachedGate
+  }
+
+  const gate: GateMiddleware = {
+    async check(
+      request: Request,
+      ctx: Partial<ToolContext>,
+    ): Promise<Response | null> {
+      return getInnerGate().check(request, ctx)
+    },
+    async settle(ctx: ToolContext): Promise<void> {
+      const inner = getInnerGate()
+      if (inner.settle) await inner.settle(ctx)
+      if (config.onSettle && ctx.gates?.x402?.settlementTxHash) {
+        try {
+          await config.onSettle({
+            txHash: ctx.gates.x402.settlementTxHash,
+            payer: (ctx.gates.x402.payer as `0x${string}` | undefined) ?? ctx.callerAddress,
+          })
+        } catch (err) {
+          console.error("[tool-sdk] onSettle callback failed:", err)
+        }
+      }
+    },
+  }
 
   return { pricing, gate }
 }
