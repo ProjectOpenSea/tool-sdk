@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "SDK and CLI for building ERC-Draft compliant AI agent tools",
   "repository": {
@@ -39,7 +39,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensea/wallet-adapters": "^0.2.1",
+    "@opensea/wallet-adapters": "^0.3.0",
     "@clack/prompts": "0.10.1",
     "canonicalize": "2.1.0",
     "commander": "14.0.3",

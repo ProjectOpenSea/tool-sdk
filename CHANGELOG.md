@@ -1,5 +1,12 @@
 # @opensea/tool-sdk
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [9ecf704]
+  - @opensea/wallet-adapters@0.3.0
+
 ## 0.4.1
 
 ### Patch Changes
