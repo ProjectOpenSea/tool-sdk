@@ -7,7 +7,7 @@ import {
 } from "../lib/manifest/index.js"
 
 const validManifest = {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "nft-price-oracle",
   description: "Returns estimated floor price for any NFT collection.",
   endpoint: "https://tools.example.com/nft-price-oracle",

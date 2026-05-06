@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const VALID_MANIFEST = {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool",
   description: "A test tool",
   endpoint: "https://test.example.com",

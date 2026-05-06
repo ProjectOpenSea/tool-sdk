@@ -1,6 +1,6 @@
 # tool-sdk — Agent Conventions
 
-TypeScript SDK and CLI for building ERC-XXXX compliant AI agent tools.
+TypeScript SDK and CLI for building ERC-Draft compliant AI agent tools.
 
 ## Quick Reference
 

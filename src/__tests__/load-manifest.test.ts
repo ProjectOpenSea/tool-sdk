@@ -14,7 +14,7 @@ import { loadManifest } from "../cli/commands/load-manifest.js"
 const fixturesDir = join(import.meta.dirname, "__fixtures__")
 
 const validManifestJson = JSON.stringify({
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool",
   description: "A test tool",
   endpoint: "https://test.example.com",
@@ -25,7 +25,7 @@ const validManifestJson = JSON.stringify({
 
 const validManifestTs = `
 export const manifest = {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool-ts",
   description: "A TypeScript test tool",
   endpoint: "https://test.example.com",
@@ -37,7 +37,7 @@ export const manifest = {
 
 const defaultExportManifestTs = `
 export default {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool-default",
   description: "A TypeScript test tool with default export",
   endpoint: "https://test.example.com",

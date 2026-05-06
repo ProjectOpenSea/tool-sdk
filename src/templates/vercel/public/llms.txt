@@ -2,11 +2,11 @@
 
 > {{TOOL_DESCRIPTION}}
 
-This is an ERC-XXXX compliant AI agent tool built with @opensea/tool-sdk.
+This is an ERC-Draft compliant AI agent tool built with @opensea/tool-sdk.
 
 ## Manifest
 
-- [Tool Manifest](/.well-known/ai-tool/{{TOOL_SLUG}}.json): Full ERC-XXXX manifest with inputs, outputs, and endpoint
+- [Tool Manifest](/.well-known/ai-tool/{{TOOL_SLUG}}.json): Full ERC-Draft manifest with inputs, outputs, and endpoint
 
 ## Calling this tool
 

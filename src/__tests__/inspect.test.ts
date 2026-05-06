@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { computeManifestHash } from "../lib/onchain/hash.js"
 
 const VALID_MANIFEST = {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool",
   description: "A test tool",
   endpoint: "https://test.example.com",

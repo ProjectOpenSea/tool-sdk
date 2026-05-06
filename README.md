@@ -1,6 +1,6 @@
 # @opensea/tool-sdk
 
-SDK and CLI for building [ERC-XXXX](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-xxxx-tool-registry.md) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
+SDK and CLI for building [ERC-Draft](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-draft-tool-registry.md) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
 
 Pairs with the onchain reference implementation at [ProjectOpenSea/tool-registry](https://github.com/ProjectOpenSea/tool-registry) — the `ToolRegistry` contract and example access predicates this SDK reads from and writes to.
 
@@ -30,7 +30,7 @@ npx @opensea/tool-sdk register \
 
 ### `init [name]`
 
-Scaffold a new ERC-XXXX tool project with interactive prompts.
+Scaffold a new ERC-Draft tool project with interactive prompts.
 
 ```bash
 npx @opensea/tool-sdk init my-tool
@@ -41,7 +41,7 @@ Supports Vercel, Cloudflare Workers, and Express templates.
 
 ### `validate [path]`
 
-Validate a tool manifest JSON file against the ERC-XXXX schema.
+Validate a tool manifest JSON file against the ERC-Draft schema.
 
 ```bash
 npx @opensea/tool-sdk validate ./manifest.json
@@ -211,7 +211,7 @@ Type-narrowing identity function for manifest definitions.
 import { defineManifest } from "@opensea/tool-sdk"
 
 export const manifest = defineManifest({
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "my-tool",
   description: "A useful tool",
   endpoint: "https://my-tool.vercel.app",
@@ -230,7 +230,7 @@ export const manifest = defineManifest({
 
 ### `validateManifest(data)`
 
-Validates unknown data against the ERC-XXXX manifest schema.
+Validates unknown data against the ERC-Draft manifest schema.
 
 ```typescript
 import { validateManifest } from "@opensea/tool-sdk"
@@ -739,4 +739,4 @@ app.post("/api", toExpressHandler(handler))
 
 ## ERC Spec
 
-See the full [ERC-XXXX Tool Registry specification](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-xxxx-tool-registry.md) for details on manifest schema, origin binding, creator binding, and consumer verification.
+See the full [ERC-Draft Tool Registry specification](https://github.com/ProjectOpenSea/tool-registry/blob/main/eip-draft-tool-registry.md) for details on manifest schema, origin binding, creator binding, and consumer verification.

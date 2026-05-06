@@ -1,8 +1,8 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
-  "description": "SDK and CLI for building ERC-XXXX compliant AI agent tools",
+  "description": "SDK and CLI for building ERC-Draft compliant AI agent tools",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ProjectOpenSea/tool-sdk.git"

@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.4.1
+
+### Patch Changes
+
+- 5ea8a05: Replace ERC-XXXX placeholder references with ERC-Draft throughout CLI help text, schema defaults, and documentation.
+
 ## 0.4.0
 
 ### Minor Changes
@@ -80,7 +86,7 @@
 
 ### Patch Changes
 
-- 905ed4a: Initial release of `@opensea/tool-sdk` — SDK and CLI for building ERC-XXXX compliant AI agent tools.
+- 905ed4a: Initial release of `@opensea/tool-sdk` — SDK and CLI for building ERC-Draft compliant AI agent tools.
 
   ### Core SDK
 
@@ -93,7 +99,7 @@
 
   - `ToolRegistryClient` with `registerTool`, `setAccessPredicate`, `tryHasAccess`, and `listToolsByCreator`.
   - Canonical CREATE2 deployments on Base mainnet: `TOOL_REGISTRY` (v0.1), `ERC721_OWNER_PREDICATE`, `ERC1155_OWNER_PREDICATE`. Each is a `Deployment` object (`{ address, chains, overrides? }`); resolve per-chain with `deploymentAddress(deployment, chainId)`.
-  - `register` CLI enforces `creatorAddress` matches the signing wallet per ERC-XXXX spec.
+  - `register` CLI enforces `creatorAddress` matches the signing wallet per ERC-Draft spec.
   - `IAccessPredicate` (interface ID `0xbdf9dc18`) and `IToolRegistry` ABIs exported, including `name()` / `version()` view methods. Predicates expose machine-readable access requirements via `getRequirements(toolId)` returning `AccessRequirement[]` with `RequirementLogic` (AND/OR). Marker interfaces `IERC721Holding`, `IERC1155Holding`, `ISubscription` shipped via `IRequirementTypes.sol`.
 
   ### Access gates

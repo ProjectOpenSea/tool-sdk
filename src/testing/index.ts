@@ -12,7 +12,7 @@ export function createMockManifest(
   overrides?: Partial<ToolManifest>,
 ): ToolManifest {
   return {
-    type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+    type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
     name: "test-tool",
     description: "A test tool for unit tests",
     endpoint: "https://test.example.com",

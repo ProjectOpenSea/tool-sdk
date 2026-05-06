@@ -47,7 +47,7 @@ import {
 } from "@opensea/tool-sdk"
 
 export const manifest = defineManifest({
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "my-gated-tool",
   description: "A tool gated by an onchain access predicate",
   endpoint: "https://my-tool.vercel.app",

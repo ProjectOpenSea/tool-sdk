@@ -6,7 +6,7 @@ import type { ManifestDefinition } from "../lib/manifest/index.js"
 import type { GateMiddleware } from "../types.js"
 
 const testManifest = {
-  type: "https://eips.ethereum.org/EIPS/eip-XXXX#tool-manifest-v1",
+  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
   name: "test-tool",
   description: "A test tool",
   endpoint: "https://test.example.com",
