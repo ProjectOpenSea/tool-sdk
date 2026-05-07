@@ -1,4 +1,6 @@
-import type { Address, Hash } from "viem"
+import type { Address, Chain, Hash } from "viem"
+import { encodeAbiParameters, getAddress } from "viem"
+import { mainnet, polygon } from "viem/chains"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockReadContract = vi.fn()
@@ -26,6 +28,17 @@ const mockWalletClient = {
   },
   writeContract: mockWriteContract,
 } as never
+
+const DUMMY_PREDICATE: Address = "0x3333333333333333333333333333333333333333"
+
+const CHECKSUMMED_A = getAddress(COLLECTION_A)
+
+const UNKNOWN_CHAIN: Chain = {
+  id: 43114,
+  name: "Avalanche",
+  nativeCurrency: { name: "AVAX", symbol: "AVAX", decimals: 18 },
+  rpcUrls: { default: { http: [] } },
+}
 
 beforeEach(() => {
   mockReadContract.mockReset()
@@ -274,6 +287,84 @@ describe("ERC721OwnerPredicateClient", () => {
       expect(mockWriteContract).not.toHaveBeenCalled()
     })
   })
+
+  describe("toManifestAccess", () => {
+    it("returns access with opensea link on Base", async () => {
+      const { ERC721OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC721OwnerPredicateClient()
+      const access = client.toManifestAccess(CHECKSUMMED_A)
+
+      expect(access.logic).toBe("OR")
+      expect(access.requirements).toHaveLength(1)
+      expect(access.requirements[0].kind).toBe("0xbdf8c428")
+      expect(access.requirements[0].data).toBe(
+        encodeAbiParameters([{ type: "address" }], [CHECKSUMMED_A]),
+      )
+      expect(access.requirements[0].label).toBe(
+        "Hold any NFT from this collection",
+      )
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/base/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("returns access with opensea link on Ethereum", async () => {
+      const { ERC721OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC721OwnerPredicateClient({
+        chain: mainnet,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A)
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/ethereum/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("returns access with opensea link on Polygon", async () => {
+      const { ERC721OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC721OwnerPredicateClient({
+        chain: polygon,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A)
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/matic/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("omits opensea link for unknown chains", async () => {
+      const { ERC721OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC721OwnerPredicateClient({
+        chain: UNKNOWN_CHAIN,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A)
+
+      expect(access.requirements[0].links).toBeUndefined()
+    })
+
+    it("uses custom label when provided", async () => {
+      const { ERC721OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC721OwnerPredicateClient()
+      const access = client.toManifestAccess(CHECKSUMMED_A, {
+        label: "Must hold a Chonk",
+      })
+
+      expect(access.requirements[0].label).toBe("Must hold a Chonk")
+    })
+  })
 })
 
 describe("ERC1155OwnerPredicateClient", () => {
@@ -382,6 +473,99 @@ describe("ERC1155OwnerPredicateClient", () => {
       await expect(
         client.setCollectionTokens(TEST_TOOL_ID, []),
       ).rejects.toThrow("walletClient required for write operations")
+    })
+  })
+
+  describe("toManifestAccess", () => {
+    it("returns access with opensea link on Base", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient()
+      const access = client.toManifestAccess(CHECKSUMMED_A, 42n)
+
+      expect(access.logic).toBe("OR")
+      expect(access.requirements).toHaveLength(1)
+      expect(access.requirements[0].kind).toBe("0xcb429230")
+      expect(access.requirements[0].data).toBe(
+        encodeAbiParameters(
+          [{ type: "address" }, { type: "uint256" }],
+          [CHECKSUMMED_A, 42n],
+        ),
+      )
+      expect(access.requirements[0].label).toBe(
+        "Hold token #42 from this collection",
+      )
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/base/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("returns access with opensea link on Ethereum", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient({
+        chain: mainnet,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 1n)
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/ethereum/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("returns access with opensea link on Polygon", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient({
+        chain: polygon,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 1n)
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/matic/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("omits opensea link for unknown chains", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient({
+        chain: UNKNOWN_CHAIN,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 1n)
+
+      expect(access.requirements[0].links).toBeUndefined()
+    })
+
+    it("includes token ID in default label", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient()
+      const access = client.toManifestAccess(CHECKSUMMED_A, 99n)
+
+      expect(access.requirements[0].label).toBe(
+        "Hold token #99 from this collection",
+      )
+    })
+
+    it("uses custom label when provided", async () => {
+      const { ERC1155OwnerPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC1155OwnerPredicateClient()
+      const access = client.toManifestAccess(CHECKSUMMED_A, 1n, {
+        label: "Must hold a VIP pass",
+      })
+
+      expect(access.requirements[0].label).toBe("Must hold a VIP pass")
     })
   })
 })

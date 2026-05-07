@@ -1,5 +1,30 @@
 # @opensea/tool-sdk
 
+## 0.5.0
+
+### Minor Changes
+
+- 58a2b4b: Add `toManifestAccess()` to `ERC721OwnerPredicateClient` and `ERC1155OwnerPredicateClient` for programmatic manifest access generation with deterministic OpenSea collection links. Export shared requirement-kind constants (`ERC721_KIND`, `ERC1155_KIND`, `SUBSCRIPTION_KIND`).
+- 480f67c: Suggest manifest `access` block when registering with `--nft-gate`
+
+  The `register` CLI command now detects when a manifest is missing the `access` field and the user is registering with `--nft-gate`. It generates the correct access object using `ERC721OwnerPredicateClient.toManifestAccess()` and prints it as a suggestion. The preview appears in both `--dry-run` and normal mode. In normal mode the user is prompted to view copy-paste instructions for updating their manifest.
+
+- c34fb8d: Enforce bidirectional tier consistency checks in manifest validator
+
+  The verifiability schema now rejects all 4 invalid tier/field combinations:
+
+  - `hardware-attested` requires `tee` or `e2ee` execution
+  - `hardware-attested` requires an `attestation` field
+  - `self-attested` cannot use `tee` or `e2ee` execution
+  - `self-attested` cannot include an `attestation` field
+
+### Patch Changes
+
+- 4fbcb98: access.links values now require valid HTTPS URLs; non-HTTPS values (onchain addresses, http://, ipfs://) are rejected by schema validation.
+- 5e3c7fb: Enforce ERC-spec parser caps on `access.requirements`: max 256 entries, max 4,096 decoded bytes per `access[].data` field.
+- 0032316: Enforce access label limit as 256 bytes (UTF-8) instead of 256 characters, aligning with the updated ERC spec.
+- e7286be: Enforce lowercase-only hex in manifest schema fields (`access[].kind`, `access[].data`, `attestation.enclaveHash`, `reproducibleBuild.buildHash`, `creatorAddress`) to match the tightened ERC spec. Normalize wallet and onchain addresses to lowercase before comparison in `register` and `update-metadata` commands.
+
 ## 0.4.2
 
 ### Patch Changes

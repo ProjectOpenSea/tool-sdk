@@ -102,6 +102,9 @@ export {
   checkToolAccess,
   decodeRequirement,
   describeToolAccess,
+  ERC721_KIND,
+  ERC1155_KIND,
+  SUBSCRIPTION_KIND,
 } from "./lib/onchain/access.js"
 export type { Deployment } from "./lib/onchain/chains.js"
 export {

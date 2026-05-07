@@ -146,10 +146,14 @@ export async function describeToolAccess(
   }
 }
 
+export const ERC721_KIND = "0xbdf8c428" as const
+export const ERC1155_KIND = "0xcb429230" as const
+export const SUBSCRIPTION_KIND = "0x44387cc2" as const
+
 const KNOWN_KINDS = {
-  "0xbdf8c428": "erc721",
-  "0xcb429230": "erc1155",
-  "0x44387cc2": "subscription",
+  [ERC721_KIND]: "erc721",
+  [ERC1155_KIND]: "erc1155",
+  [SUBSCRIPTION_KIND]: "subscription",
 } as const
 
 export type DecodedERC721Requirement = {

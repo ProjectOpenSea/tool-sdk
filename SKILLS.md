@@ -581,7 +581,7 @@ await predicate.setCollections(toolId, [
 ])
 ```
 
-**Manifest access declaration:**
+**Manifest access declaration (manual):**
 ```json
 {
   "access": {
@@ -595,6 +595,18 @@ await predicate.setCollections(toolId, [
     ]
   }
 }
+```
+
+**Generate manifest access via SDK:**
+```typescript
+const predicate = new ERC721OwnerPredicateClient()
+const access = predicate.toManifestAccess("0xCOLLECTION_ADDRESS")
+// access.requirements[0].links?.opensea is included automatically for base, ethereum, and polygon
+```
+
+With a custom label:
+```typescript
+const accessCustom = predicate.toManifestAccess("0xCOLLECTION_ADDRESS", { label: "Hold a Chonk" })
 ```
 
 ### ERC1155OwnerPredicate
@@ -624,7 +636,7 @@ await predicate.setCollectionTokens(toolId, [
 ])
 ```
 
-**Manifest access declaration:**
+**Manifest access declaration (manual):**
 ```json
 {
   "access": {
@@ -638,6 +650,18 @@ await predicate.setCollectionTokens(toolId, [
     ]
   }
 }
+```
+
+**Generate manifest access via SDK:**
+```typescript
+const predicate = new ERC1155OwnerPredicateClient()
+const access = predicate.toManifestAccess("0xCOLLECTION_ADDRESS", 1n)
+// access.requirements[0].links?.opensea is included automatically for base, ethereum, and polygon
+```
+
+With a custom label:
+```typescript
+const accessCustom = predicate.toManifestAccess("0xCOLLECTION_ADDRESS", 1n, { label: "Hold a VIP pass" })
 ```
 
 ### SubscriptionPredicate

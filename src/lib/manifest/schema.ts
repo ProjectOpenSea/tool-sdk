@@ -121,21 +121,41 @@ function jsonSchemaField(fieldName: string) {
 }
 
 export const AccessRequirementLinksSchema = z
-  .record(z.string(), z.string())
+  .record(
+    z.string(),
+    z
+      .string()
+      .url()
+      .refine(
+        u => u.startsWith("https://"),
+        "access.links values must use https",
+      ),
+  )
   .optional()
 
 export const AccessRequirementSchema = z.object({
   kind: z
     .string()
-    .regex(/^0x[0-9a-fA-F]{8}$/, "must be a 4-byte hex selector"),
-  data: z.string().regex(/^0x[0-9a-fA-F]*$/, "must be hex-encoded"),
-  label: z.string().max(256),
+    .regex(/^0x[0-9a-f]{8}$/, "must be a 4-byte lowercase hex selector"),
+  data: z
+    .string()
+    .regex(/^0x[0-9a-f]*$/, "must be lowercase hex-encoded")
+    .refine(
+      s => (s.length - 2) / 2 <= 4096,
+      "data exceeds 4096-byte cap",
+    ),
+  label: z
+    .string()
+    .refine(
+      s => new TextEncoder().encode(s).length <= 256,
+      "label must be at most 256 bytes (UTF-8)",
+    ),
   links: AccessRequirementLinksSchema,
 })
 
 export const AccessSchema = z.object({
   logic: z.enum(["AND", "OR"]),
-  requirements: z.array(AccessRequirementSchema).min(1),
+  requirements: z.array(AccessRequirementSchema).min(1).max(256),
 })
 
 export const AttestationSchema = z.object({
@@ -150,7 +170,7 @@ export const AttestationSchema = z.object({
     .optional(),
   enclaveHash: z
     .string()
-    .regex(/^0x([0-9a-fA-F]{2})+$/, "must be hex-encoded")
+    .regex(/^0x([0-9a-f]{2})+$/, "must be lowercase hex-encoded")
     .optional(),
   maxAge: z.number().int().positive().optional(),
   transparencyLogURI: z
@@ -174,23 +194,57 @@ export const ReproducibleBuildSchema = z.object({
   buildInstructions: z.string().max(1000).optional(),
   buildHash: z
     .string()
-    .regex(/^0x([0-9a-fA-F]{2})+$/, "must be hex-encoded")
+    .regex(/^0x([0-9a-f]{2})+$/, "must be lowercase hex-encoded")
     .optional(),
 })
 
-export const VerifiabilitySchema = z.object({
-  tier: z.enum(["self-attested", "hardware-attested", "verifiable"]),
-  execution: z.string().min(1),
-  description: z.string().min(1).max(500).optional(),
-  dataRetention: z
-    .enum(["full", "metadata-only", "ephemeral", "none"])
-    .optional(),
-  sourceVisibility: z
-    .enum(["open-source", "audited", "proprietary"])
-    .optional(),
-  attestation: AttestationSchema.optional(),
-  reproducibleBuild: ReproducibleBuildSchema.optional(),
-})
+export const VerifiabilitySchema = z
+  .object({
+    tier: z.enum(["self-attested", "hardware-attested", "verifiable"]),
+    execution: z.string().min(1),
+    description: z.string().min(1).max(500).optional(),
+    dataRetention: z
+      .enum(["full", "metadata-only", "ephemeral", "none"])
+      .optional(),
+    sourceVisibility: z
+      .enum(["open-source", "audited", "proprietary"])
+      .optional(),
+    attestation: AttestationSchema.optional(),
+    reproducibleBuild: ReproducibleBuildSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.tier === "hardware-attested") {
+      if (val.execution !== "tee" && val.execution !== "e2ee") {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `tier "hardware-attested" requires "tee" or "e2ee" execution, got "${val.execution}"`,
+        })
+      }
+      if (!val.attestation) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            'tier "hardware-attested" requires an attestation field',
+        })
+      }
+    }
+    if (val.tier === "self-attested") {
+      if (val.execution === "tee" || val.execution === "e2ee") {
+        ctx.addIssue({
+          code: "custom",
+          message: `tier "self-attested" is inconsistent with execution "${val.execution}"`,
+        })
+      }
+      if (val.attestation) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            'tier "self-attested" cannot include an attestation field',
+        })
+      }
+    }
+  })
 
 export const ToolManifestSchema = z.object({
   type: z
@@ -214,7 +268,7 @@ export const ToolManifestSchema = z.object({
   outputs: jsonSchemaField("outputs"),
   creatorAddress: z
     .string()
-    .regex(/^0x[0-9a-fA-F]{40}$/, "must be EVM address"),
+    .regex(/^0x[0-9a-f]{40}$/, "must be a lowercase EVM address"),
   pricing: z.array(PricingEntrySchema).optional(),
   access: AccessSchema.optional(),
   verifiability: VerifiabilitySchema.optional(),

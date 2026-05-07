@@ -9,6 +9,7 @@ import {
   TOOL_REGISTRY,
 } from "../../lib/onchain/chains.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
+import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
@@ -130,9 +131,9 @@ export const registerCommand = new Command("register")
     const wallet = options.walletProvider
       ? createWalletForProvider(options.walletProvider as WalletProvider)
       : createWalletFromEnv()
-    const address = await wallet.getAddress()
+    const address = (await wallet.getAddress()).toLowerCase()
 
-    if (manifest.creatorAddress.toLowerCase() !== address.toLowerCase()) {
+    if (manifest.creatorAddress !== address) {
       console.error(
         pc.red(
           `Error: manifest.creatorAddress (${manifest.creatorAddress}) does not match your wallet (${address}). The ERC-Draft spec requires these to match.`,
@@ -153,6 +154,50 @@ export const registerCommand = new Command("register")
       )
     } else {
       console.log(`  Access Predicate: ${accessPredicate}`)
+    }
+
+    if (!manifest.access && options.nftGate) {
+      const predicate = new ERC721OwnerPredicateClient({ chain })
+      const access = predicate.toManifestAccess(
+        options.nftGate as `0x${string}`,
+      )
+      const accessJson = JSON.stringify(access, null, 2)
+
+      console.log(
+        pc.yellow(
+          "\nYour manifest does not include an access field. " +
+            "Adding one lets agents discover the gating requirement and find your collection on OpenSea.",
+        ),
+      )
+      console.log(pc.cyan("\nSuggested access block:"))
+      console.log(accessJson)
+
+      if (!options.dryRun) {
+        let shouldShow = options.yes ?? false
+        if (!options.yes) {
+          const clack = await import("@clack/prompts")
+          const answer = await clack.confirm({
+            message:
+              "Would you like to see instructions for adding this to your manifest?",
+          })
+          shouldShow = !!answer && !clack.isCancel(answer)
+        }
+
+        if (shouldShow) {
+          console.log(
+            pc.green("\nAdd the following to your manifest definition:\n"),
+          )
+          console.log(
+            `  ${pc.cyan('"access"')}: ${accessJson.split("\n").join("\n  ")}\n`,
+          )
+          console.log(
+            pc.dim(
+              "After updating your manifest, redeploy and run:\n" +
+                `  npx @opensea/tool-sdk update-metadata --metadata <new-url> --network ${options.network}`,
+            ),
+          )
+        }
+      }
     }
 
     if (options.dryRun) {

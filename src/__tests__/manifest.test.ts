@@ -90,6 +90,14 @@ describe("validateManifest", () => {
     expect(result.success).toBe(false)
   })
 
+  it("should reject creatorAddress with uppercase hex (checksummed)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      creatorAddress: "0xAbCdEfAbCdEf1234567890AbCdEfAbCdEf123456",
+    })
+    expect(result.success).toBe(false)
+  })
+
   it("should accept manifest with pricing", () => {
     const result = validateManifest({
       ...validManifest,
@@ -159,12 +167,161 @@ describe("validateManifest", () => {
     expect(result.success).toBe(true)
   })
 
+  it("should reject access.links with onchain address value", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xabcd1234",
+            data: "0x",
+            label: "Predicate gate",
+            links: {
+              predicate: "0x4eC929d3e21207e07A3f304d2137CdE9e498F702",
+            },
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject access.links with http URL value", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xabcd1234",
+            data: "0x",
+            label: "Docs link",
+            links: {
+              docs: "http://example.com/docs",
+            },
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject access.links with ipfs URL value", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xabcd1234",
+            data: "0x",
+            label: "Source",
+            links: {
+              source: "ipfs://QmSomeHash",
+            },
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept access.links with valid https URL values", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "OR",
+        requirements: [
+          {
+            kind: "0xabcd1234",
+            data: "0x",
+            label: "Hold NFT",
+            links: {
+              docs: "https://docs.example.com",
+              source: "https://github.com/example/repo",
+            },
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
   it("should reject access with empty requirements array", () => {
     const result = validateManifest({
       ...validManifest,
       access: {
         logic: "AND",
         requirements: [],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject label exceeding 256 bytes (65 4-byte emoji = 260 bytes)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0x",
+            label: "🔥".repeat(65),
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept label of 256 ASCII characters (256 bytes)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0x",
+            label: "a".repeat(256),
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should accept label of 128 2-byte UTF-8 characters (256 bytes)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0x",
+            label: "é".repeat(128),
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject label of 129 2-byte UTF-8 characters (258 bytes)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0x",
+            label: "é".repeat(129),
+          },
+        ],
       },
     })
     expect(result.success).toBe(false)
@@ -185,6 +342,104 @@ describe("validateManifest", () => {
       },
     })
     expect(result.success).toBe(false)
+  })
+
+  it("should reject access kind with uppercase hex", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xBDF9DC18",
+            data: "0x",
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject access data with uppercase hex", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: "0xABCD",
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should reject access.requirements with more than 256 entries", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: Array.from({ length: 257 }, () => ({
+          kind: "0xbdf9dc18",
+          data: "0x",
+          label: "",
+        })),
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept access.requirements with exactly 256 entries", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: Array.from({ length: 256 }, () => ({
+          kind: "0xbdf9dc18",
+          data: "0x",
+          label: "",
+        })),
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("should reject access[].data exceeding 4096 decoded bytes", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: `0x${"ab".repeat(4097)}`,
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("should accept access[].data at exactly 4096 decoded bytes", () => {
+    const result = validateManifest({
+      ...validManifest,
+      access: {
+        logic: "AND",
+        requirements: [
+          {
+            kind: "0xbdf9dc18",
+            data: `0x${"ab".repeat(4096)}`,
+            label: "",
+          },
+        ],
+      },
+    })
+    expect(result.success).toBe(true)
   })
 
   it("should accept manifest with self-attested standard verifiability", () => {
@@ -382,6 +637,22 @@ describe("validateManifest", () => {
     expect(result.success).toBe(false)
   })
 
+  it("should reject attestation enclaveHash with uppercase hex", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+        attestation: {
+          type: "dcap-v3",
+          enclaveHash:
+            "0xABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
   it("should reject attestation with empty type", () => {
     const result = validateManifest({
       ...validManifest,
@@ -467,6 +738,21 @@ describe("validateManifest", () => {
     expect(result.success).toBe(false)
   })
 
+  it("should reject reproducibleBuild buildHash with uppercase hex", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "verifiable",
+        execution: "tee",
+        reproducibleBuild: {
+          sourceCodeURI: "https://github.com/example/tool",
+          buildHash: "0xABCDEF1234",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
   it("should reject verifiability with empty description", () => {
     const result = validateManifest({
       ...validManifest,
@@ -521,6 +807,81 @@ describe("validateManifest", () => {
       },
     })
     expect(result.success).toBe(true)
+  })
+
+  it("should reject hardware-attested with standard execution", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "standard",
+        attestation: {
+          type: "dcap-v3",
+          endpoint: "https://tools.example.com/.well-known/attestation",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      'tier "hardware-attested" requires "tee" or "e2ee" execution, got "standard"',
+    )
+  })
+
+  it("should reject hardware-attested without attestation field", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "hardware-attested",
+        execution: "tee",
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      'tier "hardware-attested" requires an attestation field',
+    )
+  })
+
+  it.each([
+    ["tee"],
+    ["e2ee"],
+  ])("should reject self-attested with %s execution", execution => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution,
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      `tier "self-attested" is inconsistent with execution "${execution}"`,
+    )
+  })
+
+  it("should reject self-attested with attestation field present", () => {
+    const result = validateManifest({
+      ...validManifest,
+      verifiability: {
+        tier: "self-attested",
+        execution: "standard",
+        attestation: {
+          type: "dcap-v3",
+          endpoint: "https://tools.example.com/.well-known/attestation",
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (result.success) throw new Error("expected failure")
+    const messages = result.error.issues.map(i => i.message)
+    expect(messages).toContain(
+      'tier "self-attested" cannot include an attestation field',
+    )
   })
 })
 

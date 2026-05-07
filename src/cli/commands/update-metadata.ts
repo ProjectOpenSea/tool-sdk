@@ -107,7 +107,7 @@ export const updateMetadataCommand = new Command("update-metadata")
     const wallet = options.walletProvider
       ? createWalletForProvider(options.walletProvider as WalletProvider)
       : createWalletFromEnv()
-    const address = await wallet.getAddress()
+    const address = (await wallet.getAddress()).toLowerCase()
 
     console.log(pc.cyan(`\nWallet: ${address} (${wallet.name})`))
     console.log(pc.cyan("Verifying ownership..."))
@@ -122,7 +122,8 @@ export const updateMetadataCommand = new Command("update-metadata")
       process.exit(1)
     }
 
-    if (config.creator.toLowerCase() !== address.toLowerCase()) {
+    // viem returns EIP-55 checksummed addresses; address is already lowercased above
+    if (config.creator.toLowerCase() !== address) {
       console.error(pc.red("Error: Caller is not the tool creator"))
       console.error(
         pc.dim(`  Creator: ${config.creator}\n  Caller:  ${address}`),

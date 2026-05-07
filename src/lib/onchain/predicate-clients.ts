@@ -6,9 +6,13 @@ import {
   type Transport,
   type WalletClient,
   createPublicClient,
+  encodeAbiParameters,
+  getAddress,
   http,
 } from "viem"
+import type { Access } from "../manifest/types.js"
 import { base } from "viem/chains"
+import { ERC721_KIND, ERC1155_KIND } from "./access.js"
 import { ERC721OwnerPredicateABI, ERC1155OwnerPredicateABI } from "./abis.js"
 import {
   type Deployment,
@@ -61,6 +65,14 @@ abstract class BasePredicateClient {
       throw new Error("walletClient required for write operations")
     }
     return this.walletClient
+  }
+
+  protected openSeaChainSegment(): string | undefined {
+    const id = this.chain.id
+    if (id === 8453) return "base"
+    if (id === 1) return "ethereum"
+    if (id === 137) return "matic"
+    return undefined
   }
 }
 
@@ -131,6 +143,26 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
     }
     return this.setCollections(toolId, filtered)
   }
+
+  toManifestAccess(
+    collection: Address,
+    opts?: { label?: string },
+  ): Access {
+    const data = encodeAbiParameters(
+      [{ type: "address" }],
+      [collection],
+    )
+    const label = opts?.label ?? "Hold any NFT from this collection"
+    const segment = this.openSeaChainSegment()
+    const normalized = getAddress(collection)
+    const links: Record<string, string> | undefined = segment
+      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
+      : undefined
+    return {
+      logic: "OR",
+      requirements: [{ kind: ERC721_KIND, data, label, links }],
+    }
+  }
 }
 
 export class ERC1155OwnerPredicateClient extends BasePredicateClient {
@@ -166,5 +198,27 @@ export class ERC1155OwnerPredicateClient extends BasePredicateClient {
       functionName: "setCollectionTokens",
       args: [toolId, entries],
     })
+  }
+
+  toManifestAccess(
+    collection: Address,
+    tokenId: bigint,
+    opts?: { label?: string },
+  ): Access {
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      [collection, tokenId],
+    )
+    const label =
+      opts?.label ?? `Hold token #${tokenId} from this collection`
+    const segment = this.openSeaChainSegment()
+    const normalized = getAddress(collection)
+    const links: Record<string, string> | undefined = segment
+      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
+      : undefined
+    return {
+      logic: "OR",
+      requirements: [{ kind: ERC1155_KIND, data, label, links }],
+    }
   }
 }
