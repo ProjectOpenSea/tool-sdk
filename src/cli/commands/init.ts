@@ -56,7 +56,7 @@ function copyTemplateDir(
 }
 
 export const initCommand = new Command("init")
-  .description("Scaffold a new ERC-Draft tool project")
+  .description("Scaffold a new ERC-8257 tool project")
   .argument("[name]", "Tool name")
   .option("--no-interactive", "Skip interactive prompts (uses defaults)")
   .action(async (nameArg: string | undefined, options: InitOptions) => {
@@ -74,7 +74,7 @@ export const initCommand = new Command("init")
       endpoint = `https://${name}.vercel.app`
     } else {
       const clack = await import("@clack/prompts")
-      clack.intro(pc.cyan("Create a new ERC-Draft Tool"))
+      clack.intro(pc.cyan("Create a new ERC-8257 Tool"))
 
       if (nameArg) {
         name = nameArg

@@ -5,7 +5,7 @@ import { computeManifestHash } from "../lib/onchain/hash.js"
 describe("computeManifestHash", () => {
   it("should match the free-tool test vector from the ERC spec", () => {
     const freeToolManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "nft-price-oracle",
       description: "Returns estimated floor price for any NFT collection.",
       endpoint: "https://tools.example.com/nft-price-oracle",
@@ -37,13 +37,13 @@ describe("computeManifestHash", () => {
 
     const hash = computeManifestHash(freeToolManifest)
     expect(hash).toBe(
-      "0x142af74ae3e1b7aee9a8249fab3507dada81c925fbfd0a63d0a5a9cac085b392",
+      "0x786620b1a5d903c2ac4eafe964364292ca4b6ed763a13b29423c03ccca905af0",
     )
   })
 
   it("should match the paid-tool test vector from the ERC spec", () => {
     const paidToolManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "premium-analytics",
       description: "Advanced portfolio analytics for NFT holders.",
       endpoint: "https://tools.example.com/premium-analytics",
@@ -85,13 +85,13 @@ describe("computeManifestHash", () => {
 
     const hash = computeManifestHash(paidToolManifest)
     expect(hash).toBe(
-      "0x5a0550de1c789afc64bd64128091f584d5a5a9b17788c267a4e974ccbf2c134d",
+      "0xa71ef83ee66b702edb44f121510f8969e353df40b1e1587f8288fe6d352b448b",
     )
   })
 
   it("should produce deterministic hashes", () => {
     const manifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "test",
       description: "A test tool",
       endpoint: "https://test.example.com",

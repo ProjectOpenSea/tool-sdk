@@ -4,7 +4,7 @@ import type { ToolManifest } from "../lib/manifest/types.js"
 import { createWellKnownHandler } from "../lib/middleware/well-known.js"
 
 const testManifest = {
-  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+  type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
   name: "nft-price-oracle",
   description: "Returns estimated floor price for any NFT collection.",
   endpoint: "https://tools.example.com/nft-price-oracle",
@@ -67,7 +67,7 @@ describe("createWellKnownHandler", () => {
 
   it("should accept ManifestDefinition with EnvResolver lambdas", async () => {
     const definition: ManifestDefinition = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "lambda-tool",
       description: "A tool with lambda fields",
       endpoint: env => env.TOOL_ENDPOINT ?? "https://fallback.example.com",
@@ -95,7 +95,7 @@ describe("createWellKnownHandler", () => {
 
   it("should accept explicit env for non-Node runtimes", async () => {
     const definition: ManifestDefinition = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "cf-tool",
       description: "Cloudflare Workers tool",
       endpoint: env => env.TOOL_ENDPOINT!,
@@ -118,7 +118,7 @@ describe("createWellKnownHandler", () => {
   it("should resolve ManifestDefinition only once (cached)", async () => {
     let callCount = 0
     const definition: ManifestDefinition = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "cached-tool",
       description: "Tests caching",
       endpoint: env => {

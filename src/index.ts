@@ -47,6 +47,12 @@ export type {
   ToolManifest,
   Verifiability,
 } from "./lib/manifest/types.js"
+export type {
+  HardwareAttestedConfig,
+  SelfAttestedConfig,
+  VerifiableConfig,
+} from "./lib/manifest/verifiability.js"
+export { defineVerifiability } from "./lib/manifest/verifiability.js"
 export type { NFTGateConfig } from "./lib/middleware/nft-gate.js"
 export { nftGate } from "./lib/middleware/nft-gate.js"
 export type { PredicateGateConfig } from "./lib/middleware/predicate-gate.js"

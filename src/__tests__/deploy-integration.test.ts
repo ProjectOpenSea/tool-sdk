@@ -312,7 +312,7 @@ describe("deploy command (mocked shell)", () => {
     })
 
     const mismatchManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "my-tool",
       description: "A test tool",
       endpoint: "https://evil-site.example.com",
@@ -365,7 +365,7 @@ describe("deploy command (mocked shell)", () => {
     })
 
     const validManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "my-tool",
       description: "A test tool",
       endpoint: "https://my-tool-final.vercel.app",
@@ -429,7 +429,7 @@ describe("deploy command (mocked shell)", () => {
     })
 
     const validManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "my-tool",
       description: "A test tool",
       endpoint: "https://my-tool-final.vercel.app",
@@ -503,7 +503,7 @@ describe("deploy command (mocked shell)", () => {
     })
 
     const validManifest = {
-      type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "my-tool",
       description: "A test tool",
       endpoint: "https://my-tool-final.vercel.app",

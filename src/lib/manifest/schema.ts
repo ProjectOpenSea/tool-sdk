@@ -250,7 +250,7 @@ export const ToolManifestSchema = z.object({
   type: z
     .string()
     .default(
-      "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+      "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
     ),
   name: z.string().min(1).max(128),
   description: z.string().min(1).max(500),

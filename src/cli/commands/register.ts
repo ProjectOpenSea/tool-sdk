@@ -136,7 +136,7 @@ export const registerCommand = new Command("register")
     if (manifest.creatorAddress !== address) {
       console.error(
         pc.red(
-          `Error: manifest.creatorAddress (${manifest.creatorAddress}) does not match your wallet (${address}). The ERC-Draft spec requires these to match.`,
+          `Error: manifest.creatorAddress (${manifest.creatorAddress}) does not match your wallet (${address}). The ERC-8257 spec requires these to match.`,
         ),
       )
       process.exit(1)

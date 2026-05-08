@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.6.0
+
+### Minor Changes
+
+- 303247f: Add `defineVerifiability()` typed builder for verifiability blocks
+
+  Three tier-narrowed factory methods (`selfAttested`, `hardwareAttested`, `verifiable`) produce correct verifiability objects for `defineManifest()`. Invalid tier/field combos are rejected at the TypeScript type level rather than only at validation time.
+
+- 2095a84: Replace ERC-Draft placeholder references with officially assigned ERC-8257 number across CLI help text, documentation, and test vectors. Manifest schema `type` URL switched to the canonical ERCs site (`https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1`); test vectors and pinned hashes updated accordingly.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 # {{TOOL_NAME}}
 
-An ERC-Draft compliant AI agent tool deployed on Vercel.
+An ERC-8257 compliant AI agent tool deployed on Vercel.
 
 ## Setup
 

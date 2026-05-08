@@ -4,7 +4,7 @@ import { defineManifest } from "@opensea/tool-sdk"
 // request time instead of at module-init time:
 //   endpoint: env => env.TOOL_ENDPOINT!,
 export const manifest = defineManifest({
-  type: "https://eips.ethereum.org/EIPS/eip-draft#tool-manifest-v1",
+  type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
   name: "{{TOOL_NAME}}",
   description: "{{TOOL_DESCRIPTION}}",
   endpoint: "{{TOOL_ENDPOINT}}",
