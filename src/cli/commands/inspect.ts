@@ -15,6 +15,7 @@ import {
   IAccessPredicateABI,
   SubscriptionPredicateABI,
 } from "../../lib/onchain/abis.js"
+import { decodeRequirement } from "../../lib/onchain/access.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain } from "./get-chain.js"
@@ -146,6 +147,36 @@ export const inspectCommand = new Command("inspect")
           console.error(
             pc.yellow(
               `  Warning: Failed to read subscription config: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          )
+        }
+      } else if (predicateName === "WalletStateAttestationPredicate") {
+        try {
+          const [requirements] = await publicClient.readContract({
+            address: config.accessPredicate,
+            abi: IAccessPredicateABI,
+            functionName: "getRequirements",
+            args: [toolId],
+          })
+          for (let i = 0; i < requirements.length; i++) {
+            const r = requirements[i]
+            const decoded = decodeRequirement(r)
+            console.log(`  Attestation requirement [${i}]:`)
+            console.log(`    Label: ${r.label || "<no label>"}`)
+            if (decoded.type === "walletStateAttestation") {
+              console.log(`    Issuer JWKS: ${decoded.issuerJwksUri}`)
+              console.log(`    Condition hash: ${decoded.conditionHash}`)
+            } else {
+              console.log(`    Kind:  ${r.kind}`)
+              if (r.data !== "0x") {
+                console.log(`    Data:  ${r.data}`)
+              }
+            }
+          }
+        } catch (err) {
+          console.error(
+            pc.yellow(
+              `  Warning: Failed to read attestation config: ${err instanceof Error ? err.message : String(err)}`,
             ),
           )
         }

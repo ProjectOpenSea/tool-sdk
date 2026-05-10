@@ -758,6 +758,50 @@ const op = await composite.getOp(toolId)     // CompositeOp.ALL or CompositeOp.A
 const terms = await composite.getTerms(toolId) // [{ predicate, negate }]
 ```
 
+### WalletStateAttestationPredicate
+
+Gates access based on offchain-signed wallet-state attestations. Designed for cross-chain wallet state that cannot be evaluated natively in EVM (e.g., Solana, XRPL, Bitcoin holdings). An offchain issuer evaluates conditions against the relevant chain, signs a verdict, and the onchain predicate verifies the signature via the RIP-7212 P-256 precompile.
+
+| Field | Value |
+|-------|-------|
+| Requirement `kind` | `0x7a111640` (`IWalletStateAttestation` interface ID) |
+| Requirement `data` (getRequirements) | `abi.encode(string issuerJWKSURI, bytes32 conditionHash)` |
+| Proof `data` (hasAccess) | `abi.encode(bool pass, address wallet, bytes32 conditionHash, uint256 blockNumber, bytes32 r, bytes32 s, bytes32 messageHash)` |
+| Signature verification | ECDSA P-256 via RIP-7212 precompile (~3,450 gas) |
+
+This is a third-party predicate type. No canonical deployment exists; each issuer deploys their own instance. The `IWalletStateAttestation` marker interface is not pinned in `IRequirementTypes.sol` but is a valid extension per the spec's open `kind` namespace.
+
+**Decode requirements via SDK:**
+```typescript
+import { decodeRequirement, WALLET_STATE_ATTESTATION_KIND } from "@opensea/tool-sdk"
+
+const decoded = decodeRequirement(req)
+if (decoded.type === "walletStateAttestation") {
+  // decoded.issuerJwksUri — URL to fetch the issuer's JWKS public key set
+  // decoded.conditionHash — identifies which condition set the predicate enforces
+  console.log(`Issuer JWKS: ${decoded.issuerJwksUri}`)
+  console.log(`Condition:   ${decoded.conditionHash}`)
+}
+```
+
+**Manifest access declaration (manual):**
+```json
+{
+  "access": {
+    "logic": "AND",
+    "requirements": [
+      {
+        "kind": "0x7a111640",
+        "data": "<abi.encode(string issuerJWKSURI, bytes32 conditionHash)>",
+        "label": "Cross-chain wallet attestation required"
+      }
+    ]
+  }
+}
+```
+
+**Reference implementation:** [douglasborthwick-crypto/insumer-examples](https://github.com/douglasborthwick-crypto/insumer-examples)
+
 ### SDK Helpers for Reading Predicate Requirements
 
 Use `describeToolAccess` to read a tool's predicate name, requirements, and logic from the registry, and `decodeRequirement` to decode the raw `kind`/`data` into typed objects:
@@ -779,6 +823,9 @@ for (const req of description.requirements) {
       break
     case "subscription":
       console.log(`Requires subscription (min tier ${decoded.minTier}) from ${decoded.collection}`)
+      break
+    case "walletStateAttestation":
+      console.log(`Requires attestation from ${decoded.issuerJwksUri} (condition: ${decoded.conditionHash})`)
       break
     case "unknown":
       console.log(`Unknown requirement kind ${decoded.kind}`)
