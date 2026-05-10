@@ -25,7 +25,7 @@ Use predicate gating when access should be tied to **who the caller is**. Use x4
 | `CompositePredicate` | Combine multiple predicates with AND/OR logic |
 | Future predicates | Any contract implementing `IAccessPredicate` works automatically |
 
-Tool creators configure the predicate onchain (via `register --nft-gate`, `--access-predicate`, or direct contract calls). The `predicateGate` middleware picks it up at runtime — no code changes needed when the access policy changes.
+Tool creators configure the predicate onchain (via `register --access-predicate` or direct contract calls). The `predicateGate` middleware picks it up at runtime — no code changes needed when the access policy changes.
 
 The `ERC721OwnerPredicate` is deployed on Base at `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` (see `src/lib/onchain/chains.ts`).
 
@@ -103,54 +103,30 @@ The `predicate` field in the 403 body is the registered access predicate's addre
 
 The gate is **stateless** — it does not track nonces. Callers should include a short-lived `expirationTime` in their SIWE messages to limit the replay window.
 
-### Local development with `nftGate` (deprecated)
+## Step 2: Register with `--access-predicate`
 
-If you are developing locally against an **unregistered** tool (no `toolId` yet), you can use the deprecated `nftGate` middleware to test ERC-721 gating without an onchain registration:
-
-```typescript
-import { nftGate } from "@opensea/tool-sdk"
-
-// Local dev only — migrate to predicateGate after registration
-const gate = nftGate({
-  collection: "0xYourERC721CollectionAddress",
-})
-```
-
-`nftGate` re-implements the ERC-721 ownership check off-chain against a single hardcoded collection address. For registered tools, always use `predicateGate` — it delegates to the onchain registry so the access policy cannot drift.
-
-## Step 2: Register with `--nft-gate`
-
-Register your tool onchain with the `--nft-gate` flag, passing your ERC-721 collection address:
+Register your tool onchain with the `--access-predicate` flag, passing your predicate contract address:
 
 ```bash
-TOOL_SDK_PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk register \
   --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
   --network base \
-  --nft-gate 0xYourERC721CollectionAddress
+  --access-predicate 0xYourPredicateAddress
 ```
 
-This executes a **two-transaction flow** (see `src/cli/commands/register.ts` lines 204–232):
-
-1. **`registerTool`** — registers the tool in the `ToolRegistry` contract and sets `accessPredicate` to the canonical `ERC721OwnerPredicate` (`0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88`).
-2. **`setCollections`** — calls `setCollections(toolId, [collectionAddress])` on the `ERC721OwnerPredicate` to configure which collections gate the tool.
-
-If the first transaction succeeds but the second fails, the CLI prints a recovery command:
-
-```
-Tool is registered but ungated. Call setCollections(<toolId>, [<collectionAddress>]) manually.
-```
+This calls **`registerTool`** on the `ToolRegistry` contract and sets `accessPredicate` to the provided address.
 
 Use `--dry-run` to preview the registration without sending transactions:
 
 ```bash
-TOOL_SDK_PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk register \
   --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
   --network base \
-  --nft-gate 0xYourERC721CollectionAddress \
+  --access-predicate 0xYourPredicateAddress \
   --dry-run
 ```
 
-For other predicate types (ERC-1155, subscription, composite), use `--access-predicate <address>` to set a custom predicate directly.
+For ERC-721 gating, use the canonical `ERC721OwnerPredicate` deployed on Base at `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88`. After registration, call `setCollections(toolId, [collectionAddress])` on the predicate to configure which collections gate the tool.
 
 ## Step 3: Verify the setup
 

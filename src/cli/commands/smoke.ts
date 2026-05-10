@@ -47,7 +47,7 @@ export const smokeCommand = new Command("smoke")
   .option("--tool-id <id>", "Onchain tool ID (included in log output)")
   .requiredOption("--endpoint <url>", "Production endpoint URL")
   .option("--input <json>", "JSON body (inline or @path)", "{}")
-  .option("--expect <status>", "Expected HTTP status code", "200")
+  .option("--expect <status>", "Expected HTTP status code")
   .option("--chain <name>", "Chain for wallet client and SIWE message", "base")
   .option("--paid", "Handle x402 payment challenge after SIWE authentication")
   .option(
@@ -59,6 +59,7 @@ export const smokeCommand = new Command("smoke")
     "Maximum payment amount in base units (default: 1000000 = 1 USDC)",
   )
   .action(async (options: SmokeOptions) => {
+    const expectExplicit = options.expect !== undefined
     const expectedStatus = Number.parseInt(options.expect ?? "200", 10)
     if (
       Number.isNaN(expectedStatus) ||
@@ -318,36 +319,74 @@ export const smokeCommand = new Command("smoke")
         process.exit(1)
       }
 
+      if (!expectExplicit && res.status === 402) {
+        const text = await res.text()
+        if (isPaywallResponse(text)) {
+          printPaywallSuccess(text)
+          return
+        }
+        printResultFromText(res.status, text, expectedStatus)
+        return
+      }
+
       await printResult(res, expectedStatus)
     }
   })
+
+function isPaywallResponse(text: string): boolean {
+  try {
+    const body = JSON.parse(text) as { accepts?: unknown[] }
+    return Array.isArray(body.accepts) && body.accepts.length > 0
+  } catch {
+    return false
+  }
+}
+
+function printPaywallSuccess(text: string): void {
+  console.log("Status: 402")
+  try {
+    const json = JSON.parse(text)
+    console.log(JSON.stringify(json, null, 2))
+  } catch {
+    console.log(text)
+  }
+  console.log(
+    pc.green(
+      "\nAuth OK — paywall fired (expected for paywalled tools). Pair with `pay --auth siwe` for full E2E.",
+    ),
+  )
+}
+
+function printResultFromText(
+  status: number,
+  text: string,
+  expectedStatus: number,
+): void {
+  console.log(`Status: ${status}`)
+  if (text) {
+    try {
+      const json = JSON.parse(text)
+      console.log(JSON.stringify(json, null, 2))
+    } catch {
+      console.log(text)
+    }
+  }
+  if (status === expectedStatus) {
+    console.log(
+      pc.green(`\nPASS: Status ${status} matches expected ${expectedStatus}`),
+    )
+  } else {
+    console.error(
+      pc.red(`\nFAIL: Expected status ${expectedStatus}, got ${status}`),
+    )
+    process.exit(1)
+  }
+}
 
 async function printResult(
   res: globalThis.Response,
   expectedStatus: number,
 ): Promise<void> {
-  console.log(`Status: ${res.status}`)
-
   const responseText = await res.text()
-  if (responseText) {
-    try {
-      const json = JSON.parse(responseText)
-      console.log(JSON.stringify(json, null, 2))
-    } catch {
-      console.log(responseText)
-    }
-  }
-
-  if (res.status === expectedStatus) {
-    console.log(
-      pc.green(
-        `\nPASS: Status ${res.status} matches expected ${expectedStatus}`,
-      ),
-    )
-  } else {
-    console.error(
-      pc.red(`\nFAIL: Expected status ${expectedStatus}, got ${res.status}`),
-    )
-    process.exit(1)
-  }
+  printResultFromText(res.status, responseText, expectedStatus)
 }

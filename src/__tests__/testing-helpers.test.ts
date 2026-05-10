@@ -42,10 +42,10 @@ describe("createMockToolContext", () => {
   it("accepts partial overrides", () => {
     const ctx = createMockToolContext({
       callerAddress: "0x1234567890abcdef1234567890abcdef12345678",
-      gates: { nft: { granted: true } },
+      gates: { predicate: { granted: true } },
     })
     expect(ctx.callerAddress).toBe("0x1234567890abcdef1234567890abcdef12345678")
-    expect(ctx.gates.nft?.granted).toBe(true)
+    expect(ctx.gates.predicate?.granted).toBe(true)
     expect(ctx.manifest.name).toBe("test-tool")
   })
 
@@ -271,7 +271,6 @@ describe("createTestHandler", () => {
 
   it("bypassGates populates ctx.gates without real gate logic", async () => {
     const CtxOutputSchema = z.object({
-      nft: z.boolean(),
       predicate: z.boolean(),
       x402: z.boolean(),
     })
@@ -279,16 +278,14 @@ describe("createTestHandler", () => {
       inputSchema: InputSchema,
       outputSchema: CtxOutputSchema,
       handler: async (_input, ctx) => ({
-        nft: ctx.gates.nft?.granted ?? false,
         predicate: ctx.gates.predicate?.granted ?? false,
         x402: ctx.gates.x402?.paid ?? false,
       }),
-      bypassGates: { nft: "granted", predicate: "granted", x402: "paid" },
+      bypassGates: { predicate: "granted", x402: "paid" },
     })
     const res = await invoke({ query: "test" })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      nft: true,
       predicate: true,
       x402: true,
     })

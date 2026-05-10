@@ -569,3 +569,356 @@ describe("ERC1155OwnerPredicateClient", () => {
     })
   })
 })
+
+describe("SubscriptionPredicateClient", () => {
+  it("requires predicateAddress (no canonical deployment)", async () => {
+    const { SubscriptionPredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    expect(
+      () =>
+        new SubscriptionPredicateClient({
+          predicateAddress: DUMMY_PREDICATE,
+        }),
+    ).not.toThrow()
+  })
+
+  it("throws without predicateAddress on any chain", async () => {
+    const { SubscriptionPredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    expect(
+      () =>
+        new SubscriptionPredicateClient({
+          predicateAddress: DUMMY_PREDICATE,
+          chain: UNKNOWN_CHAIN,
+        }),
+    ).not.toThrow()
+  })
+
+  describe("configureToolGating", () => {
+    it("writes gating config and returns tx hash", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+        walletClient: mockWalletClient,
+      })
+      const hash = await client.configureToolGating(
+        TEST_TOOL_ID,
+        COLLECTION_A,
+        2,
+      )
+
+      expect(hash).toBe(TX_HASH)
+      expect(mockWriteContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "configureToolGating",
+          args: [TEST_TOOL_ID, COLLECTION_A, 2],
+        }),
+      )
+    })
+
+    it("throws without walletClient", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+
+      await expect(
+        client.configureToolGating(TEST_TOOL_ID, COLLECTION_A, 0),
+      ).rejects.toThrow("walletClient required for write operations")
+    })
+  })
+
+  describe("getToolGatingConfig", () => {
+    it("returns collection and minTier", async () => {
+      mockReadContract.mockResolvedValueOnce({
+        collection: COLLECTION_A,
+        minTier: 3,
+      })
+
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const config = await client.getToolGatingConfig(TEST_TOOL_ID)
+
+      expect(config).toEqual({ collection: COLLECTION_A, minTier: 3 })
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getToolGatingConfig",
+          args: [TEST_TOOL_ID],
+        }),
+      )
+    })
+  })
+
+  describe("getSubscriptionStatus", () => {
+    it("maps tuple indices to named fields", async () => {
+      const ACCOUNT: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+      mockReadContract.mockResolvedValueOnce([true, 2, 1, 1700000000n, true])
+
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const status = await client.getSubscriptionStatus(TEST_TOOL_ID, ACCOUNT)
+
+      expect(status).toEqual({
+        hasNft: true,
+        tier: 2,
+        requiredTier: 1,
+        expiration: 1700000000n,
+        active: true,
+      })
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getSubscriptionStatus",
+          args: [TEST_TOOL_ID, ACCOUNT],
+        }),
+      )
+    })
+
+    it("returns inactive status when user has no NFT", async () => {
+      const ACCOUNT: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+      mockReadContract.mockResolvedValueOnce([false, 0, 1, 0n, false])
+
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const status = await client.getSubscriptionStatus(TEST_TOOL_ID, ACCOUNT)
+
+      expect(status.hasNft).toBe(false)
+      expect(status.active).toBe(false)
+      expect(status.expiration).toBe(0n)
+    })
+  })
+
+  describe("toManifestAccess", () => {
+    it("returns access with SUBSCRIPTION_KIND and AND logic", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 0)
+
+      expect(access.logic).toBe("AND")
+      expect(access.requirements).toHaveLength(1)
+      expect(access.requirements[0].kind).toBe("0x44387cc2")
+      expect(access.requirements[0].data).toBe(
+        encodeAbiParameters(
+          [{ type: "address" }, { type: "uint8" }],
+          [CHECKSUMMED_A, 0],
+        ),
+      )
+      expect(access.requirements[0].label).toBe("Active subscription")
+    })
+
+    it("includes tier in label when minTier > 0", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 3)
+
+      expect(access.requirements[0].label).toBe("Active subscription (tier 3+)")
+    })
+
+    it("uses custom label when provided", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 2, {
+        label: "Pro subscription required",
+      })
+
+      expect(access.requirements[0].label).toBe("Pro subscription required")
+    })
+
+    it("returns access with opensea link on Base", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 0)
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/base/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("omits opensea link for unknown chains", async () => {
+      const { SubscriptionPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new SubscriptionPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+        chain: UNKNOWN_CHAIN,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, 0)
+
+      expect(access.requirements[0].links).toBeUndefined()
+    })
+  })
+})
+
+describe("CompositePredicateClient", () => {
+  it("requires predicateAddress (no canonical deployment)", async () => {
+    const { CompositePredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    expect(
+      () =>
+        new CompositePredicateClient({
+          predicateAddress: DUMMY_PREDICATE,
+        }),
+    ).not.toThrow()
+  })
+
+  describe("getOp", () => {
+    it("returns CompositeOp.ALL (0)", async () => {
+      mockReadContract.mockResolvedValueOnce(0)
+
+      const { CompositePredicateClient, CompositeOp } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const op = await client.getOp(TEST_TOOL_ID)
+
+      expect(op).toBe(CompositeOp.ALL)
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getOp",
+          args: [TEST_TOOL_ID],
+        }),
+      )
+    })
+
+    it("returns CompositeOp.ANY (1)", async () => {
+      mockReadContract.mockResolvedValueOnce(1)
+
+      const { CompositePredicateClient, CompositeOp } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const op = await client.getOp(TEST_TOOL_ID)
+
+      expect(op).toBe(CompositeOp.ANY)
+    })
+  })
+
+  describe("getTerms", () => {
+    it("returns mapped terms with predicate and negate", async () => {
+      mockReadContract.mockResolvedValueOnce([
+        { predicate: COLLECTION_A, negate: false },
+        { predicate: COLLECTION_B, negate: true },
+      ])
+
+      const { CompositePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const terms = await client.getTerms(TEST_TOOL_ID)
+
+      expect(terms).toEqual([
+        { predicate: COLLECTION_A, negate: false },
+        { predicate: COLLECTION_B, negate: true },
+      ])
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getTerms",
+          args: [TEST_TOOL_ID],
+        }),
+      )
+    })
+
+    it("returns empty array when no terms are set", async () => {
+      mockReadContract.mockResolvedValueOnce([])
+
+      const { CompositePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const terms = await client.getTerms(TEST_TOOL_ID)
+
+      expect(terms).toEqual([])
+    })
+  })
+
+  describe("setComposition", () => {
+    it("writes composition and returns tx hash", async () => {
+      const { CompositePredicateClient, CompositeOp } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+        walletClient: mockWalletClient,
+      })
+      const terms = [
+        { predicate: COLLECTION_A, negate: false },
+        { predicate: COLLECTION_B, negate: true },
+      ]
+      const hash = await client.setComposition(
+        TEST_TOOL_ID,
+        CompositeOp.ANY,
+        terms,
+      )
+
+      expect(hash).toBe(TX_HASH)
+      expect(mockWriteContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "setComposition",
+          args: [
+            TEST_TOOL_ID,
+            CompositeOp.ANY,
+            [
+              { predicate: COLLECTION_A, negate: false },
+              { predicate: COLLECTION_B, negate: true },
+            ],
+          ],
+        }),
+      )
+    })
+
+    it("throws without walletClient", async () => {
+      const { CompositePredicateClient, CompositeOp } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new CompositePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+
+      await expect(
+        client.setComposition(TEST_TOOL_ID, CompositeOp.ALL, []),
+      ).rejects.toThrow("walletClient required for write operations")
+    })
+  })
+})

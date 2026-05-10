@@ -4,11 +4,14 @@ import { deployCommand } from "./commands/deploy.js"
 import { dryRunGateCommand } from "./commands/dry-run-gate.js"
 import { dryRunPredicateGateCommand } from "./commands/dry-run-predicate-gate.js"
 import { exportCommand } from "./commands/export.js"
+import { getCollectionsCommand } from "./commands/get-collections.js"
 import { hashCommand } from "./commands/hash.js"
 import { initCommand } from "./commands/init.js"
 import { inspectCommand } from "./commands/inspect.js"
 import { payCommand } from "./commands/pay.js"
 import { registerCommand } from "./commands/register.js"
+import { setCollectionTokensCommand } from "./commands/set-collection-tokens.js"
+import { setCollectionsCommand } from "./commands/set-collections.js"
 import { smokeCommand } from "./commands/smoke.js"
 import { updateMetadataCommand } from "./commands/update-metadata.js"
 import { validateCommand } from "./commands/validate.js"
@@ -35,3 +38,6 @@ program.addCommand(dryRunGateCommand)
 program.addCommand(dryRunPredicateGateCommand)
 program.addCommand(inspectCommand)
 program.addCommand(smokeCommand)
+program.addCommand(setCollectionsCommand)
+program.addCommand(getCollectionsCommand)
+program.addCommand(setCollectionTokensCommand)

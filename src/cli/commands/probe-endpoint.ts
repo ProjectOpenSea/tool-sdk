@@ -84,6 +84,14 @@ export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
     }
   }
 
+  if (status >= 400 && status < 500) {
+    return {
+      status,
+      level: "pass",
+      message: `Endpoint reachable; request rejected by server (HTTP ${status})`,
+    }
+  }
+
   if (status >= 500 && status < 600) {
     return {
       status,

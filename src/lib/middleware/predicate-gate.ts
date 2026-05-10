@@ -58,7 +58,6 @@ export interface PredicateGateConfig {
  * Stateless SIWE: does not track nonces. Callers should use short-lived
  * `expirationTime` in their SIWE messages to limit replay.
  *
- * Prefer this over `nftGate` for any tool registered with an `accessPredicate`.
  * The registry is the source of truth for access policy; this middleware just
  * consults it.
  */

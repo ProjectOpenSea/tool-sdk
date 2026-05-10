@@ -133,7 +133,6 @@ export function mockFetch(handlers: MockFetchHandler[]): MockFetchResult {
 
 /** Gate names that can be bypassed via {@link TestHandlerConfig.bypassGates}. */
 export interface BypassGates {
-  nft?: "granted"
   predicate?: "granted"
   x402?: "paid"
 }
@@ -165,7 +164,6 @@ export interface TestHandler<TIn> {
 function buildBypassGate(bypass: BypassGates): GateMiddleware {
   return {
     async check(_request, ctx) {
-      if (bypass.nft) ctx.gates = { ...ctx.gates, nft: { granted: true } }
       if (bypass.predicate)
         ctx.gates = { ...ctx.gates, predicate: { granted: true } }
       if (bypass.x402) ctx.gates = { ...ctx.gates, x402: { paid: true } }

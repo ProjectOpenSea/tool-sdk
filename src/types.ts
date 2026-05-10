@@ -15,7 +15,6 @@ export interface ToolContext {
   /** When a delegated agent call is verified, this holds the agent's address. */
   agentAddress?: `0x${string}`
   gates: {
-    nft?: { granted: boolean }
     predicate?: { granted: boolean }
     x402?: {
       paid: boolean

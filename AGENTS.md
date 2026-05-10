@@ -30,7 +30,7 @@ pnpm run type-check  # TypeScript type checking
 | `src/lib/onchain/predicate-clients.ts` | Typed clients for predicate contracts |
 | `src/lib/manifest/` | Manifest schema, validation, types |
 | `src/lib/handler/` | `createToolHandler` — Web Request/Response handler factory |
-| `src/lib/middleware/` | Gating middleware (NFT gate, predicate gate, x402, x402 facilitators, well-known endpoint) |
+| `src/lib/middleware/` | Gating middleware (predicate gate, x402, x402 facilitators, well-known endpoint) |
 | `src/lib/wallet/` | Re-exports from `@opensea/wallet-adapters` (adapters, types, and viem bridge) |
 | `src/lib/adapters/` | Framework adapters (Vercel, Cloudflare, Express) |
 | `src/lib/utils.ts` | Shared utilities used across `lib/` |
@@ -55,7 +55,7 @@ When reviewing changes to this package, verify:
 
 5. **CLI error messages**: Error messages shown to SDK consumers should not reference internal file paths (e.g., "Update chains.ts"). Link to the README or provide actionable instructions instead.
 
-6. **Multi-step CLI flows**: Commands that require multiple onchain transactions (e.g., `register --nft-gate` does `registerTool` then `setCollections`) must handle partial failure gracefully — print recovery instructions if the second TX fails.
+6. **Multi-step CLI flows**: Commands that require multiple onchain transactions must handle partial failure gracefully — print recovery instructions if a subsequent TX fails.
 
 7. **`--dry-run` accuracy**: Dry-run output must reflect the full onchain footprint. If the command sends multiple transactions, the dry-run should mention all of them.
 

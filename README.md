@@ -79,15 +79,14 @@ Register a tool onchain via the ToolRegistry contract.
 PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
   --metadata <url> \
   --network base \
-  --nft-gate 0x...  # optional: NFT collection for predicate
+  --access-predicate 0x...  # optional: access predicate address
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--metadata <url>` | Metadata URI (required) |
 | `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--nft-gate <address>` | NFT collection for SimpleNFT721PredicateFactory |
-| `--access-predicate <address>` | Manual access predicate address |
+| `--access-predicate <address>` | Access predicate address |
 | `--dry-run` | Print summary without transacting |
 | `-y, --yes` | Skip confirmation prompt |
 
@@ -161,14 +160,14 @@ npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
 Make an authenticated call to a predicate-gated tool endpoint via SIWE.
 
 ```bash
-TOOL_SDK_PRIVATE_KEY=0x... npx @opensea/tool-sdk auth https://my-tool.vercel.app/api/tool \
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk auth https://my-tool.vercel.app/api/tool \
   --body '{"query":"hello"}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
-| `--key <hex>` | Wallet private key (defaults to `TOOL_SDK_PRIVATE_KEY` env var) — use env var in production to avoid exposing keys in shell history |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
 
 ### `dry-run-gate`
 
@@ -200,6 +199,39 @@ npx @opensea/tool-sdk dry-run-predicate-gate \
 | `--manifest <path>` | Path to manifest `.ts` or `.json` file (required) |
 | `--tool-id <id>` | Onchain tool ID to configure in the gate |
 | `--input <json>` | JSON input body (inline or `@path`) |
+
+## Wallet Configuration
+
+All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`) need a wallet. You can configure one in two ways:
+
+1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
+2. **`--wallet-provider` flag** — explicitly select a provider by name.
+
+| Provider | `--wallet-provider` value | Required env vars |
+|----------|--------------------------|-------------------|
+| Privy | `privy` | `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_WALLET_ID` |
+| Fireblocks | `fireblocks` | `FIREBLOCKS_API_KEY`, `FIREBLOCKS_API_SECRET`, `FIREBLOCKS_VAULT_ID` |
+| Turnkey | `turnkey` | `TURNKEY_API_PUBLIC_KEY`, `TURNKEY_API_PRIVATE_KEY`, `TURNKEY_ORGANIZATION_ID`, `TURNKEY_WALLET_ADDRESS`, `TURNKEY_RPC_URL` |
+| Bankr | `bankr` | `BANKR_API_KEY` |
+| Private Key | `private-key` | `PRIVATE_KEY`, `RPC_URL` |
+
+See [`.env.example`](.env.example) for a full annotated template.
+
+### Examples
+
+```bash
+# Auto-detect from env vars (simplest)
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk register \
+  --metadata <url> --network base
+
+# Explicit provider selection
+BANKR_API_KEY=... npx @opensea/tool-sdk register \
+  --metadata <url> --network base --wallet-provider bankr
+
+# Privy server wallet
+PRIVY_APP_ID=... PRIVY_APP_SECRET=... PRIVY_WALLET_ID=... npx @opensea/tool-sdk auth \
+  https://my-tool.vercel.app/api/tool --body '{"query":"hello"}'
+```
 
 ## Library API
 
@@ -256,7 +288,7 @@ const handler = createToolHandler({
   manifest,
   inputSchema: z.object({ query: z.string() }),
   outputSchema: z.object({ result: z.string() }),
-  gates: [], // optional: nftGate, x402Gate
+  gates: [], // optional: predicateGate, x402Gate
   handler: async (input, ctx) => {
     return { result: `Hello: ${input.query}` }
   },
@@ -413,46 +445,6 @@ if (ok && granted) {
 
 `ok === false` means the predicate misbehaved upstream and the result is
 indeterminate; treat it as a transient failure, not a denial.
-
-### NFT Gate (deprecated)
-
-> **Deprecated.** Prefer `predicateGate` for any tool registered against the
-> canonical `ToolRegistry`. `nftGate` re-implements ERC-721 ownership
-> off-chain against a single hardcoded collection address, which means the
-> off-chain policy can drift from the onchain `accessPredicate` and
-> multi-collection / non-ERC-721 access models require parallel
-> implementations. Use `nftGate` only for local development and unregistered
-> tools where you do not yet have a `toolId`.
-
-Requires callers to hold an ERC-721 NFT. Uses SIWE (Sign-In with Ethereum) for address verification.
-
-```typescript
-import { nftGate } from "@opensea/tool-sdk"
-
-const gate = nftGate({
-  collection: "0x1234...5678", // ERC-721 on Base
-  rpcUrl: "https://mainnet.base.org", // optional
-})
-
-const handler = createToolHandler({
-  manifest,
-  inputSchema,
-  outputSchema,
-  gates: [gate],
-  handler: async (input, ctx) => {
-    // ctx.callerAddress is set on success
-    // ctx.gates.nft.granted === true
-    return { result: "access granted" }
-  },
-})
-```
-
-Authorization header format: `SIWE <base64url(siwe-message)>.<hex-signature>`
-
-> **Note:** The NFT gate is stateless and does not track nonces. Callers should
-> include a short-lived `expirationTime` in their SIWE messages to limit replay
-> window. Tool operators requiring stronger replay protection should implement
-> server-side nonce tracking.
 
 ### x402 Gate (hosted facilitator)
 

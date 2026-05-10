@@ -175,8 +175,8 @@ describe("register creatorAddress validation", () => {
   })
 })
 
-describe("register --nft-gate access suggestion", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- process.exit returns `never`, which clashes with vi.spyOn's generic
+describe("register --access-predicate + --predicate-config (F4d)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- process.exit returns `never`
   let exitSpy: any
   let errorSpy: ReturnType<typeof vi.spyOn>
   let logSpy: ReturnType<typeof vi.spyOn>
@@ -189,6 +189,8 @@ describe("register --nft-gate access suggestion", () => {
     }) as never)
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
   })
 
   afterEach(() => {
@@ -207,140 +209,122 @@ describe("register --nft-gate access suggestion", () => {
     }
   })
 
-  it("should suggest access block in dry-run when manifest has no access field", async () => {
-    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    process.env.RPC_URL = "http://localhost:8545"
+  it("rejects --predicate-config without --access-predicate", async () => {
     const fetchSpy = mockFetch(validManifest)
-
     const { registerCommand } = await import("../cli/commands/register.js")
-    await registerCommand.parseAsync([
-      "node",
-      "register",
-      "--metadata",
-      "https://test.example.com/.well-known/ai-tools/test-tool.json",
-      "--nft-gate",
-      "0x0000000000000000000000000000000000000abc",
-      "--dry-run",
-    ])
 
-    const suggestedCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("Suggested access block"),
-    )
-    expect(suggestedCalls).toHaveLength(1)
+    await expect(
+      registerCommand.parseAsync([
+        "node",
+        "register",
+        "--metadata",
+        "https://test.example.com/.well-known/ai-tools/test-tool.json",
+        "--predicate-config",
+        '{"collections":["0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9"]}',
+        "--dry-run",
+      ]),
+    ).rejects.toThrow(ExitError)
 
-    const accessJsonCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("0xbdf8c428"),
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("--predicate-config requires --access-predicate"),
     )
-    expect(accessJsonCalls).toHaveLength(1)
 
     fetchSpy.mockRestore()
   })
 
-  it("should not suggest access block when manifest already has access field", async () => {
-    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    process.env.RPC_URL = "http://localhost:8545"
-    const manifestWithAccess = {
-      ...validManifest,
-      access: {
-        logic: "OR",
-        requirements: [
-          {
-            kind: "0xbdf8c428",
-            data: "0x0000000000000000000000000000000000000000000000000000000000000abc",
-            label: "Existing gate",
-          },
-        ],
-      },
-    }
-    const fetchSpy = mockFetch(manifestWithAccess)
-
+  it("rejects invalid JSON in --predicate-config", async () => {
+    const fetchSpy = mockFetch(validManifest)
     const { registerCommand } = await import("../cli/commands/register.js")
-    await registerCommand.parseAsync([
-      "node",
-      "register",
-      "--metadata",
-      "https://test.example.com/.well-known/ai-tools/test-tool.json",
-      "--nft-gate",
-      "0x0000000000000000000000000000000000000abc",
-      "--dry-run",
-    ])
 
-    const suggestedCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("Suggested access block"),
+    await expect(
+      registerCommand.parseAsync([
+        "node",
+        "register",
+        "--metadata",
+        "https://test.example.com/.well-known/ai-tools/test-tool.json",
+        "--access-predicate",
+        "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
+        "--predicate-config",
+        "not-json",
+        "--dry-run",
+      ]),
+    ).rejects.toThrow(ExitError)
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("--predicate-config is not valid JSON"),
     )
-    expect(suggestedCalls).toHaveLength(0)
 
     fetchSpy.mockRestore()
   })
 
-  it("should not suggest access block when --nft-gate is not used", async () => {
-    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    process.env.RPC_URL = "http://localhost:8545"
+  it("rejects invalid --access-predicate address", async () => {
     const fetchSpy = mockFetch(validManifest)
-
     const { registerCommand } = await import("../cli/commands/register.js")
-    await registerCommand.parseAsync([
-      "node",
-      "register",
-      "--metadata",
-      "https://test.example.com/.well-known/ai-tools/test-tool.json",
-      "--dry-run",
-    ])
 
-    const suggestedCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("Suggested access block"),
+    await expect(
+      registerCommand.parseAsync([
+        "node",
+        "register",
+        "--metadata",
+        "https://test.example.com/.well-known/ai-tools/test-tool.json",
+        "--access-predicate",
+        "not-an-address",
+        "--dry-run",
+      ]),
+    ).rejects.toThrow(ExitError)
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("is not a valid address"),
     )
-    expect(suggestedCalls).toHaveLength(0)
 
     fetchSpy.mockRestore()
   })
 
-  it("should not suggest access block when --access-predicate is used instead of --nft-gate", async () => {
-    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    process.env.RPC_URL = "http://localhost:8545"
+  it("prints warning when --access-predicate used without --predicate-config", async () => {
     const fetchSpy = mockFetch(validManifest)
-
     const { registerCommand } = await import("../cli/commands/register.js")
+
     await registerCommand.parseAsync([
       "node",
       "register",
       "--metadata",
       "https://test.example.com/.well-known/ai-tools/test-tool.json",
       "--access-predicate",
-      "0x0000000000000000000000000000000000000def",
+      "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
       "--dry-run",
     ])
 
-    const suggestedCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("Suggested access block"),
-    )
-    expect(suggestedCalls).toHaveLength(0)
+    const output = logSpy.mock.calls.map(c => String(c[0])).join("\n")
+    expect(output).toContain("WARNING: predicate")
+    expect(output).toContain("registered but not configured")
+    expect(output).toContain("--dry-run: no transaction sent")
 
     fetchSpy.mockRestore()
   })
 
-  it("should include opensea link for Base chain", async () => {
-    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    process.env.RPC_URL = "http://localhost:8545"
+  it("shows predicate config in dry-run summary", async () => {
     const fetchSpy = mockFetch(validManifest)
-
     const { registerCommand } = await import("../cli/commands/register.js")
+
     await registerCommand.parseAsync([
       "node",
       "register",
       "--metadata",
       "https://test.example.com/.well-known/ai-tools/test-tool.json",
-      "--nft-gate",
-      "0x0000000000000000000000000000000000000abc",
-      "--network",
-      "base",
+      "--access-predicate",
+      "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
+      "--predicate-config",
+      '{"collections":["0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9"]}',
       "--dry-run",
     ])
 
-    const openSeaLinkCalls = logSpy.mock.calls.filter(call =>
-      String(call[0]).includes("opensea.io/assets/base/"),
+    const output = logSpy.mock.calls.map(c => String(c[0])).join("\n")
+    expect(output).toContain("Predicate Config:")
+    expect(output).toContain("0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9")
+    expect(output).toContain(
+      "Predicate config TX would be sent after registration",
     )
-    expect(openSeaLinkCalls).toHaveLength(1)
+    expect(output).toContain("--dry-run: no transaction sent")
 
     fetchSpy.mockRestore()
   })

@@ -1,15 +1,27 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { createPublicClient, http } from "viem"
+import {
+  type Account,
+  type Address,
+  type Chain,
+  createPublicClient,
+  http,
+  isAddress,
+  type Transport,
+  type WalletClient,
+} from "viem"
 import { validateManifest } from "../../lib/manifest/index.js"
-import { ERC721OwnerPredicateABI } from "../../lib/onchain/abis.js"
+import { IAccessPredicateABI } from "../../lib/onchain/abis.js"
 import {
   deploymentAddress,
-  ERC721_OWNER_PREDICATE,
+  getPredicateForRegistryVersion,
   TOOL_REGISTRY,
 } from "../../lib/onchain/chains.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
-import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
+import {
+  ERC721OwnerPredicateClient,
+  ERC1155OwnerPredicateClient,
+} from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
@@ -25,6 +37,7 @@ interface RegisterOptions {
   network: string
   nftGate?: string
   accessPredicate?: string
+  predicateConfig?: string
   walletProvider?: string
   rpcUrl?: string
   dryRun?: boolean
@@ -37,9 +50,13 @@ export const registerCommand = new Command("register")
   .option("--network <network>", "Network: base or mainnet", "base")
   .option(
     "--nft-gate <address>",
-    "ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate",
+    "ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry)",
   )
-  .option("--access-predicate <address>", "Manual access predicate address")
+  .option("--access-predicate <address>", "Access predicate address")
+  .option(
+    "--predicate-config <json>",
+    'JSON config for the access predicate (e.g. \'{"collections":["0x..."]}\')',
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
@@ -57,6 +74,45 @@ export const registerCommand = new Command("register")
       console.error(
         pc.red(
           "Error: --nft-gate and --access-predicate are mutually exclusive",
+        ),
+      )
+      process.exit(1)
+    }
+
+    if (options.nftGate && !isAddress(options.nftGate)) {
+      console.error(
+        pc.red(
+          `Error: --nft-gate value "${options.nftGate}" is not a valid address`,
+        ),
+      )
+      process.exit(1)
+    }
+
+    if (options.predicateConfig && !options.accessPredicate) {
+      console.error(
+        pc.red("Error: --predicate-config requires --access-predicate"),
+      )
+      process.exit(1)
+    }
+
+    let predicateConfig: Record<string, unknown> | undefined
+    if (options.predicateConfig) {
+      try {
+        predicateConfig = JSON.parse(options.predicateConfig) as Record<
+          string,
+          unknown
+        >
+      } catch {
+        console.error(pc.red("Error: --predicate-config is not valid JSON"))
+        process.exit(1)
+        return
+      }
+    }
+
+    if (options.accessPredicate && !isAddress(options.accessPredicate)) {
+      console.error(
+        pc.red(
+          `Error: --access-predicate value "${options.accessPredicate}" is not a valid address`,
         ),
       )
       process.exit(1)
@@ -109,23 +165,75 @@ export const registerCommand = new Command("register")
 
     let accessPredicate =
       "0x0000000000000000000000000000000000000000" as `0x${string}`
-    let nftGatePredicate: `0x${string}` | undefined
+    let nftGateInfo:
+      | { predicateAddr: `0x${string}`; predicateVersion: string }
+      | undefined
+
+    let predicateName: string | undefined
 
     if (options.accessPredicate) {
       accessPredicate = options.accessPredicate as `0x${string}`
+
+      const publicClient = createPublicClient({
+        chain,
+        transport: http(options.rpcUrl),
+      })
+      try {
+        predicateName = await publicClient.readContract({
+          address: accessPredicate,
+          abi: IAccessPredicateABI,
+          functionName: "name",
+        })
+      } catch {
+        predicateName = undefined
+      }
+
+      if (predicateConfig && predicateName) {
+        validatePredicateConfig(predicateName, predicateConfig)
+      }
     } else if (options.nftGate) {
-      const predicateAddr = deploymentAddress(ERC721_OWNER_PREDICATE, chain.id)
+      const readOnlyRegistry = new ToolRegistryClient({
+        chain,
+        rpcUrl: options.rpcUrl,
+      })
+
+      let registryVersion: string
+      try {
+        registryVersion = await readOnlyRegistry.version()
+      } catch {
+        console.error(
+          pc.red(
+            "Error: Failed to read registry version. Cannot auto-detect predicate version.",
+          ),
+        )
+        console.error(
+          pc.yellow(
+            "  Use --access-predicate to specify the predicate address manually.",
+          ),
+        )
+        process.exit(1)
+      }
+
+      const predicateDeploy = getPredicateForRegistryVersion(
+        registryVersion,
+        "erc721",
+      )
+      const predicateAddr = deploymentAddress(predicateDeploy, chain.id)
       if (!predicateAddr) {
         console.error(
           pc.red(
-            `Error: ERC721OwnerPredicate not deployed on ${options.network}.`,
+            `Error: ERC721OwnerPredicate (matching registry v${registryVersion}) is not deployed on ${options.network}.`,
           ),
         )
-        console.error(pc.yellow("  Provide --access-predicate manually."))
+        console.error(
+          pc.yellow(
+            "  Use --access-predicate to specify the predicate address manually.",
+          ),
+        )
         process.exit(1)
       }
       accessPredicate = predicateAddr
-      nftGatePredicate = predicateAddr
+      nftGateInfo = { predicateAddr, predicateVersion: registryVersion }
     }
 
     const wallet = options.walletProvider
@@ -148,16 +256,27 @@ export const registerCommand = new Command("register")
     console.log(`  Wallet: ${address} (${wallet.name})`)
     console.log(`  Metadata URI: ${options.metadata}`)
     console.log(`  Manifest Hash: ${hash}`)
-    if (nftGatePredicate) {
+    if (nftGateInfo) {
       console.log(
-        `  Access Predicate: ${accessPredicate} (ERC721OwnerPredicate, gating collection ${options.nftGate})`,
+        `  Access Predicate: ${nftGateInfo.predicateAddr} (ERC721OwnerPredicate v${nftGateInfo.predicateVersion}, gating collection ${options.nftGate})`,
       )
+    } else if (options.accessPredicate) {
+      const label = predicateName
+        ? `${accessPredicate} (${predicateName})`
+        : `${accessPredicate}`
+      console.log(`  Access Predicate: ${label}`)
+      if (predicateConfig) {
+        console.log(`  Predicate Config: ${JSON.stringify(predicateConfig)}`)
+      }
     } else {
       console.log(`  Access Predicate: ${accessPredicate}`)
     }
 
     if (!manifest.access && options.nftGate) {
-      const predicate = new ERC721OwnerPredicateClient({ chain })
+      const predicate = new ERC721OwnerPredicateClient({
+        chain,
+        predicateAddress: nftGateInfo?.predicateAddr,
+      })
       const access = predicate.toManifestAccess(
         options.nftGate as `0x${string}`,
       )
@@ -171,36 +290,32 @@ export const registerCommand = new Command("register")
       )
       console.log(pc.cyan("\nSuggested access block:"))
       console.log(accessJson)
+    }
 
-      if (!options.dryRun) {
-        let shouldShow = options.yes ?? false
-        if (!options.yes) {
-          const clack = await import("@clack/prompts")
-          const answer = await clack.confirm({
-            message:
-              "Would you like to see instructions for adding this to your manifest?",
-          })
-          shouldShow = !!answer && !clack.isCancel(answer)
-        }
-
-        if (shouldShow) {
-          console.log(
-            pc.green("\nAdd the following to your manifest definition:\n"),
-          )
-          console.log(
-            `  ${pc.cyan('"access"')}: ${accessJson.split("\n").join("\n  ")}\n`,
-          )
-          console.log(
-            pc.dim(
-              "After updating your manifest, redeploy and run:\n" +
-                `  npx @opensea/tool-sdk update-metadata --metadata <new-url> --network ${options.network}`,
-            ),
-          )
-        }
-      }
+    if (options.accessPredicate && !predicateConfig) {
+      const configHint =
+        predicateName === "ERC721OwnerPredicate"
+          ? 'Use --predicate-config \'{"collections":["0x..."]}\' or run `tool-sdk set-collections` after registration.'
+          : predicateName === "ERC1155OwnerPredicate"
+            ? 'Use --predicate-config \'{"collection":"0x...","tokenIds":["1","2"]}\' or run `tool-sdk set-collection-tokens` after registration.'
+            : predicateName === "SubscriptionPredicate"
+              ? "Configure the subscription predicate (e.g. configureToolGating) after registration."
+              : "Configure the predicate after registration to enforce access control."
+      console.log(
+        pc.yellow(
+          `\n  WARNING: predicate ${accessPredicate} registered but not configured.` +
+            "\n  Tool will accept any caller until you configure the predicate." +
+            `\n  ${configHint}`,
+        ),
+      )
     }
 
     if (options.dryRun) {
+      if (predicateConfig && options.accessPredicate) {
+        console.log(
+          pc.cyan("\n  Predicate config TX would be sent after registration."),
+        )
+      }
       console.log(pc.yellow("\n  --dry-run: no transaction sent"))
       return
     }
@@ -227,50 +342,158 @@ export const registerCommand = new Command("register")
       walletClient,
     })
 
-    let toolId: bigint
+    let regResult: { toolId: bigint; txHash: string }
     try {
-      const regResult = await registry.registerTool({
+      regResult = await registry.registerTool({
         metadataURI: options.metadata,
         manifest,
         accessPredicate,
       })
-      toolId = regResult.toolId
-      console.log(pc.green("\nTool registered!"))
-      console.log(`  Tool ID: ${toolId}`)
-      console.log(`  TX Hash: ${regResult.txHash}`)
     } catch (err) {
       console.error(pc.red("Error registering tool:"))
       console.error(err instanceof Error ? err.message : String(err))
       process.exit(1)
+      return
     }
 
-    if (nftGatePredicate && options.nftGate) {
+    console.log(pc.green("\nTool registered!"))
+    console.log(`  Tool ID: ${regResult.toolId}`)
+    console.log(`  TX Hash: ${regResult.txHash}`)
+
+    if (options.nftGate && nftGateInfo) {
       console.log(
         pc.cyan(
-          `\nConfiguring ERC721OwnerPredicate gate (collection: ${options.nftGate})...`,
+          `\nNext step: configure the predicate to gate on your collection:\n` +
+            `  tool-sdk set-collections ${regResult.toolId} ${options.nftGate} --network ${options.network}`,
         ),
       )
-      const publicClient = createPublicClient({ chain, transport: http() })
+    }
+
+    if (options.accessPredicate && predicateConfig) {
       try {
-        const txHash = await walletClient.writeContract({
+        await executePredicateConfig({
+          predicateName,
+          predicateAddress: accessPredicate,
+          toolId: regResult.toolId,
+          config: predicateConfig,
           chain,
-          account: walletClient.account,
-          address: nftGatePredicate,
-          abi: ERC721OwnerPredicateABI,
-          functionName: "setCollections",
-          args: [toolId, [options.nftGate as `0x${string}`]],
+          walletClient,
         })
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-        console.log(pc.green(`  setCollections TX: ${txHash}`))
       } catch (err) {
-        console.error(pc.red("Error setting collections on predicate:"))
-        console.error(err instanceof Error ? err.message : String(err))
         console.error(
-          pc.yellow(
-            `  Tool is registered but ungated. Call setCollections(${toolId}, [${options.nftGate}]) manually.`,
+          pc.red(
+            `\nTool registered as toolId ${regResult.toolId}, but predicate config failed:`,
           ),
         )
+        console.error(err instanceof Error ? err.message : String(err))
+        const recoveryCmd =
+          predicateName === "ERC1155OwnerPredicate"
+            ? `tool-sdk set-collection-tokens ${regResult.toolId} <collection> <tokenIds...> --network ${options.network}`
+            : `tool-sdk set-collections ${regResult.toolId} <collection> --network ${options.network}`
+        console.error(pc.yellow(`\n  Recovery: run \`${recoveryCmd}\``))
         process.exit(1)
       }
     }
   })
+
+interface PredicateConfigParams {
+  predicateName: string | undefined
+  predicateAddress: `0x${string}`
+  toolId: bigint
+  config: Record<string, unknown>
+  chain: Chain
+  walletClient: WalletClient<Transport, Chain, Account>
+}
+
+function validatePredicateConfig(
+  predicateName: string,
+  config: Record<string, unknown>,
+) {
+  if (predicateName === "ERC721OwnerPredicate") {
+    const collections = config.collections
+    if (!Array.isArray(collections) || collections.length === 0) {
+      console.error(
+        pc.red(
+          'Error: ERC721OwnerPredicate config requires "collections" array of addresses',
+        ),
+      )
+      process.exit(1)
+    }
+    for (const c of collections) {
+      if (typeof c !== "string" || !isAddress(c)) {
+        console.error(pc.red(`Error: invalid collection address "${c}"`))
+        process.exit(1)
+      }
+    }
+  } else if (predicateName === "ERC1155OwnerPredicate") {
+    const collection = config.collection
+    const tokenIds = config.tokenIds
+    if (typeof collection !== "string" || !isAddress(collection)) {
+      console.error(
+        pc.red(
+          'Error: ERC1155OwnerPredicate config requires "collection" address',
+        ),
+      )
+      process.exit(1)
+    }
+    if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
+      console.error(
+        pc.red('Error: ERC1155OwnerPredicate config requires "tokenIds" array'),
+      )
+      process.exit(1)
+    }
+    try {
+      tokenIds.map(t => BigInt(t as string))
+    } catch {
+      console.error(pc.red("Error: invalid token ID (must be numeric)"))
+      process.exit(1)
+    }
+  }
+}
+
+async function executePredicateConfig(params: PredicateConfigParams) {
+  const {
+    predicateName,
+    predicateAddress,
+    toolId,
+    config,
+    chain,
+    walletClient,
+  } = params
+
+  if (predicateName === "ERC721OwnerPredicate") {
+    const collections = (config.collections as string[]).map(c => c as Address)
+    const predicate = new ERC721OwnerPredicateClient({
+      chain,
+      walletClient,
+      predicateAddress,
+    })
+    const txHash = await predicate.setCollections(toolId, collections)
+    console.log(pc.green("\nPredicate configured!"))
+    console.log(`  setCollections TX: ${txHash}`)
+    return
+  }
+
+  if (predicateName === "ERC1155OwnerPredicate") {
+    const collection = config.collection as Address
+    const parsedTokenIds = (config.tokenIds as string[]).map(t => BigInt(t))
+    const predicate = new ERC1155OwnerPredicateClient({
+      chain,
+      walletClient,
+      predicateAddress,
+    })
+    const txHash = await predicate.setCollectionTokens(toolId, [
+      { collection, tokenIds: parsedTokenIds },
+    ])
+    console.log(pc.green("\nPredicate configured!"))
+    console.log(`  setCollectionTokens TX: ${txHash}`)
+    return
+  }
+
+  console.log(
+    pc.yellow(
+      `\n  WARNING: predicate "${predicateName ?? "unknown"}" is not a recognized type.` +
+        "\n  --predicate-config was ignored. Configure the predicate manually.",
+    ),
+  )
+}

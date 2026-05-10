@@ -61,6 +61,39 @@ describe("probeEndpoint", () => {
     expect(result.message).toContain("405 Method Not Allowed")
   })
 
+  it("returns pass for 400 (request rejected)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 400 })),
+    )
+    const result = await probeEndpoint("https://example.com/api")
+    expect(result.level).toBe("pass")
+    expect(result.status).toBe(400)
+    expect(result.message).toContain("request rejected by server")
+  })
+
+  it("returns pass for 422 (other client error)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 422 })),
+    )
+    const result = await probeEndpoint("https://example.com/api")
+    expect(result.level).toBe("pass")
+    expect(result.status).toBe(422)
+    expect(result.message).toContain("request rejected by server")
+  })
+
+  it("returns pass for 429 (rate limited)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 429 })),
+    )
+    const result = await probeEndpoint("https://example.com/api")
+    expect(result.level).toBe("pass")
+    expect(result.status).toBe(429)
+    expect(result.message).toContain("request rejected by server")
+  })
+
   it("returns fail for 404", async () => {
     vi.stubGlobal(
       "fetch",

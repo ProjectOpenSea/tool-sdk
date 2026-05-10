@@ -53,8 +53,6 @@ export type {
   VerifiableConfig,
 } from "./lib/manifest/verifiability.js"
 export { defineVerifiability } from "./lib/manifest/verifiability.js"
-export type { NFTGateConfig } from "./lib/middleware/nft-gate.js"
-export { nftGate } from "./lib/middleware/nft-gate.js"
 export type { PredicateGateConfig } from "./lib/middleware/predicate-gate.js"
 export { predicateGate } from "./lib/middleware/predicate-gate.js"
 export type { WellKnownHandlerOptions } from "./lib/middleware/well-known.js"
@@ -112,19 +110,27 @@ export {
   ERC1155_KIND,
   SUBSCRIPTION_KIND,
 } from "./lib/onchain/access.js"
-export type { Deployment } from "./lib/onchain/chains.js"
+export type { Deployment, PredicateKind } from "./lib/onchain/chains.js"
 export {
   DELEGATE_REGISTRY,
   deploymentAddress,
   ERC721_OWNER_PREDICATE,
+  ERC721_OWNER_PREDICATE_V1,
   ERC1155_OWNER_PREDICATE,
+  getPredicateForRegistryVersion,
   TOOL_REGISTRY,
 } from "./lib/onchain/chains.js"
 export { computeManifestHash } from "./lib/onchain/hash.js"
-export type { PredicateClientConfig } from "./lib/onchain/predicate-clients.js"
+export type {
+  CompositeTerm,
+  PredicateClientConfig,
+} from "./lib/onchain/predicate-clients.js"
 export {
+  CompositeOp,
+  CompositePredicateClient,
   ERC721OwnerPredicateClient,
   ERC1155OwnerPredicateClient,
+  SubscriptionPredicateClient,
 } from "./lib/onchain/predicate-clients.js"
 export { ToolRegistryClient } from "./lib/onchain/registry.js"
 export { deriveSlug } from "./lib/utils.js"

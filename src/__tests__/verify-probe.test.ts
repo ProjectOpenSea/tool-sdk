@@ -48,6 +48,35 @@ describe("verify command endpoint probe", () => {
     logSpy.mockRestore()
   })
 
+  it("passes when probe returns 400 (request rejected)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes(".well-known")) {
+          return new Response(JSON.stringify(VALID_MANIFEST), { status: 200 })
+        }
+        return new Response(null, { status: 400 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { verifyCommand } = await import("../cli/commands/verify.js")
+
+    await verifyCommand.parseAsync([
+      "node",
+      "verify",
+      "https://test.example.com/.well-known/ai-tool/test-tool.json",
+    ])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Manifest verified successfully")
+    expect(output).toContain("PASS")
+    expect(output).toContain("request rejected by server")
+
+    logSpy.mockRestore()
+  })
+
   it("exits non-zero when probe returns 405", async () => {
     vi.stubGlobal(
       "fetch",

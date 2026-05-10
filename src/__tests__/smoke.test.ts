@@ -505,4 +505,240 @@ describe("smoke command", () => {
 
     logSpy.mockRestore()
   })
+
+  it("exits 0 with auth-OK message when 402 has valid accepts array and no explicit --expect", async () => {
+    const paywallBody = {
+      accepts: [
+        {
+          scheme: "exact",
+          network: "base",
+          maxAmountRequired: "100000",
+          resource: "https://example.com/api/invoke",
+          payTo: "0x1234567890abcdef1234567890abcdef12345678",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      ],
+    }
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify(paywallBody), { status: 402 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    await smokeCommand.parseAsync([
+      "node",
+      "smoke",
+      "--endpoint",
+      "https://example.com/api/invoke",
+    ])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Auth OK")
+    expect(output).toContain("paywall fired")
+    expect(output).not.toContain("FAIL")
+
+    logSpy.mockRestore()
+  })
+
+  it("exits 1 when 402 has valid accepts but --expect 200 is explicit", async () => {
+    const paywallBody = {
+      accepts: [
+        {
+          scheme: "exact",
+          network: "base",
+          maxAmountRequired: "100000",
+          resource: "https://example.com/api/invoke",
+          payTo: "0x1234567890abcdef1234567890abcdef12345678",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      ],
+    }
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify(paywallBody), { status: 402 })
+      }),
+    )
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    try {
+      await smokeCommand.parseAsync([
+        "node",
+        "smoke",
+        "--endpoint",
+        "https://example.com/api/invoke",
+        "--expect",
+        "200",
+      ])
+    } catch {
+      // expected process.exit
+    }
+
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("FAIL")
+    expect(errorOutput).toContain("Expected status 200, got 402")
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("exits 1 when 402 response has no accepts array", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify({ error: "payment required" }), {
+          status: 402,
+        })
+      }),
+    )
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    try {
+      await smokeCommand.parseAsync([
+        "node",
+        "smoke",
+        "--endpoint",
+        "https://example.com/api/invoke",
+      ])
+    } catch {
+      // expected process.exit
+    }
+
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("FAIL")
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("exits 1 when 402 response has empty accepts array", async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify({ accepts: [] }), { status: 402 })
+      }),
+    )
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    try {
+      await smokeCommand.parseAsync([
+        "node",
+        "smoke",
+        "--endpoint",
+        "https://example.com/api/invoke",
+      ])
+    } catch {
+      // expected process.exit
+    }
+
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("FAIL")
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("exits 0 when 402 with valid accepts and --expect 402", async () => {
+    const paywallBody = {
+      accepts: [
+        {
+          scheme: "exact",
+          network: "base",
+          maxAmountRequired: "100000",
+          resource: "https://example.com/api/invoke",
+          payTo: "0x1234567890abcdef1234567890abcdef12345678",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+      ],
+    }
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(null, { status: 401 })
+        }
+        return new Response(JSON.stringify(paywallBody), { status: 402 })
+      }),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = TEST_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { smokeCommand } = await import("../cli/commands/smoke.js")
+
+    await smokeCommand.parseAsync([
+      "node",
+      "smoke",
+      "--endpoint",
+      "https://example.com/api/invoke",
+      "--expect",
+      "402",
+    ])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("PASS")
+    expect(output).toContain("402")
+
+    logSpy.mockRestore()
+  })
 })

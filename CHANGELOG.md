@@ -1,5 +1,59 @@
 # @opensea/tool-sdk
 
+## 0.7.0
+
+### Minor Changes
+
+- 2391e1e: Add `--predicate-config` flag to `register` command (F4d)
+
+  When `--access-predicate <addr>` is supplied, the CLI now:
+
+  - Calls `name()` on the predicate to identify its type
+  - Displays the predicate name in the registration summary
+  - Accepts `--predicate-config <json>` to bundle predicate setup with registration
+    - ERC721OwnerPredicate: `--predicate-config '{"collections":["0x..."]}'`
+    - ERC1155OwnerPredicate: `--predicate-config '{"collection":"0x...","tokenIds":["1","2"]}'`
+  - Prints a warning if `--access-predicate` is used without `--predicate-config`, explaining that the tool will accept any caller until configured
+  - Validates `--access-predicate` addresses
+
+- 1be6808: Add `set-collections`, `get-collections`, and `set-collection-tokens` CLI commands (F4c)
+
+  - `set-collections <toolId> <addr...>` — set the ERC-721 collection gate list for an already-registered tool
+  - `get-collections <toolId>` — read the current ERC-721 collection gate list
+  - `set-collection-tokens <toolId> <addr> <tokenId...>` — set the ERC-1155 collection + token ID gate
+  - All commands auto-detect registry version and select the matching predicate deployment
+  - Supports `--dry-run`, `--wallet-provider`, `--rpc-url`, and `--network` options
+
+- 69b30ff: Fix `--nft-gate` broken end-to-end on Base mainnet (F4a)
+
+  The SDK hardcoded the v0.2 `ERC721OwnerPredicate` address, which is rejected by the live v0.1 registry on Base. The `register` command now queries the registry's `version()` and selects the matching predicate deployment automatically.
+
+  - Re-added `--nft-gate <collection>` to `register` with registry-version-aware predicate selection
+  - Added `ERC721_OWNER_PREDICATE_V1` deployment constant
+  - Added `getPredicateForRegistryVersion()` resolver
+  - Added `registryVersion` option to `PredicateClientConfig`
+  - Updated `tool-registry/README.md` and `SKILLS.md` with v0.1 predicate addresses
+
+- 2c1e552: Add `--auth siwe` flag to the `pay` CLI command. When set, uses `paidAuthenticatedFetch` (SIWE + x402 payment) instead of payment-only flow. Also auto-enables SIWE auth when `--manifest` points to a manifest with an `access` block.
+- 53a49cf: Remove deprecated `nftGate` middleware and `--nft-gate` CLI flag behavior
+
+  - Removed `nftGate` middleware (`src/lib/middleware/nft-gate.ts`) and its `NFTGateConfig` type
+  - Removed `nft` field from `ToolContext.gates` and `BypassGates`
+  - Re-added `--nft-gate` option to `register` with registry-version-aware predicate selection
+  - Use `predicateGate` with `--access-predicate` instead for all access gating middleware
+
+  **BREAKING:** `nftGate`, `NFTGateConfig`, and `ToolContext.gates.nft` are no longer exported. Migrate to `predicateGate({ toolId })`.
+
+- 91d95ba: Add `SubscriptionPredicateClient` and `CompositePredicateClient` typed clients matching `tool-registry` example predicates. Add missing `CollectionsSet` event to `ERC721OwnerPredicateABI`. Fix stale v0.1 predicate addresses in SKILLS.md examples.
+
+### Patch Changes
+
+- b02f9b0: Treat 4xx probe responses (e.g. 400 from Zod validation) as "endpoint reachable" instead of printing a misleading WARN. Only 5xx responses are flagged as failures.
+- cab7a72: Treat 402 with valid `accepts` array as auth-OK in `smoke` command
+
+  - When a paywalled tool returns 402 with payment requirements after SIWE auth, `smoke` now exits 0 and prints: "Auth OK — paywall fired (expected for paywalled tools)."
+  - The `--expect` flag no longer defaults to 200; when omitted, 402-with-accepts is auto-success. When explicitly set, the exact status code is asserted as before.
+
 ## 0.6.0
 
 ### Minor Changes

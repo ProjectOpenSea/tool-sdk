@@ -241,6 +241,14 @@ export const IAccessPredicateABI = [
 
 export const ERC721OwnerPredicateABI = [
   {
+    type: "event",
+    name: "CollectionsSet",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "collections", type: "address[]", indexed: false },
+    ],
+  },
+  {
     type: "function",
     name: "setCollections",
     inputs: [

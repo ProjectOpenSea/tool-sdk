@@ -29,8 +29,11 @@ This SDK is for tool *providers and consumers*. If you just want to query OpenSe
 | Contract | Address |
 |----------|---------|
 | ToolRegistry (v0.1) | `0x7291BbFbC368C2D478eCe1eA30de31F612a34856` |
+| ERC721OwnerPredicate (v0.1) | `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` |
 | ERC721OwnerPredicate (v0.2) | `0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769` |
 | ERC1155OwnerPredicate (v0.2) | `0xc179b9d4D9B7ffe0CdA608134729f72003380A7e` |
+
+> The v0.1 registry validates predicates via `supportsInterface(0xa11ea958)`. Use v0.1 predicates with the v0.1 registry. The SDK's `--nft-gate` flag auto-detects the registry version and selects the correct predicate.
 
 ---
 
@@ -138,13 +141,7 @@ npx @opensea/tool-sdk register \
   --metadata https://my-tool.example.com/.well-known/ai-tool/my-tool.json \
   --network base
 
-# Register with NFT gate (ERC-721 collection)
-npx @opensea/tool-sdk register \
-  --metadata https://my-tool.example.com/.well-known/ai-tool/my-tool.json \
-  --network base \
-  --nft-gate 0xCOLLECTION_ADDRESS
-
-# Register with a custom access predicate
+# Register with an access predicate
 npx @opensea/tool-sdk register \
   --metadata https://my-tool.example.com/.well-known/ai-tool/my-tool.json \
   --network base \
@@ -551,7 +548,8 @@ Grants access to holders of any configured ERC-721 collection (`balanceOf > 0`).
 
 | Field | Value |
 |-------|-------|
-| Address | `0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769` |
+| Address (v0.1) | `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` |
+| Address (v0.2) | `0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769` |
 | Requirement `kind` | `0xbdf8c428` (`IERC721Holding` interface ID) |
 | Requirement `data` | `abi.encode(address collection)` |
 | Logic | `OR` (any one collection suffices) |
@@ -559,11 +557,15 @@ Grants access to holders of any configured ERC-721 collection (`balanceOf > 0`).
 
 **Register + configure via CLI:**
 ```bash
-# Registers the tool with ERC721OwnerPredicate and configures the collection in one flow
+# Register the tool with ERC721OwnerPredicate (auto-detects v0.1/v0.2 from registry)
 npx @opensea/tool-sdk register \
   --metadata https://my-tool.example.com/.well-known/ai-tool/my-tool.json \
   --network base \
-  --nft-gate 0xCOLLECTION_ADDRESS
+  --nft-gate 0xYOUR_COLLECTION_ADDRESS
+
+# Or specify the predicate address manually with bundled config:
+# --access-predicate 0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88 \
+#   --predicate-config '{"collections":["0xYOUR_COLLECTION_ADDRESS"]}'
 ```
 
 **Configure via SDK (after registration):**
@@ -666,29 +668,52 @@ const accessCustom = predicate.toManifestAccess("0xCOLLECTION_ADDRESS", 1n, { la
 
 ### SubscriptionPredicate
 
-Grants access based on ERC-5643 subscription NFTs with optional tier gating.
+Grants access based on ERC-5643 subscription NFTs with optional tier gating. No canonical deployment — each tool creator deploys their own instance.
 
 | Field | Value |
 |-------|-------|
 | Requirement `kind` | `0x44387cc2` (`ISubscription` interface ID) |
 | Requirement `data` | `abi.encode(address collection, uint8 minTier)` |
+| Logic | `AND` |
 
 **Configure via SDK (after deploying the predicate):**
 ```typescript
-// 1. Register tool with subscriptionPredicate as the accessPredicate
-const { toolId } = await registry.registerTool({
-  metadataURI: "...",
-  manifest,
-  accessPredicate: subscriptionPredicateAddress,
+import { SubscriptionPredicateClient, walletAdapterToClient, createWalletFromEnv } from "@opensea/tool-sdk"
+import { base } from "viem/chains"
+
+const adapter = createWalletFromEnv()
+const walletClient = await walletAdapterToClient(adapter, base)
+
+const predicate = new SubscriptionPredicateClient({
+  predicateAddress: "0xYOUR_SUBSCRIPTION_PREDICATE",
+  walletClient,
 })
 
-// 2. Configure which subscription NFT gates the tool
-// (call configureToolGating on the SubscriptionPredicate contract)
+const toolId = 1n // obtained from registerTool()
+
+// Configure which subscription NFT collection gates the tool (minTier 0 = any active sub)
+await predicate.configureToolGating(toolId, "0xSUBSCRIPTION_NFT_COLLECTION", 0)
+```
+
+**Check subscription status:**
+```typescript
+const status = await predicate.getSubscriptionStatus(toolId, "0xUSER_ADDRESS")
+// { hasNft, tier, requiredTier, expiration, active }
+```
+
+**Generate manifest access via SDK:**
+```typescript
+const access = predicate.toManifestAccess("0xSUBSCRIPTION_NFT_COLLECTION", 0)
+```
+
+With a custom label and minimum tier:
+```typescript
+const access = predicate.toManifestAccess("0xCOLLECTION", 2, { label: "Pro subscription required" })
 ```
 
 ### CompositePredicate
 
-Combines up to 3 leaf predicates under AND-all or OR-any with optional per-term negation.
+Combines up to 3 leaf predicates under AND-all or OR-any with optional per-term negation. No canonical deployment — each tool creator deploys their own instance.
 
 | Field | Value |
 |-------|-------|
@@ -697,20 +722,40 @@ Combines up to 3 leaf predicates under AND-all or OR-any with optional per-term 
 | Negation | Per-term `negate` flag |
 | Fail behavior | Fail-closed (sub-call failure = `false` before negation) |
 
-**Example: "owns ERC-721 X **OR** has active subscription Y"**
+**Configure via SDK (after deploying the predicate):**
+```typescript
+import { CompositePredicateClient, CompositeOp, walletAdapterToClient, createWalletFromEnv } from "@opensea/tool-sdk"
+import { base } from "viem/chains"
+
+const adapter = createWalletFromEnv()
+const walletClient = await walletAdapterToClient(adapter, base)
+
+const composite = new CompositePredicateClient({
+  predicateAddress: "0xYOUR_COMPOSITE_PREDICATE",
+  walletClient,
+})
 ```
-CompositePredicate.setComposition(toolId, Op.ANY, [
-  { predicate: ERC721OwnerPredicate, negate: false },
-  { predicate: SubscriptionPredicate, negate: false },
+
+**Example: "owns ERC-721 X **OR** has active subscription Y"**
+```typescript
+await composite.setComposition(toolId, CompositeOp.ANY, [
+  { predicate: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769", negate: false },
+  { predicate: "0xYOUR_SUBSCRIPTION_PREDICATE", negate: false },
 ])
 ```
 
 **Example: "owns ERC-721 X **AND NOT** owns ERC-1155 Z"**
-```
-CompositePredicate.setComposition(toolId, Op.ALL, [
-  { predicate: ERC721OwnerPredicate, negate: false },
-  { predicate: ERC1155OwnerPredicate, negate: true },
+```typescript
+await composite.setComposition(toolId, CompositeOp.ALL, [
+  { predicate: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769", negate: false },
+  { predicate: "0xc179b9d4D9B7ffe0CdA608134729f72003380A7e", negate: true },
 ])
+```
+
+**Read current composition:**
+```typescript
+const op = await composite.getOp(toolId)     // CompositeOp.ALL or CompositeOp.ANY
+const terms = await composite.getTerms(toolId) // [{ predicate, negate }]
 ```
 
 ### SDK Helpers for Reading Predicate Requirements
@@ -797,16 +842,19 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `validate` | Validate a manifest file |
 | `hash` | Compute the JCS keccak256 hash of a manifest |
 | `export` | Export the manifest as JSON |
-| `register` | Register a tool onchain |
+| `register` | Register a tool onchain. Supports `--predicate-config` to bundle predicate setup with registration |
 | `update-metadata` | Update a tool's metadata URI and manifest hash onchain |
 | `inspect` | Look up a tool's onchain config by ID |
 | `verify` | Verify a manifest against its onchain hash |
 | `deploy` | Deploy a tool to Vercel |
 | `auth` | Call a predicate-gated tool (SIWE) |
-| `pay` | Call an x402-paid tool (USDC) |
+| `pay` | Call an x402-paid tool (USDC), with optional `--auth siwe` for predicate-gated endpoints |
 | `smoke` | Auto-detect gate type and call |
 | `dry-run-gate` | Simulate an x402 gate check locally |
 | `dry-run-predicate-gate` | Simulate a predicate gate check locally |
+| `set-collections` | Set ERC-721 collection gate list for a tool |
+| `get-collections` | Read ERC-721 collection gate list for a tool |
+| `set-collection-tokens` | Set ERC-1155 collection + token ID gate for a tool |
 
 All CLI commands accept `--wallet-provider privy|turnkey|fireblocks|private-key` or auto-detect from env vars.
 
@@ -845,11 +893,16 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk pay \
 ### Example C: NFT-gated tool (identity check, no payment)
 
 ```bash
-# Register with NFT gate
+# Register with ERC721OwnerPredicate (auto-detects v0.1/v0.2 from registry)
 PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
   --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
   --network base \
-  --nft-gate 0xCOLLECTION
+  --nft-gate 0xYOUR_COLLECTION_ADDRESS
+
+# Configure which collection(s) gate the tool (required after register):
+cast send <PREDICATE_ADDRESS> "setCollections(uint256,address[])" \
+  <TOOL_ID> "[0xYOUR_COLLECTION_ADDRESS]" \
+  --rpc-url https://mainnet.base.org --private-key $PRIVATE_KEY
 
 # Server: add predicateGate (see Section 4a)
 
@@ -866,7 +919,7 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 # Server: add both predicateGate and paywall.gate (see Section 5a)
 # Call via CLI:
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
-  npx @opensea/tool-sdk smoke \
-  --endpoint https://my-tool.vercel.app/api \
-  --expect 200
+  npx @opensea/tool-sdk pay --auth siwe \
+  https://my-tool.vercel.app/api \
+  --body '{"query": "hello"}'
 ```

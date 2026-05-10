@@ -5,28 +5,11 @@ import {
   authenticatedFetch,
   createSiweMessage,
 } from "../lib/client/siwe-auth.js"
-import type { ToolContext } from "../types.js"
-
-const mockReadContract = vi.fn().mockResolvedValue(1n)
-const mockVerifySiweMessage = vi.fn().mockResolvedValue(true)
-
-vi.mock("viem", async importOriginal => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...actual,
-    createPublicClient: () => ({
-      readContract: mockReadContract,
-      verifySiweMessage: mockVerifySiweMessage,
-    }),
-  }
-})
 
 const account = privateKeyToAccount(generatePrivateKey())
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  mockReadContract.mockClear()
-  mockVerifySiweMessage.mockClear()
 })
 
 describe("createSiweMessage", () => {
@@ -183,29 +166,5 @@ describe("authenticatedFetch", () => {
     expect(headers.get("Content-Type")).toBe("application/json")
     expect(headers.get("X-Custom")).toBe("value")
     expect(headers.get("Authorization")).toMatch(/^SIWE /)
-  })
-
-  it("round-trips with SIWE gate middleware (nftGate; same auth format as predicateGate)", async () => {
-    const { nftGate } = await import("../lib/middleware/nft-gate.js")
-
-    let capturedRequest: Request | undefined
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      capturedRequest = new Request(url, init)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
-    })
-    vi.stubGlobal("fetch", fetchMock)
-
-    await authenticatedFetch("https://example.com/api", { account })
-
-    expect(capturedRequest).toBeTruthy()
-
-    const gate = nftGate({
-      collection: "0x1234567890abcdef1234567890abcdef12345678",
-    })
-    const ctx: Partial<ToolContext> = { gates: {} }
-    const gateResult = await gate.check(capturedRequest!, ctx)
-
-    expect(gateResult).toBeNull()
-    expect(ctx.callerAddress).toBe(account.address)
   })
 })

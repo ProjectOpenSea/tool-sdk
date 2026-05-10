@@ -9,28 +9,11 @@ import {
   authenticatedFetch,
   createSiweAuthHeader,
 } from "../lib/client/siwe-auth.js"
-import type { ToolContext } from "../types.js"
-
-const mockReadContract = vi.fn().mockResolvedValue(1n)
-const mockVerifySiweMessage = vi.fn().mockResolvedValue(true)
-
-vi.mock("viem", async importOriginal => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...actual,
-    createPublicClient: () => ({
-      readContract: mockReadContract,
-      verifySiweMessage: mockVerifySiweMessage,
-    }),
-  }
-})
 
 const localAccount = privateKeyToAccount(generatePrivateKey())
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  mockReadContract.mockClear()
-  mockVerifySiweMessage.mockClear()
 })
 
 describe("createSiweAuthHeader", () => {
@@ -229,41 +212,6 @@ describe("external signer + authenticatedFetch round-trip", () => {
     expect(parsed.address).toBe(localAccount.address)
     expect(parsed.domain).toBe("tool.example.com")
     expect(signature).toMatch(/^0x[0-9a-f]+$/i)
-  })
-
-  it("round-trips with nftGate middleware (same auth format as predicateGate)", async () => {
-    const { nftGate } = await import("../lib/middleware/nft-gate.js")
-
-    const externalAccount = createExternalSignerAccount({
-      address: localAccount.address,
-      signMessage: async message => {
-        return localAccount.signMessage({ message })
-      },
-    })
-
-    let capturedRequest: Request | undefined
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        capturedRequest = new Request(url, init)
-        return new Response(JSON.stringify({ ok: true }), { status: 200 })
-      }),
-    )
-
-    await authenticatedFetch("https://example.com/api", {
-      account: externalAccount,
-    })
-
-    expect(capturedRequest).toBeTruthy()
-
-    const gate = nftGate({
-      collection: "0x1234567890abcdef1234567890abcdef12345678",
-    })
-    const ctx: Partial<ToolContext> = { gates: {} }
-    const gateResult = await gate.check(capturedRequest!, ctx)
-
-    expect(gateResult).toBeNull()
-    expect(ctx.callerAddress).toBe(localAccount.address)
   })
 })
 
