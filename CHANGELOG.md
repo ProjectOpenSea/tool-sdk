@@ -1,5 +1,16 @@
 # @opensea/tool-sdk
 
+## 0.7.1
+
+### Patch Changes
+
+- 0bb20ac: docs: update README and SKILLS.md for F4a–F4g changes
+
+  - README: document `--nft-gate`, `--predicate-config`, `--wallet-provider`, `--rpc-url` flags on `register`
+  - README: document `--auth siwe`, `--manifest`, `--chain` flags on `pay`
+  - README: add CLI reference sections for `smoke`, `set-collections`, `get-collections`, `set-collection-tokens`
+  - SKILLS.md: replace `cast send` with `set-collections` CLI in Example C
+
 ## 0.7.0
 
 ### Minor Changes

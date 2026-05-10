@@ -79,14 +79,18 @@ Register a tool onchain via the ToolRegistry contract.
 PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
   --metadata <url> \
   --network base \
-  --access-predicate 0x...  # optional: access predicate address
+  --nft-gate 0xCOLLECTION  # optional: gate via ERC721OwnerPredicate
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--metadata <url>` | Metadata URI (required) |
 | `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--access-predicate <address>` | Access predicate address |
+| `--nft-gate <address>` | ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry) |
+| `--access-predicate <address>` | Access predicate address (mutually exclusive with `--nft-gate`) |
+| `--predicate-config <json>` | JSON config for the access predicate (e.g. `'{"collections":["0x..."]}'`). Bundles predicate setup with registration |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint for gas estimation and tx broadcast |
 | `--dry-run` | Print summary without transacting |
 | `-y, --yes` | Skip confirmation prompt |
 
@@ -143,16 +147,24 @@ npx @opensea/tool-sdk deploy --host vercel --non-interactive -y
 
 ### `pay <url>`
 
-Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements, signs an EIP-3009 `transferWithAuthorization`, and replays the request with the `X-Payment` header.
+Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements, signs an EIP-3009 `transferWithAuthorization`, and replays the request with the `X-Payment` header. Optionally includes SIWE authentication for predicate-gated endpoints.
 
 ```bash
 npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
   --body '{"query":"hello"}'
+
+# Combined payment + SIWE auth (for predicate-gated paid tools):
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
+  npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
+  --auth siwe --body '{"query":"hello"}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
+| `--auth <type>` | Authentication type (`siwe`). Auto-enabled when manifest declares an access block |
+| `--manifest <path>` | Path to tool manifest (JSON or TS). If it declares an access block, SIWE auth is auto-enabled |
+| `--chain <name>` | Chain for SIWE message (default: `base`) |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
 
 ### `auth <url>`
@@ -200,9 +212,79 @@ npx @opensea/tool-sdk dry-run-predicate-gate \
 | `--tool-id <id>` | Onchain tool ID to configure in the gate |
 | `--input <json>` | JSON input body (inline or `@path`) |
 
+### `smoke`
+
+Smoke-test a live tool endpoint: SIWE-sign, send an authenticated request, and assert the HTTP status. Classifies 402 as "auth passed, payment required" for paywalled tools.
+
+```bash
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
+  npx @opensea/tool-sdk smoke \
+  --endpoint https://my-tool.vercel.app/api/tool \
+  --tool-id 4 \
+  --input '{"query":"hello"}'
+```
+
+| Flag | Description |
+|------|-------------|
+| `--endpoint <url>` | Production endpoint URL (required) |
+| `--tool-id <id>` | Onchain tool ID (included in log output) |
+| `--input <json>` | JSON body (inline or `@path`; default: `{}`) |
+| `--expect <status>` | Expected HTTP status code |
+| `--chain <name>` | Chain for wallet client and SIWE message (default: `base`) |
+| `--paid` | Handle x402 payment challenge after SIWE authentication |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--max-amount <amount>` | Maximum payment amount in base units (default: `1000000` = 1 USDC) |
+
+### `set-collections <toolId> <addresses...>`
+
+Set the ERC-721 collection gate list for an already-registered tool.
+
+```bash
+PRIVATE_KEY=0x... npx @opensea/tool-sdk set-collections 4 \
+  0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9 \
+  --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint |
+| `--dry-run` | Print encoded calldata without transacting |
+
+### `get-collections <toolId>`
+
+Read the ERC-721 collection gate list for a registered tool (read-only).
+
+```bash
+npx @opensea/tool-sdk get-collections 4 --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--rpc-url <url>` | RPC endpoint |
+
+### `set-collection-tokens <toolId> <address> <tokenIds...>`
+
+Set the ERC-1155 collection + token ID gate for an already-registered tool.
+
+```bash
+PRIVATE_KEY=0x... npx @opensea/tool-sdk set-collection-tokens 4 \
+  0xCOLLECTION_ADDRESS 1 2 3 \
+  --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint |
+| `--dry-run` | Print encoded calldata without transacting |
+
 ## Wallet Configuration
 
-All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`) need a wallet. You can configure one in two ways:
+All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`) need a wallet. You can configure one in two ways:
 
 1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
 2. **`--wallet-provider` flag** — explicitly select a provider by name.

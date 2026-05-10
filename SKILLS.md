@@ -899,10 +899,9 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
   --network base \
   --nft-gate 0xYOUR_COLLECTION_ADDRESS
 
-# Configure which collection(s) gate the tool (required after register):
-cast send <PREDICATE_ADDRESS> "setCollections(uint256,address[])" \
-  <TOOL_ID> "[0xYOUR_COLLECTION_ADDRESS]" \
-  --rpc-url https://mainnet.base.org --private-key $PRIVATE_KEY
+# Configure which collection(s) gate the tool (if not using --nft-gate):
+npx @opensea/tool-sdk set-collections <TOOL_ID> 0xYOUR_COLLECTION_ADDRESS \
+  --network base
 
 # Server: add predicateGate (see Section 4a)
 
