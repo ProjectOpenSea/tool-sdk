@@ -149,11 +149,13 @@ export async function describeToolAccess(
 export const ERC721_KIND = "0xbdf8c428" as const
 export const ERC1155_KIND = "0xcb429230" as const
 export const SUBSCRIPTION_KIND = "0x44387cc2" as const
+export const WALLET_STATE_ATTESTATION_KIND = "0x7a111640" as const
 
 const KNOWN_KINDS = {
   [ERC721_KIND]: "erc721",
   [ERC1155_KIND]: "erc1155",
   [SUBSCRIPTION_KIND]: "subscription",
+  [WALLET_STATE_ATTESTATION_KIND]: "walletStateAttestation",
 } as const
 
 export type DecodedERC721Requirement = {
@@ -173,6 +175,12 @@ export type DecodedSubscriptionRequirement = {
   minTier: number
 }
 
+export type DecodedWalletStateAttestationRequirement = {
+  type: "walletStateAttestation"
+  issuerJwksUri: string
+  conditionHash: `0x${string}`
+}
+
 export type DecodedUnknownRequirement = {
   type: "unknown"
   kind: `0x${string}`
@@ -183,6 +191,7 @@ export type DecodedRequirement =
   | DecodedERC721Requirement
   | DecodedERC1155Requirement
   | DecodedSubscriptionRequirement
+  | DecodedWalletStateAttestationRequirement
   | DecodedUnknownRequirement
 
 /**
@@ -216,6 +225,14 @@ export function decodeRequirement(req: AccessRequirementInfo): DecodedRequiremen
       req.data,
     )
     return { type: "subscription", collection, minTier }
+  }
+
+  if (knownType === "walletStateAttestation") {
+    const [issuerJwksUri, conditionHash] = decodeAbiParameters(
+      [{ type: "string" }, { type: "bytes32" }],
+      req.data,
+    )
+    return { type: "walletStateAttestation", issuerJwksUri, conditionHash }
   }
 
   return { type: "unknown", kind: req.kind, data: req.data }

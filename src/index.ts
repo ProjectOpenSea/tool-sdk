@@ -99,6 +99,7 @@ export type {
   DecodedRequirement,
   DecodedSubscriptionRequirement,
   DecodedUnknownRequirement,
+  DecodedWalletStateAttestationRequirement,
   DescribeToolAccessOptions,
   ToolAccessDescription,
 } from "./lib/onchain/access.js"
@@ -109,6 +110,7 @@ export {
   ERC721_KIND,
   ERC1155_KIND,
   SUBSCRIPTION_KIND,
+  WALLET_STATE_ATTESTATION_KIND,
 } from "./lib/onchain/access.js"
 export type { Deployment, PredicateKind } from "./lib/onchain/chains.js"
 export {

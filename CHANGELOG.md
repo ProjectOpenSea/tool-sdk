@@ -1,5 +1,16 @@
 # @opensea/tool-sdk
 
+## 0.8.0
+
+### Minor Changes
+
+- 6eacfbe: Add `IWalletStateAttestation` requirement type support (kind `0x7a111640`)
+
+  - New `WALLET_STATE_ATTESTATION_KIND` constant and `DecodedWalletStateAttestationRequirement` type
+  - `decodeRequirement()` now decodes wallet-state attestation data (`issuerJwksUri`, `conditionHash`)
+  - CLI `inspect` command displays decoded attestation fields for `WalletStateAttestationPredicate`
+  - SKILLS.md updated with WalletStateAttestation predicate documentation
+
 ## 0.7.1
 
 ### Patch Changes
