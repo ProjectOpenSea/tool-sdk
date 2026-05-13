@@ -109,11 +109,16 @@ export async function describeToolAccess(
 
   let predicateName: string | null = null
   try {
-    predicateName = await publicClient.readContract({
+    const rawName = await publicClient.readContract({
       address: config.accessPredicate,
       abi: IAccessPredicateABI,
       functionName: "name",
     })
+    if (utf8ByteLength(rawName) <= MAX_NAME_BYTES) {
+      predicateName = rawName
+    }
+    // Over-cap name() is treated as if the contract did not implement the
+    // function, per ERC §Predicate Introspection Hardening.
   } catch {
     // Predicate doesn't implement name() — degrade gracefully
   }
@@ -127,11 +132,7 @@ export async function describeToolAccess(
       functionName: "getRequirements",
       args: [opts.toolId],
     })
-    requirements = result[0].map((r) => ({
-      kind: r.kind,
-      data: r.data,
-      label: r.label,
-    }))
+    requirements = boundRequirements(result[0])
     logic = result[1] === 0 ? "AND" : "OR"
   } catch {
     // Predicate doesn't implement getRequirements() — degrade gracefully
@@ -144,6 +145,50 @@ export async function describeToolAccess(
     requirements,
     logic,
   }
+}
+
+/**
+ * Consumer-side ceilings on `getRequirements()` return values, mirroring the
+ * onchain caps from ERC-8257 §Predicate Introspection Hardening. The SDK
+ * enforces these defensively against arbitrary predicate code so a malicious
+ * predicate cannot grief discovery surfaces with megabyte-scale returns.
+ */
+const MAX_REQUIREMENTS_ENTRIES = 256
+const MAX_REQUIREMENT_DATA_BYTES = 4096
+const MAX_REQUIREMENT_LABEL_BYTES = 256
+const MAX_NAME_BYTES = 256
+
+/**
+ * Sentinel `kind` substituted for an over-cap requirement entry, per the ERC's
+ * §Rationale > "getRequirements is advisory; hasAccess is the source of truth".
+ */
+const SENTINEL_KIND = "0x00000000" as `0x${string}`
+
+function utf8ByteLength(s: string): number {
+  return new TextEncoder().encode(s).length
+}
+
+function hexByteLength(hex: `0x${string}`): number {
+  return Math.max(0, (hex.length - 2) / 2)
+}
+
+function boundRequirements(
+  raw: readonly { kind: `0x${string}`; data: `0x${string}`; label: string }[],
+): AccessRequirementInfo[] {
+  // Length cap: a predicate returning more than the cap is grossly
+  // non-conformant; fail closed rather than truncate so consumers don't
+  // silently inspect a subset.
+  if (raw.length > MAX_REQUIREMENTS_ENTRIES) return []
+
+  return raw.map((r) => {
+    if (
+      hexByteLength(r.data) > MAX_REQUIREMENT_DATA_BYTES ||
+      utf8ByteLength(r.label) > MAX_REQUIREMENT_LABEL_BYTES
+    ) {
+      return { kind: SENTINEL_KIND, data: "0x", label: "" }
+    }
+    return { kind: r.kind, data: r.data, label: r.label }
+  })
 }
 
 export const ERC721_KIND = "0xbdf8c428" as const

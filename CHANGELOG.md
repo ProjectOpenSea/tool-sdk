@@ -1,5 +1,23 @@
 # @opensea/tool-sdk
 
+## 0.8.1
+
+### Patch Changes
+
+- 8bac936: Enforce ERC-8257 §Predicate Introspection Hardening ceilings in `describeToolAccess`
+
+  `describeToolAccess` now defensively bounds the values it reads from an arbitrary access predicate so a malicious predicate cannot grief discovery surfaces with megabyte-scale returns:
+
+  - `getRequirements()` array with more than 256 entries → empty array (fail closed)
+  - Individual requirement with `data` over 4096 bytes or `label` over 256 UTF-8 bytes → substituted with the kind sentinel `0x00000000`
+  - `name()` over 256 UTF-8 bytes → treated as if the predicate did not implement `name()` (returns `null`)
+
+  The caps mirror the existing manifest-side bounds in `schema.ts` so onchain and offchain views of the same data have the same upper bounds.
+
+- f539375: Fix `inspect` CLI to dispatch wallet-state-attestation rendering on requirement `kind`, not predicate `name()`
+
+  The previous dispatch keyed on `predicateName === "WalletStateAttestationPredicate"`, which never matches a real deployment — third-party attestation issuers pick their own `name()` (e.g., the reference implementation returns `"InsumerAccessPredicate"`). The decoder is already keyed on `kind` (`0x7a111640`); the inspect renderer now matches.
+
 ## 0.8.0
 
 ### Minor Changes

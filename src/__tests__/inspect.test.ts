@@ -1,3 +1,4 @@
+import { encodeAbiParameters } from "viem"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { computeManifestHash } from "../lib/onchain/hash.js"
 
@@ -192,6 +193,65 @@ describe("inspect command", () => {
     expect(output).toContain("Token IDs: 1, 2")
     expect(output).toContain(`[1] ${collectionB}`)
     expect(output).toContain("Token IDs: 42")
+
+    logSpy.mockRestore()
+  })
+
+  it("renders wallet-state-attestation requirement fields when predicate name() is third-party", async () => {
+    // Reference impl from douglasborthwick-crypto/insumer-examples returns
+    // "InsumerAccessPredicate", not "WalletStateAttestationPredicate" — the
+    // renderer must dispatch on the requirement's kind (0x7a111640), not the
+    // predicate's name.
+    const predicateAddress = "0x1111111111111111111111111111111111111111"
+    const issuerJwksUri = "https://issuer.example.com/.well-known/jwks.json"
+    const conditionHash =
+      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" as const
+
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      metadataURI: "https://example.com/manifest.json",
+      manifestHash: MANIFEST_HASH,
+      accessPredicate: predicateAddress,
+    })
+
+    const data = encodeAbiParameters(
+      [{ type: "string" }, { type: "bytes32" }],
+      [issuerJwksUri, conditionHash],
+    )
+
+    mockReadContract
+      .mockResolvedValueOnce("InsumerAccessPredicate")
+      .mockResolvedValueOnce([
+        [
+          {
+            kind: "0x7a111640",
+            data,
+            label: "Cross-chain wallet attestation",
+          },
+        ],
+        0,
+      ])
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+      ),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+
+    const output = logSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(output).toContain("Predicate name:   InsumerAccessPredicate")
+    expect(output).toContain("Access requirements (AND, advisory):")
+    expect(output).toContain("walletStateAttestation")
+    expect(output).toContain(`issuerJwksUri:  ${issuerJwksUri}`)
+    expect(output).toContain(`conditionHash:  ${conditionHash}`)
 
     logSpy.mockRestore()
   })

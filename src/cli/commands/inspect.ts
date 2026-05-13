@@ -150,36 +150,6 @@ export const inspectCommand = new Command("inspect")
             ),
           )
         }
-      } else if (predicateName === "WalletStateAttestationPredicate") {
-        try {
-          const [requirements] = await publicClient.readContract({
-            address: config.accessPredicate,
-            abi: IAccessPredicateABI,
-            functionName: "getRequirements",
-            args: [toolId],
-          })
-          for (let i = 0; i < requirements.length; i++) {
-            const r = requirements[i]
-            const decoded = decodeRequirement(r)
-            console.log(`  Attestation requirement [${i}]:`)
-            console.log(`    Label: ${r.label || "<no label>"}`)
-            if (decoded.type === "walletStateAttestation") {
-              console.log(`    Issuer JWKS: ${decoded.issuerJwksUri}`)
-              console.log(`    Condition hash: ${decoded.conditionHash}`)
-            } else {
-              console.log(`    Kind:  ${r.kind}`)
-              if (r.data !== "0x") {
-                console.log(`    Data:  ${r.data}`)
-              }
-            }
-          }
-        } catch (err) {
-          console.error(
-            pc.yellow(
-              `  Warning: Failed to read attestation config: ${err instanceof Error ? err.message : String(err)}`,
-            ),
-          )
-        }
       } else if (predicateName === "CompositePredicate") {
         try {
           const [op, terms] = await Promise.all([
@@ -210,7 +180,11 @@ export const inspectCommand = new Command("inspect")
           )
         }
       } else {
-        // Unknown predicate — show advisory getRequirements output
+        // Fall through to generic getRequirements()-based introspection.
+        // Dispatch on each requirement's kind, not the predicate's name —
+        // third-party predicates (e.g. attestation issuers) pick their own
+        // name() but the kind selector is the stable identifier for the
+        // requirement shape.
         try {
           const [requirements, logic] = await publicClient.readContract({
             address: config.accessPredicate,
@@ -226,10 +200,19 @@ export const inspectCommand = new Command("inspect")
             )
             for (let i = 0; i < requirements.length; i++) {
               const r = requirements[i]
+              const decoded = decodeRequirement(r)
               const label = r.label || "<no label>"
-              console.log(`    [${i}] kind: ${r.kind}  label: ${label}`)
-              if (r.data !== "0x") {
-                console.log(`         data: ${r.data}`)
+              if (decoded.type === "walletStateAttestation") {
+                console.log(
+                  `    [${i}] kind: ${r.kind} (walletStateAttestation)  label: ${label}`,
+                )
+                console.log(`         issuerJwksUri:  ${decoded.issuerJwksUri}`)
+                console.log(`         conditionHash:  ${decoded.conditionHash}`)
+              } else {
+                console.log(`    [${i}] kind: ${r.kind}  label: ${label}`)
+                if (r.data !== "0x") {
+                  console.log(`         data: ${r.data}`)
+                }
               }
             }
           }
