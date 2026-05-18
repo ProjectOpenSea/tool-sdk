@@ -27,7 +27,7 @@ Use predicate gating when access should be tied to **who the caller is**. Use x4
 
 Tool creators configure the predicate onchain (via `register --access-predicate` or direct contract calls). The `predicateGate` middleware picks it up at runtime — no code changes needed when the access policy changes.
 
-The `ERC721OwnerPredicate` is deployed on Base at `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` (see `src/lib/onchain/chains.ts`).
+The canonical `ERC721OwnerPredicate` (v0.2) is deployed on Ethereum mainnet + Base at `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` (see `src/lib/onchain/chains.ts`).
 
 ## Prerequisites
 
@@ -126,7 +126,7 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk registe
   --dry-run
 ```
 
-For ERC-721 gating, use the canonical `ERC721OwnerPredicate` deployed on Base at `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88`. After registration, call `setCollections(toolId, [collectionAddress])` on the predicate to configure which collections gate the tool.
+For ERC-721 gating, use the canonical v0.2 `ERC721OwnerPredicate` at `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` (Ethereum mainnet + Base). After registration, call `setCollections(toolId, [collectionAddress])` on the predicate to configure which collections gate the tool.
 
 ## Step 3: Verify the setup
 
@@ -141,7 +141,7 @@ This reads the tool config from the `ToolRegistry` and displays:
 - **Creator** — your wallet address
 - **Metadata URI** — the manifest URL
 - **Manifest Hash** — the onchain hash (cross-checked against the live manifest)
-- **Access Predicate** — should show the predicate address (e.g., `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` for ERC721OwnerPredicate)
+- **Access Predicate** — should show the predicate address (e.g., `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` for the v0.2 ERC721OwnerPredicate)
 
 ### Client-side access preview
 

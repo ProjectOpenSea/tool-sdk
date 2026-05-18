@@ -4,12 +4,10 @@ const mockGetCollections = vi.fn()
 const mockSetCollections = vi.fn()
 const mockSetCollectionTokens = vi.fn()
 const mockGetToolConfig = vi.fn()
-const mockVersion = vi.fn()
 
 vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
     getToolConfig = mockGetToolConfig
-    version = mockVersion
   },
 }))
 
@@ -55,7 +53,6 @@ afterEach(() => {
 
 describe("get-collections command", () => {
   it("prints collections for a tool using ERC721OwnerPredicate", async () => {
-    mockVersion.mockResolvedValueOnce("0.1")
     mockGetToolConfig.mockResolvedValueOnce({
       creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
       metadataURI: "https://example.com/manifest.json",
@@ -106,8 +103,6 @@ describe("get-collections command", () => {
 
 describe("set-collections command", () => {
   it("prints dry-run summary without transacting", async () => {
-    mockVersion.mockResolvedValueOnce("0.1")
-
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
 
     const { setCollectionsCommand } = await import(
@@ -125,7 +120,7 @@ describe("set-collections command", () => {
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("Set Collections")
     expect(output).toContain("Tool ID: 4")
-    expect(output).toContain("ERC721OwnerPredicate v0.1")
+    expect(output).toContain("ERC721OwnerPredicate")
     expect(output).toContain("0x07152bfde079b5319e5308C43fB1Dbc9C76cb4F9")
     expect(output).toContain("[dry-run]")
     expect(mockSetCollections).not.toHaveBeenCalled()
@@ -136,8 +131,6 @@ describe("set-collections command", () => {
 
 describe("set-collection-tokens command", () => {
   it("prints dry-run summary without transacting", async () => {
-    mockVersion.mockResolvedValueOnce("0.1")
-
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
 
     const { setCollectionTokensCommand } = await import(
@@ -158,7 +151,7 @@ describe("set-collection-tokens command", () => {
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("Set Collection Tokens")
     expect(output).toContain("Tool ID: 4")
-    expect(output).toContain("ERC1155OwnerPredicate v0.1")
+    expect(output).toContain("ERC1155OwnerPredicate")
     expect(output).toContain("0x07152bfde079b5319e5308C43fB1Dbc9C76cb4F9")
     expect(output).toContain("Token IDs: 1, 2, 3")
     expect(output).toContain("[dry-run]")

@@ -112,14 +112,12 @@ export {
   SUBSCRIPTION_KIND,
   WALLET_STATE_ATTESTATION_KIND,
 } from "./lib/onchain/access.js"
-export type { Deployment, PredicateKind } from "./lib/onchain/chains.js"
+export type { Deployment } from "./lib/onchain/chains.js"
 export {
   DELEGATE_REGISTRY,
   deploymentAddress,
   ERC721_OWNER_PREDICATE,
-  ERC721_OWNER_PREDICATE_V1,
   ERC1155_OWNER_PREDICATE,
-  getPredicateForRegistryVersion,
   TOOL_REGISTRY,
 } from "./lib/onchain/chains.js"
 export { computeManifestHash } from "./lib/onchain/hash.js"

@@ -3,10 +3,9 @@ import pc from "picocolors"
 import { type Address, getAddress } from "viem"
 import {
   deploymentAddress,
-  getPredicateForRegistryVersion,
+  ERC1155_OWNER_PREDICATE,
 } from "../../lib/onchain/chains.js"
 import { ERC1155OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
-import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -71,28 +70,11 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
         return
       }
 
-      const readOnlyRegistry = new ToolRegistryClient({
-        chain,
-        rpcUrl: options.rpcUrl,
-      })
-
-      let registryVersion: string
-      try {
-        registryVersion = await readOnlyRegistry.version()
-      } catch {
-        console.error(pc.red("Error: Failed to read registry version."))
-        process.exit(1)
-      }
-
-      const predicateDeploy = getPredicateForRegistryVersion(
-        registryVersion,
-        "erc1155",
-      )
-      const predicateAddr = deploymentAddress(predicateDeploy, chain.id)
+      const predicateAddr = deploymentAddress(ERC1155_OWNER_PREDICATE, chain.id)
       if (!predicateAddr) {
         console.error(
           pc.red(
-            `Error: ERC1155OwnerPredicate (v${registryVersion}) is not deployed on ${options.network}.`,
+            `Error: ERC1155OwnerPredicate is not deployed on ${options.network}.`,
           ),
         )
         process.exit(1)
@@ -101,9 +83,7 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
       console.log(pc.bold("Set Collection Tokens"))
       console.log(`  Tool ID: ${toolId}`)
       console.log(`  Network: ${options.network}`)
-      console.log(
-        `  Predicate: ${predicateAddr} (ERC1155OwnerPredicate v${registryVersion})`,
-      )
+      console.log(`  Predicate: ${predicateAddr} (ERC1155OwnerPredicate)`)
       console.log(`  Collection: ${collection}`)
       console.log(`  Token IDs: ${tokenIds.join(", ")}`)
 

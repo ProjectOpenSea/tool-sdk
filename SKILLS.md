@@ -24,16 +24,15 @@ This SDK is for tool *providers and consumers*. If you just want to query OpenSe
 
 ---
 
-## Deployed Contracts (Base mainnet)
+## Deployed Contracts (Ethereum mainnet + Base)
+
+Canonical v0.2 deployments — identical CREATE2 address on both chains.
 
 | Contract | Address |
 |----------|---------|
-| ToolRegistry (v0.1) | `0x7291BbFbC368C2D478eCe1eA30de31F612a34856` |
-| ERC721OwnerPredicate (v0.1) | `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` |
-| ERC721OwnerPredicate (v0.2) | `0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769` |
-| ERC1155OwnerPredicate (v0.2) | `0xc179b9d4D9B7ffe0CdA608134729f72003380A7e` |
-
-> The v0.1 registry validates predicates via `supportsInterface(0xa11ea958)`. Use v0.1 predicates with the v0.1 registry. The SDK's `--nft-gate` flag auto-detects the registry version and selects the correct predicate.
+| ToolRegistry (v0.2) | `0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1` |
+| ERC721OwnerPredicate (v0.2) | `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` |
+| ERC1155OwnerPredicate (v0.2) | `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11` |
 
 ---
 
@@ -434,7 +433,7 @@ When the predicate denies access, the server returns:
 {
   "error": "Predicate gate: access predicate denied",
   "toolId": "1",
-  "predicate": "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769"
+  "predicate": "0xc8721c9A776958FfFfEb602DA1b708bf1D318379"
 }
 ```
 
@@ -448,7 +447,7 @@ import { base } from "viem/chains"
 const client = createPublicClient({ chain: base, transport: http() })
 
 const [requirements, logic] = await client.readContract({
-  address: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769",
+  address: "0xc8721c9A776958FfFfEb602DA1b708bf1D318379",
   abi: IAccessPredicateABI,
   functionName: "getRequirements",
   args: [1n],  // toolId
@@ -540,7 +539,7 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 
 ## 6. Known Predicates
 
-These predicates are deployed on Base and available for any tool to use. They are multi-tenant: one deployment serves all tools, configured per `toolId`.
+These predicates are deployed on Ethereum mainnet and Base and available for any tool to use. They are multi-tenant: one deployment serves all tools, configured per `toolId`.
 
 ### ERC721OwnerPredicate
 
@@ -548,8 +547,7 @@ Grants access to holders of any configured ERC-721 collection (`balanceOf > 0`).
 
 | Field | Value |
 |-------|-------|
-| Address (v0.1) | `0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88` |
-| Address (v0.2) | `0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769` |
+| Address | `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` |
 | Requirement `kind` | `0xbdf8c428` (`IERC721Holding` interface ID) |
 | Requirement `data` | `abi.encode(address collection)` |
 | Logic | `OR` (any one collection suffices) |
@@ -557,14 +555,14 @@ Grants access to holders of any configured ERC-721 collection (`balanceOf > 0`).
 
 **Register + configure via CLI:**
 ```bash
-# Register the tool with ERC721OwnerPredicate (auto-detects v0.1/v0.2 from registry)
+# Register the tool with ERC721OwnerPredicate
 npx @opensea/tool-sdk register \
   --metadata https://my-tool.example.com/.well-known/ai-tool/my-tool.json \
   --network base \
   --nft-gate 0xYOUR_COLLECTION_ADDRESS
 
 # Or specify the predicate address manually with bundled config:
-# --access-predicate 0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88 \
+# --access-predicate 0xc8721c9A776958FfFfEb602DA1b708bf1D318379 \
 #   --predicate-config '{"collections":["0xYOUR_COLLECTION_ADDRESS"]}'
 ```
 
@@ -617,7 +615,7 @@ Grants access to holders of specific `(collection, tokenId)` pairs across ERC-11
 
 | Field | Value |
 |-------|-------|
-| Address | `0xc179b9d4D9B7ffe0CdA608134729f72003380A7e` |
+| Address | `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11` |
 | Requirement `kind` | `0xcb429230` (`IERC1155Holding` interface ID) |
 | Requirement `data` | `abi.encode(address collection, uint256 tokenId)` |
 | Logic | `OR` (any one entry suffices) |
@@ -739,7 +737,7 @@ const composite = new CompositePredicateClient({
 **Example: "owns ERC-721 X **OR** has active subscription Y"**
 ```typescript
 await composite.setComposition(toolId, CompositeOp.ANY, [
-  { predicate: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769", negate: false },
+  { predicate: "0xc8721c9A776958FfFfEb602DA1b708bf1D318379", negate: false },
   { predicate: "0xYOUR_SUBSCRIPTION_PREDICATE", negate: false },
 ])
 ```
@@ -747,8 +745,8 @@ await composite.setComposition(toolId, CompositeOp.ANY, [
 **Example: "owns ERC-721 X **AND NOT** owns ERC-1155 Z"**
 ```typescript
 await composite.setComposition(toolId, CompositeOp.ALL, [
-  { predicate: "0xd1F703D0B90BB7106fAebBfbcAdD2B07BDc4c769", negate: false },
-  { predicate: "0xc179b9d4D9B7ffe0CdA608134729f72003380A7e", negate: true },
+  { predicate: "0xc8721c9A776958FfFfEb602DA1b708bf1D318379", negate: false },
+  { predicate: "0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11", negate: true },
 ])
 ```
 
@@ -940,7 +938,7 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk pay \
 ### Example C: NFT-gated tool (identity check, no payment)
 
 ```bash
-# Register with ERC721OwnerPredicate (auto-detects v0.1/v0.2 from registry)
+# Register with ERC721OwnerPredicate
 PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
   --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
   --network base \

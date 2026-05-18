@@ -1,5 +1,26 @@
 # @opensea/tool-sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 427e093: Redeploy `ToolRegistry` + canonical predicates as v0.2 on Ethereum mainnet and Base. The v0.2 registry returns `version() == "0.2"` and accepts predicates that advertise IAccessPredicate interfaceId `0xbdf9dc18` (hasAccess + name + getRequirements).
+
+  New canonical addresses (identical on chain 1 and 8453):
+
+  - `ToolRegistry` v0.2: `0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1`
+  - `ERC721OwnerPredicate` v0.2: `0xc8721c9A776958FfFfEb602DA1b708bf1D318379`
+  - `ERC1155OwnerPredicate` v0.2: `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11`
+
+  Pre-beta: the previous v0.1 Base deployment is dropped from the SDK entirely. Removed from `@opensea/tool-sdk`:
+
+  - `ERC721_OWNER_PREDICATE_V1` (value export)
+  - `getPredicateForRegistryVersion` (function export)
+  - `PredicateKind` (type export)
+  - `PredicateClientConfig.registryVersion` (option)
+
+  The CLI commands (`register`, `set-collections`, `set-collection-tokens`, `get-collections`) no longer probe `registry.version()` to pick a predicate — they always use the canonical v0.2 predicate.
+
 ## 0.8.1
 
 ### Patch Changes

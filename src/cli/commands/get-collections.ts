@@ -3,7 +3,7 @@ import pc from "picocolors"
 import { zeroAddress } from "viem"
 import {
   deploymentAddress,
-  getPredicateForRegistryVersion,
+  ERC721_OWNER_PREDICATE,
 } from "../../lib/onchain/chains.js"
 import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
@@ -43,19 +43,7 @@ export const getCollectionsCommand = new Command("get-collections")
       return
     }
 
-    let registryVersion: string
-    try {
-      registryVersion = await registry.version()
-    } catch {
-      console.error(pc.red("Error: Failed to read registry version."))
-      process.exit(1)
-    }
-
-    const predicateDeploy = getPredicateForRegistryVersion(
-      registryVersion,
-      "erc721",
-    )
-    const predicateAddr = deploymentAddress(predicateDeploy, chain.id)
+    const predicateAddr = deploymentAddress(ERC721_OWNER_PREDICATE, chain.id)
 
     if (
       predicateAddr &&
@@ -69,9 +57,7 @@ export const getCollectionsCommand = new Command("get-collections")
 
       const collections = await client.getCollections(toolId)
       console.log(pc.bold(`Collections for tool ${toolId}:`))
-      console.log(
-        `  Predicate: ${predicateAddr} (ERC721OwnerPredicate v${registryVersion})`,
-      )
+      console.log(`  Predicate: ${predicateAddr} (ERC721OwnerPredicate)`)
       if (collections.length === 0) {
         console.log(
           pc.yellow("  No collections configured (gate accepts no one)."),

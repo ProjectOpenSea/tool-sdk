@@ -14,7 +14,7 @@ import { validateManifest } from "../../lib/manifest/index.js"
 import { IAccessPredicateABI } from "../../lib/onchain/abis.js"
 import {
   deploymentAddress,
-  getPredicateForRegistryVersion,
+  ERC721_OWNER_PREDICATE,
   TOOL_REGISTRY,
 } from "../../lib/onchain/chains.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
@@ -165,9 +165,7 @@ export const registerCommand = new Command("register")
 
     let accessPredicate =
       "0x0000000000000000000000000000000000000000" as `0x${string}`
-    let nftGateInfo:
-      | { predicateAddr: `0x${string}`; predicateVersion: string }
-      | undefined
+    let nftGateInfo: { predicateAddr: `0x${string}` } | undefined
 
     let predicateName: string | undefined
 
@@ -192,37 +190,11 @@ export const registerCommand = new Command("register")
         validatePredicateConfig(predicateName, predicateConfig)
       }
     } else if (options.nftGate) {
-      const readOnlyRegistry = new ToolRegistryClient({
-        chain,
-        rpcUrl: options.rpcUrl,
-      })
-
-      let registryVersion: string
-      try {
-        registryVersion = await readOnlyRegistry.version()
-      } catch {
-        console.error(
-          pc.red(
-            "Error: Failed to read registry version. Cannot auto-detect predicate version.",
-          ),
-        )
-        console.error(
-          pc.yellow(
-            "  Use --access-predicate to specify the predicate address manually.",
-          ),
-        )
-        process.exit(1)
-      }
-
-      const predicateDeploy = getPredicateForRegistryVersion(
-        registryVersion,
-        "erc721",
-      )
-      const predicateAddr = deploymentAddress(predicateDeploy, chain.id)
+      const predicateAddr = deploymentAddress(ERC721_OWNER_PREDICATE, chain.id)
       if (!predicateAddr) {
         console.error(
           pc.red(
-            `Error: ERC721OwnerPredicate (matching registry v${registryVersion}) is not deployed on ${options.network}.`,
+            `Error: ERC721OwnerPredicate is not deployed on ${options.network}.`,
           ),
         )
         console.error(
@@ -233,7 +205,7 @@ export const registerCommand = new Command("register")
         process.exit(1)
       }
       accessPredicate = predicateAddr
-      nftGateInfo = { predicateAddr, predicateVersion: registryVersion }
+      nftGateInfo = { predicateAddr }
     }
 
     const wallet = options.walletProvider
@@ -258,7 +230,7 @@ export const registerCommand = new Command("register")
     console.log(`  Manifest Hash: ${hash}`)
     if (nftGateInfo) {
       console.log(
-        `  Access Predicate: ${nftGateInfo.predicateAddr} (ERC721OwnerPredicate v${nftGateInfo.predicateVersion}, gating collection ${options.nftGate})`,
+        `  Access Predicate: ${nftGateInfo.predicateAddr} (ERC721OwnerPredicate, gating collection ${options.nftGate})`,
       )
     } else if (options.accessPredicate) {
       const label = predicateName

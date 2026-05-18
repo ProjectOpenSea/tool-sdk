@@ -3,10 +3,9 @@ import pc from "picocolors"
 import { type Address, getAddress } from "viem"
 import {
   deploymentAddress,
-  getPredicateForRegistryVersion,
+  ERC721_OWNER_PREDICATE,
 } from "../../lib/onchain/chains.js"
 import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
-import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -60,28 +59,11 @@ export const setCollectionsCommand = new Command("set-collections")
         process.exit(1)
       }
 
-      const readOnlyRegistry = new ToolRegistryClient({
-        chain,
-        rpcUrl: options.rpcUrl,
-      })
-
-      let registryVersion: string
-      try {
-        registryVersion = await readOnlyRegistry.version()
-      } catch {
-        console.error(pc.red("Error: Failed to read registry version."))
-        process.exit(1)
-      }
-
-      const predicateDeploy = getPredicateForRegistryVersion(
-        registryVersion,
-        "erc721",
-      )
-      const predicateAddr = deploymentAddress(predicateDeploy, chain.id)
+      const predicateAddr = deploymentAddress(ERC721_OWNER_PREDICATE, chain.id)
       if (!predicateAddr) {
         console.error(
           pc.red(
-            `Error: ERC721OwnerPredicate (v${registryVersion}) is not deployed on ${options.network}.`,
+            `Error: ERC721OwnerPredicate is not deployed on ${options.network}.`,
           ),
         )
         process.exit(1)
@@ -90,9 +72,7 @@ export const setCollectionsCommand = new Command("set-collections")
       console.log(pc.bold("Set Collections"))
       console.log(`  Tool ID: ${toolId}`)
       console.log(`  Network: ${options.network}`)
-      console.log(
-        `  Predicate: ${predicateAddr} (ERC721OwnerPredicate v${registryVersion})`,
-      )
+      console.log(`  Predicate: ${predicateAddr} (ERC721OwnerPredicate)`)
       console.log(`  Collections: ${collections.join(", ")}`)
 
       if (options.dryRun) {

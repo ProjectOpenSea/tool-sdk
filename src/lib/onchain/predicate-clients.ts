@@ -24,7 +24,6 @@ import {
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
   deploymentAddress,
-  getPredicateForRegistryVersion,
 } from "./chains.js"
 
 export interface PredicateClientConfig {
@@ -32,13 +31,6 @@ export interface PredicateClientConfig {
   rpcUrl?: string
   walletClient?: WalletClient<Transport, Chain, Account>
   predicateAddress?: `0x${string}`
-  /**
-   * Registry version string (e.g. "0.1", "0.2"). When set, the client
-   * resolves the predicate address from the version-aware mapping instead
-   * of using the default (latest) deployment. Ignored when
-   * `predicateAddress` is provided explicitly.
-   */
-  registryVersion?: string
 }
 
 abstract class BasePredicateClient {
@@ -51,7 +43,6 @@ abstract class BasePredicateClient {
     defaultDeployment: Deployment,
     contractName: string,
     config: PredicateClientConfig = {},
-    predicateKind?: "erc721" | "erc1155",
   ) {
     this.chain = config.chain ?? base
     this.walletClient = config.walletClient
@@ -59,11 +50,7 @@ abstract class BasePredicateClient {
     if (config.predicateAddress) {
       this.predicateAddress = config.predicateAddress
     } else {
-      const deployment =
-        config.registryVersion && predicateKind
-          ? getPredicateForRegistryVersion(config.registryVersion, predicateKind)
-          : defaultDeployment
-      const addr = deploymentAddress(deployment, this.chain.id)
+      const addr = deploymentAddress(defaultDeployment, this.chain.id)
       if (!addr) {
         throw new Error(
           `${contractName} is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/opensea-devtools/blob/main/packages/tool-registry/README.md for supported chains.`,
@@ -96,7 +83,7 @@ abstract class BasePredicateClient {
 
 export class ERC721OwnerPredicateClient extends BasePredicateClient {
   constructor(config: PredicateClientConfig = {}) {
-    super(ERC721_OWNER_PREDICATE, "ERC721OwnerPredicate", config, "erc721")
+    super(ERC721_OWNER_PREDICATE, "ERC721OwnerPredicate", config)
   }
 
   async getCollections(toolId: bigint): Promise<Address[]> {
@@ -185,7 +172,7 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
 
 export class ERC1155OwnerPredicateClient extends BasePredicateClient {
   constructor(config: PredicateClientConfig = {}) {
-    super(ERC1155_OWNER_PREDICATE, "ERC1155OwnerPredicate", config, "erc1155")
+    super(ERC1155_OWNER_PREDICATE, "ERC1155OwnerPredicate", config)
   }
 
   async getCollectionTokens(
