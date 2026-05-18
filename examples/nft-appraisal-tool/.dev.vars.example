@@ -1,0 +1,12 @@
+# Copy to .dev.vars for `wrangler dev`. Same format as .env files —
+# wrangler reads these at local-dev time and exposes them as the `env`
+# binding to the fetch handler. Never committed.
+
+OPENSEA_API_KEY=
+ANTHROPIC_API_KEY=
+# Creator address — must match the wallet that registers the tool on chain
+# per ERC-8257. Decoupled from RECIPIENT_ADDRESS.
+CREATOR_ADDRESS=
+RECIPIENT_ADDRESS=
+TOOL_ENDPOINT=http://localhost:8787
+# ANTHROPIC_MODEL=claude-sonnet-4-6

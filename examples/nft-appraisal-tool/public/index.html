@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFT Appraiser Tool</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 760px; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.05rem; margin-top: 2rem; }
+    .tagline { color: #666; margin-top: 0; }
+    code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; }
+    a { color: #0070f3; }
+    table { border-collapse: collapse; margin: 1rem 0; }
+    th, td { padding: 0.5rem 0.9rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.9em; }
+    th { color: #888; font-weight: 600; }
+    .meta { color: #888; font-size: 0.85rem; margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>NFT Appraiser</h1>
+  <p class="tagline">An ERC-8257 agent tool for NFT price appraisals. Paid via x402 (USDC on Base).</p>
+
+  <h2>Tiers</h2>
+  <table>
+    <thead><tr><th>Tier</th><th>Endpoint</th><th>Price</th><th>Gating</th><th>Tool ID</th></tr></thead>
+    <tbody>
+      <tr><td>Public</td><td><code>/api</code></td><td>$0.05 USDC</td><td>open access</td><td>3</td></tr>
+      <tr><td>CHONK holder</td><td><code>/api/holder</code></td><td>$0.01 USDC</td><td>SIWE + ERC-721 ownership of <a href="https://opensea.io/assets/base/0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9">CHONKs on Base</a></td><td>4</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Manifests</h2>
+  <pre>GET /.well-known/ai-tool/nft-appraiser.json
+GET /.well-known/ai-tool/nft-appraiser-chonks.json</pre>
+
+  <h2>Calling the tool</h2>
+  <p>POST to the endpoint with a JSON body:</p>
+  <pre>{
+  "chain": "ethereum",
+  "contractAddress": "0x...",
+  "tokenId": "..."
+}</pre>
+  <p>Without payment, the response is an x402-compliant <code>402</code> with <code>PaymentRequirements</code>. With a valid signed payment (and SIWE auth on the holder route), the response is a structured appraisal: low / mid / high range, confidence, reasoning, recent sales, and comparable listings.</p>
+
+  <p class="meta">
+    Source: <a href="https://github.com/CodySearsOS/nft-appraisal-tool">github.com/CodySearsOS/nft-appraisal-tool</a><br>
+    Powered by <a href="https://github.com/ProjectOpenSea/opensea-devtools/tree/main/packages/tool-sdk">@opensea/tool-sdk</a> + <a href="https://x402.org">x402</a> + Anthropic Claude.
+  </p>
+</body>
+</html>

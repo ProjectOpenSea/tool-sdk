@@ -1,0 +1,24 @@
+name = "nft-appraiser"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# We deliberately do NOT set compatibility_flags = ["nodejs_compat"]:
+# - @ai-sdk/anthropic + ai run clean on V8 isolates without it
+# - tool-sdk's only Node-conditional code is unreachable on Workers
+#   (atob is global; the Buffer fallback never runs)
+# Setting nodejs_compat would add bundle weight for zero benefit.
+
+[vars]
+# Operational config — non-secret. Override with `wrangler secret put` if
+# you'd rather keep the addresses out of the dashboard.
+TOOL_ENDPOINT = "https://nft-appraiser.workers.dev"
+ANTHROPIC_MODEL = "claude-sonnet-4-6"
+# Creator address recorded as the manifest's creatorAddress. MUST match
+# the wallet that calls registerTool on chain (ERC-8257 requirement).
+CREATOR_ADDRESS = "0x0000000000000000000000000000000000000000"
+# Recipient for x402 USDC payouts. Decoupled from CREATOR_ADDRESS.
+RECIPIENT_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+# Secrets (set via `wrangler secret put NAME`):
+#   OPENSEA_API_KEY    — server-side only
+#   ANTHROPIC_API_KEY  — direct Anthropic, not Vercel AI Gateway
