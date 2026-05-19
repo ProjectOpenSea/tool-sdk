@@ -571,29 +571,59 @@ describe("ERC1155OwnerPredicateClient", () => {
 })
 
 describe("SubscriptionPredicateClient", () => {
-  it("requires predicateAddress (no canonical deployment)", async () => {
+  it("resolves to the canonical address on Base and mainnet by default", async () => {
     const { SubscriptionPredicateClient } = await import(
       "../lib/onchain/predicate-clients.js"
     )
-    expect(
-      () =>
-        new SubscriptionPredicateClient({
-          predicateAddress: DUMMY_PREDICATE,
-        }),
-    ).not.toThrow()
+    const { SUBSCRIPTION_PREDICATE } = await import("../lib/onchain/chains.js")
+
+    const baseClient = new SubscriptionPredicateClient({
+      walletClient: mockWalletClient,
+    })
+    await baseClient.configureToolGating(TEST_TOOL_ID, COLLECTION_A, 0)
+    expect(mockWriteContract).toHaveBeenLastCalledWith(
+      expect.objectContaining({ address: SUBSCRIPTION_PREDICATE.address }),
+    )
+
+    const mainnetClient = new SubscriptionPredicateClient({
+      chain: mainnet,
+      walletClient: mockWalletClient,
+    })
+    await mainnetClient.configureToolGating(TEST_TOOL_ID, COLLECTION_A, 0)
+    expect(mockWriteContract).toHaveBeenLastCalledWith(
+      expect.objectContaining({ address: SUBSCRIPTION_PREDICATE.address }),
+    )
   })
 
-  it("throws without predicateAddress on any chain", async () => {
+  it("accepts a custom predicateAddress override", async () => {
+    const { SubscriptionPredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    const client = new SubscriptionPredicateClient({
+      predicateAddress: DUMMY_PREDICATE,
+      walletClient: mockWalletClient,
+    })
+    await client.configureToolGating(TEST_TOOL_ID, COLLECTION_A, 0)
+    expect(mockWriteContract).toHaveBeenLastCalledWith(
+      expect.objectContaining({ address: DUMMY_PREDICATE }),
+    )
+  })
+
+  it("throws when chain has no deployment and no override", async () => {
     const { SubscriptionPredicateClient } = await import(
       "../lib/onchain/predicate-clients.js"
     )
     expect(
       () =>
         new SubscriptionPredicateClient({
-          predicateAddress: DUMMY_PREDICATE,
-          chain: UNKNOWN_CHAIN,
+          chain: {
+            id: 999999,
+            name: "test",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: { default: { http: [] } },
+          },
         }),
-    ).not.toThrow()
+    ).toThrow("SubscriptionPredicate is not deployed on chain 999999")
   })
 
   describe("configureToolGating", () => {

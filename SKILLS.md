@@ -33,6 +33,7 @@ Canonical v0.2 deployments — identical CREATE2 address on both chains.
 | ToolRegistry (v0.2) | `0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1` |
 | ERC721OwnerPredicate (v0.2) | `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` |
 | ERC1155OwnerPredicate (v0.2) | `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11` |
+| SubscriptionPredicate (v0.2) | `0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25` |
 
 ---
 
@@ -666,15 +667,16 @@ const accessCustom = predicate.toManifestAccess("0xCOLLECTION_ADDRESS", 1n, { la
 
 ### SubscriptionPredicate
 
-Grants access based on ERC-5643 subscription NFTs with optional tier gating. No canonical deployment — each tool creator deploys their own instance.
+Grants access based on ERC-5643 subscription NFTs with optional tier gating. A canonical multi-tenant deployment is available (one deployment serves all tools, configured per `toolId`), but you can also deploy your own instance — for example, to customize the gating logic or run an isolated deployment.
 
 | Field | Value |
 |-------|-------|
+| Address | `0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25` |
 | Requirement `kind` | `0x44387cc2` (`ISubscription` interface ID) |
 | Requirement `data` | `abi.encode(address collection, uint8 minTier)` |
 | Logic | `AND` |
 
-**Configure via SDK (after deploying the predicate):**
+**Configure via SDK:**
 ```typescript
 import { SubscriptionPredicateClient, walletAdapterToClient, createWalletFromEnv } from "@opensea/tool-sdk"
 import { base } from "viem/chains"
@@ -682,10 +684,7 @@ import { base } from "viem/chains"
 const adapter = createWalletFromEnv()
 const walletClient = await walletAdapterToClient(adapter, base)
 
-const predicate = new SubscriptionPredicateClient({
-  predicateAddress: "0xYOUR_SUBSCRIPTION_PREDICATE",
-  walletClient,
-})
+const predicate = new SubscriptionPredicateClient({ walletClient })
 
 const toolId = 1n // obtained from registerTool()
 

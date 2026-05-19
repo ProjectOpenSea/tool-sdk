@@ -31,6 +31,11 @@ export const ERC1155_OWNER_PREDICATE: Deployment = {
   chains: [1, 8453],
 }
 
+export const SUBSCRIPTION_PREDICATE: Deployment = {
+  address: "0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25",
+  chains: [1, 8453],
+}
+
 /**
  * delegate.xyz DelegateRegistry V2. Deployed at the same deterministic address
  * on 30+ EVM chains.

@@ -118,6 +118,7 @@ export {
   deploymentAddress,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
+  SUBSCRIPTION_PREDICATE,
   TOOL_REGISTRY,
 } from "./lib/onchain/chains.js"
 export { computeManifestHash } from "./lib/onchain/hash.js"

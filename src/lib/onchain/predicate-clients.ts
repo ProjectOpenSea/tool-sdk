@@ -23,6 +23,7 @@ import {
   type Deployment,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
+  SUBSCRIPTION_PREDICATE,
   deploymentAddress,
 } from "./chains.js"
 
@@ -229,8 +230,8 @@ export class ERC1155OwnerPredicateClient extends BasePredicateClient {
 }
 
 /**
- * No canonical deployment exists for SubscriptionPredicate — each tool
- * creator deploys their own instance. Pass `predicateAddress` explicitly.
+ * CompositePredicate has no canonical deployment — each tool creator deploys
+ * their own instance. Pass `predicateAddress` explicitly.
  */
 const NO_CANONICAL_DEPLOYMENT: Deployment = {
   address: "0x0000000000000000000000000000000000000000",
@@ -238,10 +239,8 @@ const NO_CANONICAL_DEPLOYMENT: Deployment = {
 }
 
 export class SubscriptionPredicateClient extends BasePredicateClient {
-  constructor(
-    config: PredicateClientConfig & { predicateAddress: `0x${string}` },
-  ) {
-    super(NO_CANONICAL_DEPLOYMENT, "SubscriptionPredicate", config)
+  constructor(config: PredicateClientConfig = {}) {
+    super(SUBSCRIPTION_PREDICATE, "SubscriptionPredicate", config)
   }
 
   async getToolGatingConfig(

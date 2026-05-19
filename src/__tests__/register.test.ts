@@ -291,6 +291,8 @@ describe("register --access-predicate + --predicate-config (F4d)", () => {
       "https://test.example.com/.well-known/ai-tools/test-tool.json",
       "--access-predicate",
       "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
+      "--rpc-url",
+      "http://127.0.0.1:1",
       "--dry-run",
     ])
 
@@ -315,6 +317,8 @@ describe("register --access-predicate + --predicate-config (F4d)", () => {
       "0x4eC929dcc11B8B3a7d32CD9360BE7B8C73077b88",
       "--predicate-config",
       '{"collections":["0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9"]}',
+      "--rpc-url",
+      "http://127.0.0.1:1",
       "--dry-run",
     ])
 

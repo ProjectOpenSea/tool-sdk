@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- 27a89da: Canonicalize `SubscriptionPredicate` v0.2 on Ethereum mainnet and Base. The predicate now ships in `script/Deploy.s.sol` and the SDK at the same deterministic CREATE2 address on chain 1 and 8453: `0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25`.
+
+  `SubscriptionPredicateClient` no longer requires `predicateAddress` — it defaults to the canonical deployment for the configured chain, matching `ERC721OwnerPredicateClient` and `ERC1155OwnerPredicateClient`. Pass `predicateAddress` only to target a non-canonical instance.
+
+  New SDK export: `SUBSCRIPTION_PREDICATE` (the `Deployment` record), alongside the existing `ERC721_OWNER_PREDICATE` / `ERC1155_OWNER_PREDICATE` / `TOOL_REGISTRY`.
+
 ## 0.9.0
 
 ### Minor Changes
