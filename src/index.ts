@@ -153,6 +153,24 @@ export {
   walletAdapterToClient,
 } from "./lib/wallet/index.js"
 export type {
+  ApplicationSubname,
+  CAIP19ToolRef,
+  DiscoveredTool,
+  ENSDiscoveryError,
+  ENSDiscoveryOptions,
+  ENSDiscoveryResult,
+  ENSToolConfig,
+  OriginVerification,
+  SubnameResolver,
+} from "./lib/discovery/index.js"
+export {
+  discoverToolsFromENS,
+  formatCAIP19ToolRef,
+  parseCAIP19ToolRef,
+  staticSubnameResolver,
+  subgraphSubnameResolver,
+} from "./lib/discovery/index.js"
+export type {
   GateMiddleware,
   ToolContext,
 } from "./types.js"
