@@ -21,7 +21,7 @@ pnpm run type-check  # TypeScript type checking
 | `src/index.ts` | Library entry point — public `tool-sdk` exports |
 | `src/cli.ts` | CLI entry point (Commander program wiring) |
 | `src/types.ts` | Shared public types |
-| `src/cli/commands/` | CLI commands: `auth`, `deploy`, `dry-run-gate`, `dry-run-predicate-gate`, `export`, `get-collections`, `hash`, `init`, `inspect`, `pay`, `register`, `set-collection-tokens`, `set-collections`, `smoke`, `update-metadata`, `validate`, `verify` |
+| `src/cli/commands/` | CLI commands: `auth`, `configure-subscription`, `deploy`, `dry-run-gate`, `dry-run-predicate-gate`, `export`, `get-collections`, `hash`, `init`, `inspect`, `pay`, `register`, `set-collection-tokens`, `set-collections`, `smoke`, `update-metadata`, `validate`, `verify` |
 | `src/lib/onchain/abis.ts` | TypeScript ABI definitions mirroring Solidity interfaces |
 | `src/lib/onchain/chains.ts` | Deployed contract addresses per chain |
 | `src/lib/onchain/registry.ts` | `ToolRegistryClient` — onchain interaction wrapper |

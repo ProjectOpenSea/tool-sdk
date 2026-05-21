@@ -1,5 +1,14 @@
 # NFT Appraiser Tool
 
+> [!NOTE]
+> **Reference implementation.** This is a worked example shipped
+> alongside `@opensea/tool-sdk` to demonstrate building an ERC-8257
+> tool with two access tiers (public x402 paywall + holder-discounted
+> tier behind `ERC721OwnerPredicate`). Use the code as a starting
+> point for your own tool; the live `nft-appraisal-tool.vercel.app`
+> deploy and registered tool IDs are illustrative, not a production
+> service, and may change or go offline without notice.
+
 An [ERC-8257](https://eips.ethereum.org/EIPS/eip-8257) agent tool that
 returns a structured price appraisal for any NFT — low / mid / high
 range, confidence, reasoning, recent sales, and comparable listings.

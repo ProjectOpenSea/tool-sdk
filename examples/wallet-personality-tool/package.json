@@ -1,0 +1,39 @@
+{
+  "name": "wallet-personality-tool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.8.1",
+  "scripts": {
+    "dev": "npx vercel dev",
+    "deploy:preview": "npx vercel deploy",
+    "deploy": "npx vercel deploy --prod",
+    "build": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "export-manifest": "tsx scripts/export-manifest.ts",
+    "validate": "pnpm run export-manifest && tool-sdk validate ./manifest.json && (test ! -f ./manifest-subscriber.json || tool-sdk validate ./manifest-subscriber.json)",
+    "hash": "pnpm run export-manifest && tool-sdk hash ./manifest.json && (test ! -f ./manifest-subscriber.json || tool-sdk hash ./manifest-subscriber.json)"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "1.2.12",
+    "@opensea/tool-sdk": "0.10.0",
+    "ai": "4.3.19",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.5",
+    "tsx": "4.19.2",
+    "typescript": "6.0.2",
+    "viem": "2.31.3",
+    "vitest": "2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.4.49"
+    }
+  }
+}

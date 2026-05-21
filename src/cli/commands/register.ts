@@ -15,12 +15,14 @@ import { IAccessPredicateABI } from "../../lib/onchain/abis.js"
 import {
   deploymentAddress,
   ERC721_OWNER_PREDICATE,
+  SUBSCRIPTION_PREDICATE,
   TOOL_REGISTRY,
 } from "../../lib/onchain/chains.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import {
   ERC721OwnerPredicateClient,
   ERC1155OwnerPredicateClient,
+  SubscriptionPredicateClient,
 } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
@@ -271,7 +273,7 @@ export const registerCommand = new Command("register")
           : predicateName === "ERC1155OwnerPredicate"
             ? 'Use --predicate-config \'{"collection":"0x...","tokenIds":["1","2"]}\' or run `tool-sdk set-collection-tokens` after registration.'
             : predicateName === "SubscriptionPredicate"
-              ? "Configure the subscription predicate (e.g. configureToolGating) after registration."
+              ? 'Use --predicate-config \'{"collection":"0x...","minTier":0}\' or run `tool-sdk configure-subscription` after registration.'
               : "Configure the predicate after registration to enforce access control."
       console.log(
         pc.yellow(
@@ -341,6 +343,19 @@ export const registerCommand = new Command("register")
       )
     }
 
+    if (
+      options.accessPredicate &&
+      predicateName === "SubscriptionPredicate" &&
+      !predicateConfig
+    ) {
+      console.log(
+        pc.cyan(
+          `\nNext step: configure the subscription gate:\n` +
+            `  tool-sdk configure-subscription ${regResult.toolId} <collection> --network ${options.network}`,
+        ),
+      )
+    }
+
     if (options.accessPredicate && predicateConfig) {
       try {
         await executePredicateConfig({
@@ -350,6 +365,7 @@ export const registerCommand = new Command("register")
           config: predicateConfig,
           chain,
           walletClient,
+          rpcUrl: options.rpcUrl,
         })
       } catch (err) {
         console.error(
@@ -358,10 +374,14 @@ export const registerCommand = new Command("register")
           ),
         )
         console.error(err instanceof Error ? err.message : String(err))
-        const recoveryCmd =
-          predicateName === "ERC1155OwnerPredicate"
-            ? `tool-sdk set-collection-tokens ${regResult.toolId} <collection> <tokenIds...> --network ${options.network}`
-            : `tool-sdk set-collections ${regResult.toolId} <collection> --network ${options.network}`
+        let recoveryCmd: string
+        if (predicateName === "ERC1155OwnerPredicate") {
+          recoveryCmd = `tool-sdk set-collection-tokens ${regResult.toolId} <collection> <tokenIds...> --network ${options.network}`
+        } else if (predicateName === "SubscriptionPredicate") {
+          recoveryCmd = `tool-sdk configure-subscription ${regResult.toolId} <collection> --network ${options.network}`
+        } else {
+          recoveryCmd = `tool-sdk set-collections ${regResult.toolId} <collection> --network ${options.network}`
+        }
         console.error(pc.yellow(`\n  Recovery: run \`${recoveryCmd}\``))
         process.exit(1)
       }
@@ -375,6 +395,7 @@ interface PredicateConfigParams {
   config: Record<string, unknown>
   chain: Chain
   walletClient: WalletClient<Transport, Chain, Account>
+  rpcUrl?: string
 }
 
 function validatePredicateConfig(
@@ -420,6 +441,25 @@ function validatePredicateConfig(
       console.error(pc.red("Error: invalid token ID (must be numeric)"))
       process.exit(1)
     }
+  } else if (predicateName === "SubscriptionPredicate") {
+    const collection = config.collection
+    if (typeof collection !== "string" || !isAddress(collection)) {
+      console.error(
+        pc.red(
+          'Error: SubscriptionPredicate config requires "collection" address',
+        ),
+      )
+      process.exit(1)
+    }
+    if (config.minTier !== undefined) {
+      const tier = Number(config.minTier)
+      if (!Number.isInteger(tier) || tier < 0 || tier > 255) {
+        console.error(
+          pc.red("Error: minTier must be an integer between 0 and 255"),
+        )
+        process.exit(1)
+      }
+    }
   }
 }
 
@@ -459,6 +499,33 @@ async function executePredicateConfig(params: PredicateConfigParams) {
     ])
     console.log(pc.green("\nPredicate configured!"))
     console.log(`  setCollectionTokens TX: ${txHash}`)
+    return
+  }
+
+  if (predicateName === "SubscriptionPredicate") {
+    const collection = config.collection as Address
+    const minTier = config.minTier !== undefined ? Number(config.minTier) : 0
+    const predicateAddr = deploymentAddress(SUBSCRIPTION_PREDICATE, chain.id)
+    const predicate = new SubscriptionPredicateClient({
+      chain,
+      walletClient,
+      predicateAddress: predicateAddr ?? predicateAddress,
+      rpcUrl: params.rpcUrl,
+    })
+    const txHash = await predicate.configureToolGating(
+      toolId,
+      collection,
+      minTier,
+    )
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(params.rpcUrl),
+    })
+    await publicClient.waitForTransactionReceipt({ hash: txHash })
+    console.log(pc.green("\nSubscription predicate configured!"))
+    console.log(`  configureToolGating TX: ${txHash}`)
+    console.log(`  Collection: ${collection}`)
+    console.log(`  Min Tier: ${minTier}`)
     return
   }
 

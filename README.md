@@ -282,9 +282,27 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk set-collection-tokens 4 \
 | `--rpc-url <url>` | RPC endpoint |
 | `--dry-run` | Print encoded calldata without transacting |
 
+### `configure-subscription <toolId> <collection>`
+
+Configure the SubscriptionPredicate gate for an already-registered tool.
+
+```bash
+PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-subscription 4 \
+  0x6c9974ce02ddc6dc7786f7540613ad2a4f7ff626 \
+  --min-tier 0 --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--min-tier <tier>` | Minimum subscription tier (uint8, 0-255; default: `0`) |
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint |
+| `--dry-run` | Print summary without transacting |
+
 ## Wallet Configuration
 
-All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`) need a wallet. You can configure one in two ways:
+All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`) need a wallet. You can configure one in two ways:
 
 1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
 2. **`--wallet-provider` flag** — explicitly select a provider by name.

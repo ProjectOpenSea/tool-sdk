@@ -1,5 +1,6 @@
 import { Command } from "commander"
 import { authCommand } from "./commands/auth.js"
+import { configureSubscriptionCommand } from "./commands/configure-subscription.js"
 import { deployCommand } from "./commands/deploy.js"
 import { dryRunGateCommand } from "./commands/dry-run-gate.js"
 import { dryRunPredicateGateCommand } from "./commands/dry-run-predicate-gate.js"
@@ -41,3 +42,4 @@ program.addCommand(smokeCommand)
 program.addCommand(setCollectionsCommand)
 program.addCommand(getCollectionsCommand)
 program.addCommand(setCollectionTokensCommand)
+program.addCommand(configureSubscriptionCommand)

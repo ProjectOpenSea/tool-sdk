@@ -1,0 +1,12 @@
+node_modules/
+.vercel/
+.env
+.env.local
+.env*.local
+dist/
+manifest.json
+manifest-subscriber.json
+*.log
+.DS_Store
+.claude/
+.vercel

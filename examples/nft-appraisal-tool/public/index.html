@@ -16,18 +16,22 @@
     th, td { padding: 0.5rem 0.9rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.9em; }
     th { color: #888; font-weight: 600; }
     .meta { color: #888; font-size: 0.85rem; margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1rem; }
+    .notice { background: #fffbe6; border: 1px solid #f5d76e; border-radius: 6px; padding: 0.75rem 1rem; margin: 1.5rem 0; font-size: 0.9rem; }
+    .notice strong { color: #8a6d3b; }
   </style>
 </head>
 <body>
   <h1>NFT Appraiser</h1>
   <p class="tagline">An ERC-8257 agent tool for NFT price appraisals. Paid via x402 (USDC on Base).</p>
 
+  <p class="notice"><strong>Reference implementation.</strong> This deploy is a worked example shipped alongside <a href="https://github.com/ProjectOpenSea/opensea-devtools/tree/main/packages/tool-sdk/examples/nft-appraisal-tool"><code>@opensea/tool-sdk</code></a>. Fork the code to run your own tool; this endpoint is illustrative, not a production service, and may change or go offline without notice.</p>
+
   <h2>Tiers</h2>
   <table>
     <thead><tr><th>Tier</th><th>Endpoint</th><th>Price</th><th>Gating</th><th>Tool ID</th></tr></thead>
     <tbody>
-      <tr><td>Public</td><td><code>/api</code></td><td>$0.05 USDC</td><td>open access</td><td>3</td></tr>
-      <tr><td>CHONK holder</td><td><code>/api/holder</code></td><td>$0.01 USDC</td><td>SIWE + ERC-721 ownership of <a href="https://opensea.io/assets/base/0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9">CHONKs on Base</a></td><td>4</td></tr>
+      <tr><td>Public</td><td><code>/api</code></td><td>$0.05 USDC</td><td>open access</td><td><a href="https://basescan.org/tx/0x000c4664fdec1eb06a552d5dd43da3c296be9849a0e065d90348f06cb2bfdfa2">1</a></td></tr>
+      <tr><td>CHONK holder</td><td><code>/api/holder</code></td><td>$0.01 USDC</td><td>SIWE + ERC-721 ownership of <a href="https://opensea.io/assets/base/0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9">CHONKs on Base</a></td><td><a href="https://basescan.org/tx/0x9e24fb1055af17297969da7ba8b3c7ffc8c26294d448a623c0cccded1ebc8300">2</a></td></tr>
     </tbody>
   </table>
 

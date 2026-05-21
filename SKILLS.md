@@ -899,6 +899,7 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `set-collections` | Set ERC-721 collection gate list for a tool |
 | `get-collections` | Read ERC-721 collection gate list for a tool |
 | `set-collection-tokens` | Set ERC-1155 collection + token ID gate for a tool |
+| `configure-subscription` | Configure SubscriptionPredicate gate (collection + minTier) for a tool |
 
 All CLI commands accept `--wallet-provider privy|turnkey|fireblocks|private-key` or auto-detect from env vars.
 
@@ -956,7 +957,28 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   --body '{"query": "hello"}'
 ```
 
-### Example D: NFT-gated + paid tool (both gates)
+### Example D: Subscription-gated tool
+
+```bash
+# Register with SubscriptionPredicate and configure in one shot:
+PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
+  --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
+  --access-predicate 0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25 \
+  --predicate-config '{"collection":"0xYOUR_SUBSCRIPTION_NFT","minTier":0}' \
+  --network base
+
+# Or configure after registration:
+npx @opensea/tool-sdk configure-subscription <TOOL_ID> 0xYOUR_SUBSCRIPTION_NFT \
+  --min-tier 0 --network base
+
+# Call via CLI:
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
+  npx @opensea/tool-sdk auth \
+  https://my-tool.vercel.app/api \
+  --body '{"query": "hello"}'
+```
+
+### Example E: NFT-gated + paid tool (both gates)
 
 ```bash
 # Server: add both predicateGate and paywall.gate (see Section 5a)
