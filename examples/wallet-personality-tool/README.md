@@ -162,6 +162,8 @@ src/                     framework-agnostic core
   schemas.ts             zod + JSON Schema (kept in lockstep)
 scripts/
   export-manifest.ts        write public + subscriber manifests
+contracts/
+  SubscriptionNFT.sol       reference ERC-721 + ERC-5643 subscription collection
 public/index.html           landing page served at the root URL
 ```
 
@@ -174,7 +176,7 @@ public/index.html           landing page served at the root URL
    ANTHROPIC_API_KEY        # https://console.anthropic.com/
    CREATOR_ADDRESS          # lowercase 0x-prefixed; signs registerTool
    RECIPIENT_ADDRESS        # lowercase 0x-prefixed; x402 USDC payout wallet
-   SUBSCRIPTION_COLLECTION  # subscription NFT contract on Base
+   SUBSCRIPTION_COLLECTION  # subscription NFT contract on Base (reference impl in ./contracts/SubscriptionNFT.sol; not for production)
    TOOL_ENDPOINT            # base URL of the deploy (no trailing path)
    ```
 
