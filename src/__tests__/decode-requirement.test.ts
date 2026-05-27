@@ -5,6 +5,7 @@ import {
   decodeRequirement,
   ERC721_KIND,
   ERC1155_KIND,
+  ERC7496_TRAIT_KIND,
   SUBSCRIPTION_KIND,
   WALLET_STATE_ATTESTATION_KIND,
 } from "../lib/onchain/access.js"
@@ -76,6 +77,39 @@ describe("decodeRequirement", () => {
       type: "walletStateAttestation",
       issuerJwksUri,
       conditionHash,
+    })
+  })
+
+  it("decodes an ERC-7496 trait requirement", () => {
+    const traitsContract = getAddress(
+      "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    )
+    const traitKey =
+      "0x7469657200000000000000000000000000000000000000000000000000000000" as const
+    const allowedValues = [
+      "0x5261726500000000000000000000000000000000000000000000000000000000" as const,
+      "0x4c6567656e646172790000000000000000000000000000000000000000000000" as const,
+    ]
+    const data = encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "bytes32[]" },
+      ],
+      [COLLECTION, traitsContract, traitKey, allowedValues],
+    )
+    const req: AccessRequirementInfo = {
+      kind: ERC7496_TRAIT_KIND,
+      data,
+      label: "Hold an NFT with a matching trait",
+    }
+    expect(decodeRequirement(req)).toEqual({
+      type: "erc7496Trait",
+      collection: COLLECTION,
+      traitsContract,
+      traitKey,
+      allowedValues,
     })
   })
 

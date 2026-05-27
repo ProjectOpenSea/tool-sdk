@@ -952,3 +952,216 @@ describe("CompositePredicateClient", () => {
     })
   })
 })
+
+const TRAITS_CONTRACT: Address = getAddress(
+  "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+)
+const TRAIT_KEY =
+  "0x7469657200000000000000000000000000000000000000000000000000000000" as const
+const ALLOWED_VALUES = [
+  "0x5261726500000000000000000000000000000000000000000000000000000000" as const,
+  "0x4c6567656e646172790000000000000000000000000000000000000000000000" as const,
+]
+
+describe("TraitGatedPredicateClient", () => {
+  it("defaults to canonical deployment when predicateAddress omitted", async () => {
+    const { TraitGatedPredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    const { TRAIT_GATED_PREDICATE } = await import("../lib/onchain/chains.js")
+    mockReadContract.mockResolvedValueOnce({
+      collection: COLLECTION_A,
+      traitsContract: TRAITS_CONTRACT,
+      traitKey: TRAIT_KEY,
+      allowedValues: ALLOWED_VALUES,
+    })
+    const client = new TraitGatedPredicateClient()
+    await client.getToolTraitConfig(TEST_TOOL_ID)
+    expect(mockReadContract).toHaveBeenCalledWith(
+      expect.objectContaining({ address: TRAIT_GATED_PREDICATE.address }),
+    )
+  })
+
+  describe("getToolTraitConfig", () => {
+    it("returns config for a tool", async () => {
+      mockReadContract.mockResolvedValueOnce({
+        collection: COLLECTION_A,
+        traitsContract: TRAITS_CONTRACT,
+        traitKey: TRAIT_KEY,
+        allowedValues: ALLOWED_VALUES,
+      })
+
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const config = await client.getToolTraitConfig(TEST_TOOL_ID)
+
+      expect(config).toEqual({
+        collection: COLLECTION_A,
+        traitsContract: TRAITS_CONTRACT,
+        traitKey: TRAIT_KEY,
+        allowedValues: ALLOWED_VALUES,
+      })
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getToolTraitConfig",
+          args: [TEST_TOOL_ID],
+        }),
+      )
+    })
+  })
+
+  describe("configureToolTrait", () => {
+    it("writes config and returns tx hash", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+        walletClient: mockWalletClient,
+      })
+      const hash = await client.configureToolTrait(
+        TEST_TOOL_ID,
+        COLLECTION_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+      )
+
+      expect(hash).toBe(TX_HASH)
+      expect(mockWriteContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "configureToolTrait",
+          args: [
+            TEST_TOOL_ID,
+            COLLECTION_A,
+            TRAITS_CONTRACT,
+            TRAIT_KEY,
+            ALLOWED_VALUES,
+          ],
+        }),
+      )
+    })
+
+    it("throws without walletClient", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+
+      await expect(
+        client.configureToolTrait(
+          TEST_TOOL_ID,
+          COLLECTION_A,
+          TRAITS_CONTRACT,
+          TRAIT_KEY,
+          [...ALLOWED_VALUES],
+        ),
+      ).rejects.toThrow("walletClient required for write operations")
+    })
+  })
+
+  describe("toManifestAccess", () => {
+    it("returns access with correct kind and data", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(
+        CHECKSUMMED_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+      )
+
+      expect(access.logic).toBe("AND")
+      expect(access.requirements).toHaveLength(1)
+      expect(access.requirements[0].kind).toBe("0x37d8dc22")
+      expect(access.requirements[0].label).toBe(
+        "Hold an NFT with a matching trait",
+      )
+    })
+
+    it("returns opensea link on Base", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(
+        CHECKSUMMED_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+      )
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/base/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("returns opensea link on Ethereum", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        chain: mainnet,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(
+        CHECKSUMMED_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+      )
+
+      expect(access.requirements[0].links).toEqual({
+        opensea: `https://opensea.io/assets/ethereum/${CHECKSUMMED_A}`,
+      })
+    })
+
+    it("omits opensea link for unknown chains", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        chain: UNKNOWN_CHAIN,
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(
+        CHECKSUMMED_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+      )
+
+      expect(access.requirements[0].links).toBeUndefined()
+    })
+
+    it("uses custom label when provided", async () => {
+      const { TraitGatedPredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new TraitGatedPredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(
+        CHECKSUMMED_A,
+        TRAITS_CONTRACT,
+        TRAIT_KEY,
+        [...ALLOWED_VALUES],
+        { label: "Rare tier required" },
+      )
+
+      expect(access.requirements[0].label).toBe("Rare tier required")
+    })
+  })
+})

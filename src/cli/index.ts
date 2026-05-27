@@ -1,11 +1,13 @@
 import { Command } from "commander"
 import { authCommand } from "./commands/auth.js"
 import { configureSubscriptionCommand } from "./commands/configure-subscription.js"
+import { configureTraitGatingCommand } from "./commands/configure-trait-gating.js"
 import { deployCommand } from "./commands/deploy.js"
 import { dryRunGateCommand } from "./commands/dry-run-gate.js"
 import { dryRunPredicateGateCommand } from "./commands/dry-run-predicate-gate.js"
 import { exportCommand } from "./commands/export.js"
 import { getCollectionsCommand } from "./commands/get-collections.js"
+import { getTraitConfigCommand } from "./commands/get-trait-config.js"
 import { hashCommand } from "./commands/hash.js"
 import { initCommand } from "./commands/init.js"
 import { inspectCommand } from "./commands/inspect.js"
@@ -43,3 +45,5 @@ program.addCommand(setCollectionsCommand)
 program.addCommand(getCollectionsCommand)
 program.addCommand(setCollectionTokensCommand)
 program.addCommand(configureSubscriptionCommand)
+program.addCommand(configureTraitGatingCommand)
+program.addCommand(getTraitConfigCommand)

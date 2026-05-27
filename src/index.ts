@@ -89,6 +89,7 @@ export {
   IDelegateRegistryABI,
   IToolRegistryABI,
   SubscriptionPredicateABI,
+  TraitGatedPredicateABI,
 } from "./lib/onchain/abis.js"
 export type {
   AccessRequirementInfo,
@@ -96,6 +97,7 @@ export type {
   CheckToolAccessResult,
   DecodedERC721Requirement,
   DecodedERC1155Requirement,
+  DecodedERC7496TraitRequirement,
   DecodedRequirement,
   DecodedSubscriptionRequirement,
   DecodedUnknownRequirement,
@@ -109,6 +111,7 @@ export {
   describeToolAccess,
   ERC721_KIND,
   ERC1155_KIND,
+  ERC7496_TRAIT_KIND,
   SUBSCRIPTION_KIND,
   WALLET_STATE_ATTESTATION_KIND,
 } from "./lib/onchain/access.js"
@@ -120,6 +123,7 @@ export {
   ERC1155_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
   TOOL_REGISTRY,
+  TRAIT_GATED_PREDICATE,
 } from "./lib/onchain/chains.js"
 export { computeManifestHash } from "./lib/onchain/hash.js"
 export type {
@@ -132,6 +136,7 @@ export {
   ERC721OwnerPredicateClient,
   ERC1155OwnerPredicateClient,
   SubscriptionPredicateClient,
+  TraitGatedPredicateClient,
 } from "./lib/onchain/predicate-clients.js"
 export { ToolRegistryClient } from "./lib/onchain/registry.js"
 export { deriveSlug } from "./lib/utils.js"

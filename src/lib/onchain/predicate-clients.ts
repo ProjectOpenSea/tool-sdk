@@ -12,18 +12,20 @@ import {
 } from "viem"
 import type { Access } from "../manifest/types.js"
 import { base } from "viem/chains"
-import { ERC721_KIND, ERC1155_KIND, SUBSCRIPTION_KIND } from "./access.js"
+import { ERC721_KIND, ERC1155_KIND, SUBSCRIPTION_KIND, ERC7496_TRAIT_KIND } from "./access.js"
 import {
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   SubscriptionPredicateABI,
   CompositePredicateABI,
+  TraitGatedPredicateABI,
 } from "./abis.js"
 import {
   type Deployment,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
+  TRAIT_GATED_PREDICATE,
   deploymentAddress,
 } from "./chains.js"
 
@@ -318,6 +320,80 @@ export class SubscriptionPredicateClient extends BasePredicateClient {
     return {
       logic: "AND",
       requirements: [{ kind: SUBSCRIPTION_KIND, data, label, links }],
+    }
+  }
+}
+
+export class TraitGatedPredicateClient extends BasePredicateClient {
+  constructor(config: PredicateClientConfig = {}) {
+    super(TRAIT_GATED_PREDICATE, "TraitGatedPredicate", config)
+  }
+
+  async getToolTraitConfig(
+    toolId: bigint,
+  ): Promise<{
+    collection: Address
+    traitsContract: Address
+    traitKey: `0x${string}`
+    allowedValues: readonly `0x${string}`[]
+  }> {
+    const result = await this.publicClient.readContract({
+      address: this.predicateAddress,
+      abi: TraitGatedPredicateABI,
+      functionName: "getToolTraitConfig",
+      args: [toolId],
+    })
+    return {
+      collection: result.collection,
+      traitsContract: result.traitsContract,
+      traitKey: result.traitKey,
+      allowedValues: result.allowedValues,
+    }
+  }
+
+  async configureToolTrait(
+    toolId: bigint,
+    collection: Address,
+    traitsContract: Address,
+    traitKey: `0x${string}`,
+    allowedValues: `0x${string}`[],
+  ): Promise<Hash> {
+    const wallet = this.requireWalletClient()
+    return wallet.writeContract({
+      chain: this.chain,
+      account: wallet.account,
+      address: this.predicateAddress,
+      abi: TraitGatedPredicateABI,
+      functionName: "configureToolTrait",
+      args: [toolId, collection, traitsContract, traitKey, allowedValues],
+    })
+  }
+
+  toManifestAccess(
+    collection: Address,
+    traitsContract: Address,
+    traitKey: `0x${string}`,
+    allowedValues: `0x${string}`[],
+    opts?: { label?: string },
+  ): Access {
+    const data = encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "bytes32[]" },
+      ],
+      [collection, traitsContract, traitKey, allowedValues],
+    )
+    const label = opts?.label ?? "Hold an NFT with a matching trait"
+    const segment = this.openSeaChainSegment()
+    const normalized = getAddress(collection)
+    const links: Record<string, string> | undefined = segment
+      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
+      : undefined
+    return {
+      logic: "AND",
+      requirements: [{ kind: ERC7496_TRAIT_KIND, data, label, links }],
     }
   }
 }

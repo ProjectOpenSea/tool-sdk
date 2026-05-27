@@ -211,12 +211,7 @@ export async function getRecentSales(
 
 interface ListingsPage {
   listings: Array<{
-    protocol_data?: {
-      parameters?: {
-        offer?: Array<{ identifierOrCriteria?: string }>
-        consideration?: Array<{ startAmount?: string; token?: string }>
-      }
-    }
+    asset?: { identifier?: string; contract?: string }
     price?: {
       current?: { value?: string; currency?: string; decimals?: number }
     }
@@ -249,8 +244,7 @@ export async function getCollectionListings(
     if (rows.length === 0) break
 
     for (const l of rows) {
-      const tokenId =
-        l.protocol_data?.parameters?.offer?.[0]?.identifierOrCriteria
+      const tokenId = l.asset?.identifier
       const value = l.price?.current?.value
       const currency = l.price?.current?.currency ?? "ETH"
       if (!tokenId || !value) continue

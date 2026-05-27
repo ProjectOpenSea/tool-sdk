@@ -15,7 +15,7 @@ output is structured so a downstream LLM agent can load it as a system
 prompt and act *as* the wallet, and also reads cleanly to a human as a
 vibe report.
 
-Built with [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/opensea-devtools/tree/main/packages/tool-sdk),
+Built with [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk),
 the [OpenSea v2 REST API](https://docs.opensea.io/reference/api-overview),
 and Anthropic's Claude Sonnet for the personality synthesis.
 

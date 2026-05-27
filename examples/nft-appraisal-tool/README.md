@@ -14,7 +14,7 @@ returns a structured price appraisal for any NFT — low / mid / high
 range, confidence, reasoning, recent sales, and comparable listings.
 Paid per call in USDC on Base via the [x402 protocol](https://x402.org).
 
-Built with [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/opensea-devtools/tree/main/packages/tool-sdk),
+Built with [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk),
 the [OpenSea v2 REST API](https://docs.opensea.io/reference/api-overview),
 and Anthropic's Claude Sonnet for the appraisal reasoning.
 

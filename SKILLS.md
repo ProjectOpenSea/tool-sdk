@@ -34,6 +34,7 @@ Canonical v0.2 deployments — identical CREATE2 address on both chains.
 | ERC721OwnerPredicate (v0.2) | `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` |
 | ERC1155OwnerPredicate (v0.2) | `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11` |
 | SubscriptionPredicate (v0.2) | `0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25` |
+| TraitGatedPredicate (v0.2) | `0x10abF07CfA34Bf22372C57f27e8bd9C2DCF93fA1` |
 
 ---
 
@@ -708,6 +709,109 @@ With a custom label and minimum tier:
 const access = predicate.toManifestAccess("0xCOLLECTION", 2, { label: "Pro subscription required" })
 ```
 
+### TraitGatedPredicate
+
+Gates access based on ERC-721 ownership plus an ERC-7496 dynamic trait value. The traits contract may differ from the NFT contract (e.g. a separate renderer). Multi-tenant: one canonical deployment per chain, configured per `toolId`.
+
+| Field | Value |
+|-------|-------|
+| Address | `0x10abF07CfA34Bf22372C57f27e8bd9C2DCF93fA1` |
+| Requirement `kind` | `0x37d8dc22` (`IERC7496Trait` interface ID) |
+| Requirement `data` | `abi.encode(address collection, address traitsContract, bytes32 traitKey, bytes32[] allowedValues)` |
+| Logic | `AND` |
+| Max allowed values | 32 per tool |
+| `hasAccess` `data` | `abi.encode(uint256 tokenId)` — must be exactly 32 bytes; empty/malformed data returns `false` |
+
+**Bytes32 encoding:** Trait keys and values are `bytes32`. ERC-7496 stores values as left-aligned, zero-padded bytes32 (e.g. `bytes32("Rare")` → `0x5261726500...00`). The `allowedValues` you configure **must match exactly** how the traits contract emits them. Use `toHex(value, { size: 32 })` in TypeScript or `bytes32("value")` in Solidity. `bytes32(0)` is rejected as an allowed value — it is the default return for unset traits, so including it would grant access to every holder.
+
+**Important:** If `hasAccess` receives empty or wrong-length `data`, it returns `false` (never reverts).
+
+**Configure via SDK (after deploying the predicate):**
+```typescript
+import { TraitGatedPredicateClient, walletAdapterToClient, createWalletFromEnv } from "@opensea/tool-sdk"
+import { base } from "viem/chains"
+import { toHex } from "viem"
+
+const adapter = createWalletFromEnv()
+const walletClient = await walletAdapterToClient(adapter, base)
+
+const predicate = new TraitGatedPredicateClient({ walletClient })
+
+const toolId = 1n // obtained from registerTool()
+const tierKey = toHex("tier", { size: 32 })
+const rareValue = toHex("Rare", { size: 32 })
+const legendaryValue = toHex("Legendary", { size: 32 })
+
+await predicate.configureToolTrait(
+  toolId,
+  "0xNFT_COLLECTION",        // ERC-721 contract (for ownerOf)
+  "0xTRAITS_CONTRACT",       // ERC-7496 contract (for getTraitValue) — can be the same address
+  tierKey,
+  [rareValue, legendaryValue],
+)
+```
+
+**Read trait gating config:**
+```typescript
+const config = await predicate.getToolTraitConfig(toolId)
+// { collection, traitsContract, traitKey, allowedValues }
+```
+
+**Generate manifest access via SDK:**
+```typescript
+const access = predicate.toManifestAccess(
+  "0xNFT_COLLECTION",
+  "0xTRAITS_CONTRACT",
+  tierKey,
+  [rareValue, legendaryValue],
+)
+```
+
+With a custom label:
+```typescript
+const access = predicate.toManifestAccess(
+  "0xNFT_COLLECTION",
+  "0xTRAITS_CONTRACT",
+  tierKey,
+  [rareValue],
+  { label: "Rare tier required" },
+)
+```
+
+**Configure via CLI:**
+```bash
+npx @opensea/tool-sdk configure-trait-gating <TOOL_ID> \
+  0xNFT_COLLECTION tier Rare Legendary \
+  --traits-contract 0xTRAITS_CONTRACT \
+  --network base
+```
+
+If the NFT itself implements ERC-7496, omit `--traits-contract` (defaults to collection):
+```bash
+npx @opensea/tool-sdk configure-trait-gating <TOOL_ID> \
+  0xNFT_COLLECTION tier Rare Legendary --network base
+```
+
+Both commands target the canonical TraitGatedPredicate by default. Pass `--predicate-address` to override (e.g. when using a custom deployment).
+
+**Read trait config via CLI:**
+```bash
+npx @opensea/tool-sdk get-trait-config <TOOL_ID> --network base
+```
+
+**Decode requirements via SDK:**
+```typescript
+import { decodeRequirement, ERC7496_TRAIT_KIND } from "@opensea/tool-sdk"
+
+const decoded = decodeRequirement(req)
+if (decoded.type === "erc7496Trait") {
+  console.log(`Collection: ${decoded.collection}`)
+  console.log(`Traits contract: ${decoded.traitsContract}`)
+  console.log(`Trait key: ${decoded.traitKey}`)
+  console.log(`Allowed values: ${decoded.allowedValues}`)
+}
+```
+
 ### CompositePredicate
 
 Combines up to 3 leaf predicates under AND-all or OR-any with optional per-term negation. No canonical deployment — each tool creator deploys their own instance.
@@ -900,6 +1004,8 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `get-collections` | Read ERC-721 collection gate list for a tool |
 | `set-collection-tokens` | Set ERC-1155 collection + token ID gate for a tool |
 | `configure-subscription` | Configure SubscriptionPredicate gate (collection + minTier) for a tool |
+| `configure-trait-gating` | Configure TraitGatedPredicate gate (collection, traits contract, trait key, allowed values) for a tool |
+| `get-trait-config` | Read trait gating configuration for a tool |
 
 All CLI commands accept `--wallet-provider privy|turnkey|fireblocks|private-key` or auto-detect from env vars.
 

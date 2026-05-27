@@ -435,6 +435,51 @@ export const CompositePredicateABI = [
   },
 ] as const
 
+export const TraitGatedPredicateABI = [
+  {
+    type: "event",
+    name: "ToolTraitConfigured",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "collection", type: "address", indexed: true },
+      { name: "traitsContract", type: "address", indexed: false },
+      { name: "traitKey", type: "bytes32", indexed: false },
+      { name: "allowedValues", type: "bytes32[]", indexed: false },
+    ],
+  },
+  {
+    type: "function",
+    name: "configureToolTrait",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "collection", type: "address" },
+      { name: "traitsContract", type: "address" },
+      { name: "traitKey", type: "bytes32" },
+      { name: "allowedValues", type: "bytes32[]" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getToolTraitConfig",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "collection", type: "address" },
+          { name: "traitsContract", type: "address" },
+          { name: "traitKey", type: "bytes32" },
+          { name: "allowedValues", type: "bytes32[]" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+] as const
+
 /**
  * Minimal ABI for delegate.xyz's DelegateRegistry V2.
  * Only includes `checkDelegateForAll` which is the function we use to verify

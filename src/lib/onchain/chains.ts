@@ -36,6 +36,11 @@ export const SUBSCRIPTION_PREDICATE: Deployment = {
   chains: [1, 8453],
 }
 
+export const TRAIT_GATED_PREDICATE: Deployment = {
+  address: "0x10abF07CfA34Bf22372C57f27e8bd9C2DCF93fA1",
+  chains: [1, 8453],
+}
+
 /**
  * delegate.xyz DelegateRegistry V2. Deployed at the same deterministic address
  * on 30+ EVM chains.
