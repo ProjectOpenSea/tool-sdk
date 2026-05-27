@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.11.0
+
+### Minor Changes
+
+- 308e5f8: Add `configure-subscription` CLI command and wire SubscriptionPredicate support into `register --predicate-config`
+- a5992e3: `configure-trait-gating` and `get-trait-config` CLI commands now default to the canonical TraitGatedPredicate deployment. The `<predicateAddress>` positional argument is replaced with an optional `--predicate-address <address>` flag for overriding the canonical address.
+- ca8bd98: Add TraitGatedPredicate for ERC-7496 dynamic trait gating. New exports: `TraitGatedPredicateClient`, `TraitGatedPredicateABI`, `ERC7496_TRAIT_KIND`, `DecodedERC7496TraitRequirement`, `TRAIT_GATED_PREDICATE`.
+
+  Canonical deployment at `0x10abF07CfA34Bf22372C57f27e8bd9C2DCF93fA1` on Ethereum mainnet and Base — `TraitGatedPredicateClient` now defaults to this address when `predicateAddress` is omitted.
+
 ## 0.10.0
 
 ### Minor Changes
