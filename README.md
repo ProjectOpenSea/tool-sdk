@@ -300,9 +300,49 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-subscription 4 \
 | `--rpc-url <url>` | RPC endpoint |
 | `--dry-run` | Print summary without transacting |
 
+### `configure-trait-gating <toolId> <collection> <traitKey> <allowedValues...>`
+
+Configure the TraitGatedPredicate gate for an already-registered tool. Uses ERC-721 ownership + ERC-7496 dynamic trait matching.
+
+```bash
+PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-trait-gating 4 \
+  0xNFT_COLLECTION tier Rare Legendary \
+  --network base
+
+# With a separate ERC-7496 traits/renderer contract:
+PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-trait-gating 4 \
+  0xNFT_COLLECTION tier Rare Legendary \
+  --traits-contract 0xRENDERER --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--predicate-address <address>` | Override the canonical TraitGatedPredicate address |
+| `--traits-contract <address>` | ERC-7496 traits contract address (defaults to collection if omitted) |
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint |
+| `--dry-run` | Print summary without transacting |
+
+**Bytes32 encoding:** `traitKey` and `allowedValues` are encoded as left-aligned, zero-padded bytes32 values. They must match exactly how the traits contract stores them. `bytes32(0)` is not allowed in `allowedValues` (it is the default return for unset traits).
+
+### `get-trait-config <toolId>`
+
+Read the trait gating configuration for a registered tool (read-only).
+
+```bash
+npx @opensea/tool-sdk get-trait-config 4 --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--predicate-address <address>` | Override the canonical TraitGatedPredicate address |
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--rpc-url <url>` | RPC endpoint |
+
 ## Wallet Configuration
 
-All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`) need a wallet. You can configure one in two ways:
+All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`, `configure-trait-gating`) need a wallet. You can configure one in two ways:
 
 1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
 2. **`--wallet-provider` flag** — explicitly select a provider by name.
