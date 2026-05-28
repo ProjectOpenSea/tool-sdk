@@ -38,6 +38,8 @@ pnpm run type-check  # TypeScript type checking
 | `src/templates/` | Scaffolding templates for `init` command |
 | `src/testing/` | Test helpers exported via `@opensea/tool-sdk/testing` subpath |
 | `src/__tests__/` | Vitest test suite |
+| `skill/SKILL.md` | Co-located copy of the opensea-tool-sdk skill (public-facing agent playbook) |
+| `skill/references/` | Reference docs for the skill (x402, predicate gating, known predicates) |
 
 ## Review Checklist
 
@@ -45,13 +47,14 @@ When reviewing changes to this package, verify:
 
 1. **ABI completeness**: `abis.ts` must include every function and event from the corresponding Solidity interfaces in `../tool-registry/src/interfaces/`. If the Solidity interface adds a function, `abis.ts` must add it too. Missing ABI entries mean SDK consumers cannot call those functions.
 
-2. **Address sync**: Addresses in `chains.ts` must match `../tool-registry/README.md`. After a new deploy, both files must be updated together. Also update `SKILLS.md` — it hardcodes contract addresses in the "Deployed Contracts" table and code examples.
+2. **Address sync**: Addresses in `chains.ts` must match `../tool-registry/README.md`. After a new deploy, both files must be updated together. Also update `SKILLS.md` and `skill/SKILL.md` — they hardcode contract addresses in the "Deployed Contracts" table and code examples.
 
-3. **SKILLS.md sync**: `SKILLS.md` hardcodes requirement-type selectors (`kind` values from `IRequirementTypes.sol`) and contract addresses. When any of these change in `tool-registry`, update `SKILLS.md` in the same PR:
-   - Deployed addresses → "Deployed Contracts" table + code examples
-   - `IRequirementTypes.sol` selectors → `kind` fields in "Known Predicates" section
-   - New predicates in `../tool-registry/examples/` → new entry in "Known Predicates"
-   - CLI commands added/removed in `src/cli/index.ts` → CLI commands table in Section 9
+3. **SKILLS.md + skill sync**: `SKILLS.md` and `skill/SKILL.md` (+ `skill/references/`) hardcode requirement-type selectors (`kind` values from `IRequirementTypes.sol`) and contract addresses. When any of these change in `tool-registry`, update all three in the same PR:
+   - Deployed addresses → "Deployed Contracts" table + code examples in `SKILLS.md` and `skill/SKILL.md`
+   - `IRequirementTypes.sol` selectors → `kind` values in "Known Predicates" section of `SKILLS.md` and `skill/references/known-predicates.md`
+   - New predicates in `../tool-registry/examples/` → new entry in "Known Predicates" in both files
+   - CLI commands added/removed in `src/cli/index.ts` → CLI commands table in Section 9 of `SKILLS.md` and Section 6 of `skill/SKILL.md`
+   - The `skill/` copy must also be mirrored to `../skill/opensea-tool-sdk/` (the canonical skill location)
 
 4. **Dead code after refactors**: When removing features (e.g., dropping a predicate factory), verify that all related imports, constants, and references are also removed. Check for unused imports at the top of refactored files.
 
