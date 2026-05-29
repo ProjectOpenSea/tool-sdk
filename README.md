@@ -80,6 +80,12 @@ PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
   --metadata <url> \
   --network base \
   --nft-gate 0xCOLLECTION  # optional: gate via ERC721OwnerPredicate
+
+# Or gate via ERC20BalancePredicate (one-shot register + configure):
+PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
+  --metadata <url> \
+  --network base \
+  --erc20-gate 0xTOKEN_ADDRESS --erc20-min-balance 1000000000000000000
 ```
 
 | Flag | Description |
@@ -87,8 +93,10 @@ PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
 | `--metadata <url>` | Metadata URI (required) |
 | `--network <network>` | `base` or `mainnet` (default: `base`) |
 | `--nft-gate <address>` | ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry) |
-| `--access-predicate <address>` | Access predicate address (mutually exclusive with `--nft-gate`) |
-| `--predicate-config <json>` | JSON config for the access predicate (e.g. `'{"collections":["0x..."]}'`). Bundles predicate setup with registration |
+| `--erc20-gate <address>` | ERC-20 token address; gates the tool via the canonical ERC20BalancePredicate. Requires `--erc20-min-balance`. Mutually exclusive with `--nft-gate` |
+| `--erc20-min-balance <amount>` | Minimum token balance in raw units (e.g. `1000000000000000000` for 1e18). Required with `--erc20-gate` |
+| `--access-predicate <address>` | Access predicate address (mutually exclusive with `--nft-gate` and `--erc20-gate`) |
+| `--predicate-config <json>` | JSON config for the access predicate (e.g. `'{"collections":["0x..."]}'` or `'{"token":"0x...","minBalance":"1000000000000000000"}'`). Bundles predicate setup with registration |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
 | `--rpc-url <url>` | RPC endpoint for gas estimation and tx broadcast |
 | `--dry-run` | Print summary without transacting |
@@ -340,9 +348,41 @@ npx @opensea/tool-sdk get-trait-config 4 --network base
 | `--network <network>` | `base` or `mainnet` (default: `base`) |
 | `--rpc-url <url>` | RPC endpoint |
 
+### `configure-erc20-gate <toolId> <token> <minBalance>`
+
+Configure the ERC20BalancePredicate gate for an already-registered tool. Requires the caller to be the tool creator.
+
+```bash
+PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-erc20-gate 4 \
+  0xTOKEN_ADDRESS 1000000000000000000 \
+  --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--predicate-address <address>` | Override the canonical ERC20BalancePredicate address |
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--rpc-url <url>` | RPC endpoint |
+| `--dry-run` | Print summary without transacting |
+
+### `get-erc20-config <toolId>`
+
+Read the ERC-20 balance gating configuration for a registered tool (read-only).
+
+```bash
+npx @opensea/tool-sdk get-erc20-config 4 --network base
+```
+
+| Flag | Description |
+|------|-------------|
+| `--predicate-address <address>` | Override the canonical ERC20BalancePredicate address |
+| `--network <network>` | `base` or `mainnet` (default: `base`) |
+| `--rpc-url <url>` | RPC endpoint |
+
 ## Wallet Configuration
 
-All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`, `configure-trait-gating`) need a wallet. You can configure one in two ways:
+All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`, `configure-trait-gating`, `configure-erc20-gate`) need a wallet. You can configure one in two ways:
 
 1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
 2. **`--wallet-provider` flag** — explicitly select a provider by name.
@@ -795,7 +835,7 @@ const data = await res.json()
 
 ### Predicate-Gated Tools
 
-Gate your tool using the onchain access predicate system. The `predicateGate` middleware verifies SIWE auth, recovers the caller's address, and delegates the access decision to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, CompositePredicate, or any future predicate automatically.
+Gate your tool using the onchain access predicate system. The `predicateGate` middleware verifies SIWE auth, recovers the caller's address, and delegates the access decision to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
 
 See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
 
