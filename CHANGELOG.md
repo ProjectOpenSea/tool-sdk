@@ -1,5 +1,26 @@
 # @opensea/tool-sdk
 
+## 0.12.0
+
+### Minor Changes
+
+- ad8cf93: feat: deploy canonical ERC20BalancePredicate and default its CLIs to it
+
+  - Set the canonical ERC20BalancePredicate address (`0x1a834FC48B5f6e119c62C12a98b32137bCFA77cD`) on Ethereum mainnet and Base in `chains.ts`, replacing the prior zero-address stub.
+  - `configure-erc20-gate` and `get-erc20-config` now default to the canonical deployment; `--predicate-address` is an optional override instead of a required flag (mirrors the trait-gating CLIs from #353).
+
+- 1ce2300: feat: add ERC20BalancePredicate support — new predicate client, ABI, CLI commands (configure-erc20-gate, get-erc20-config), and requirement decoding for ERC-20 token balance gating
+- 38212f7: Add `--erc20-gate` and `--erc20-min-balance` flags to the `register` command for one-shot ERC-20 balance-gated tool registration. Also adds `--predicate-config` support for `ERC20BalancePredicate` and makes the `ERC20BalancePredicateClient` constructor use the canonical deployment address by default.
+- f1636af: feat: deploy ToolRegistry + canonical predicates to Shape and Abstract
+
+  Deterministically deployed the v0.2 `ToolRegistry` and all five canonical predicates (`ERC721OwnerPredicate`, `ERC1155OwnerPredicate`, `SubscriptionPredicate`, `TraitGatedPredicate`, `ERC20BalancePredicate`) via CREATE2 (salt `bytes32(uint256(1))`) to Shape (chain 360) and Abstract (chain 2741). All addresses are identical to the existing Ethereum mainnet and Base deployments.
+
+  Abstract is a ZK Stack chain but runs EVM-equivalent execution, so the standard CREATE2 factory resolves the canonical addresses — no per-chain `overrides` were needed. Updated the `chains` arrays in `chains.ts` and the live-addresses table in the tool-registry README.
+
+### Patch Changes
+
+- 04b589b: docs: add configure-trait-gating and get-trait-config CLI reference to README
+
 ## 0.11.0
 
 ### Minor Changes
