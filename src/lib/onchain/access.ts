@@ -195,6 +195,7 @@ export const ERC721_KIND = "0xbdf8c428" as const
 export const ERC1155_KIND = "0xcb429230" as const
 export const SUBSCRIPTION_KIND = "0x44387cc2" as const
 export const ERC7496_TRAIT_KIND = "0x37d8dc22" as const
+export const ERC20_BALANCE_KIND = "0x812b02ee" as const
 export const WALLET_STATE_ATTESTATION_KIND = "0x7a111640" as const
 
 const KNOWN_KINDS = {
@@ -202,6 +203,7 @@ const KNOWN_KINDS = {
   [ERC1155_KIND]: "erc1155",
   [SUBSCRIPTION_KIND]: "subscription",
   [ERC7496_TRAIT_KIND]: "erc7496Trait",
+  [ERC20_BALANCE_KIND]: "erc20Balance",
   [WALLET_STATE_ATTESTATION_KIND]: "walletStateAttestation",
 } as const
 
@@ -230,6 +232,12 @@ export type DecodedERC7496TraitRequirement = {
   allowedValues: readonly `0x${string}`[]
 }
 
+export type DecodedERC20BalanceRequirement = {
+  type: "erc20Balance"
+  token: `0x${string}`
+  minBalance: bigint
+}
+
 export type DecodedWalletStateAttestationRequirement = {
   type: "walletStateAttestation"
   issuerJwksUri: string
@@ -247,6 +255,7 @@ export type DecodedRequirement =
   | DecodedERC1155Requirement
   | DecodedSubscriptionRequirement
   | DecodedERC7496TraitRequirement
+  | DecodedERC20BalanceRequirement
   | DecodedWalletStateAttestationRequirement
   | DecodedUnknownRequirement
 
@@ -289,6 +298,14 @@ export function decodeRequirement(req: AccessRequirementInfo): DecodedRequiremen
       req.data,
     )
     return { type: "erc7496Trait", collection, traitsContract, traitKey, allowedValues }
+  }
+
+  if (knownType === "erc20Balance") {
+    const [token, minBalance] = decodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      req.data,
+    )
+    return { type: "erc20Balance", token, minBalance }
   }
 
   if (knownType === "walletStateAttestation") {

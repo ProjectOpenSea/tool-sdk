@@ -12,13 +12,14 @@ import {
 } from "viem"
 import type { Access } from "../manifest/types.js"
 import { base } from "viem/chains"
-import { ERC721_KIND, ERC1155_KIND, SUBSCRIPTION_KIND, ERC7496_TRAIT_KIND } from "./access.js"
+import { ERC721_KIND, ERC1155_KIND, SUBSCRIPTION_KIND, ERC7496_TRAIT_KIND, ERC20_BALANCE_KIND } from "./access.js"
 import {
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   SubscriptionPredicateABI,
   CompositePredicateABI,
   TraitGatedPredicateABI,
+  ERC20BalancePredicateABI,
 } from "./abis.js"
 import {
   type Deployment,
@@ -26,6 +27,7 @@ import {
   ERC1155_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
   TRAIT_GATED_PREDICATE,
+  ERC20_BALANCE_PREDICATE,
   deploymentAddress,
 } from "./chains.js"
 
@@ -394,6 +396,67 @@ export class TraitGatedPredicateClient extends BasePredicateClient {
     return {
       logic: "AND",
       requirements: [{ kind: ERC7496_TRAIT_KIND, data, label, links }],
+    }
+  }
+}
+
+export class ERC20BalancePredicateClient extends BasePredicateClient {
+  constructor(config: PredicateClientConfig = {}) {
+    super(ERC20_BALANCE_PREDICATE, "ERC20BalancePredicate", config)
+  }
+
+  async getToolERC20Config(
+    toolId: bigint,
+  ): Promise<{ token: Address; minBalance: bigint }> {
+    const result = await this.publicClient.readContract({
+      address: this.predicateAddress,
+      abi: ERC20BalancePredicateABI,
+      functionName: "getToolERC20Config",
+      args: [toolId],
+    })
+    return {
+      token: result.token,
+      minBalance: result.minBalance,
+    }
+  }
+
+  async configureToolERC20(
+    toolId: bigint,
+    token: Address,
+    minBalance: bigint,
+  ): Promise<Hash> {
+    const wallet = this.requireWalletClient()
+    return wallet.writeContract({
+      chain: this.chain,
+      account: wallet.account,
+      address: this.predicateAddress,
+      abi: ERC20BalancePredicateABI,
+      functionName: "configureToolERC20",
+      args: [toolId, token, minBalance],
+    })
+  }
+
+  /**
+   * Build a manifest `access` block for an ERC-20 balance gate.
+   *
+   * **Important:** The default label renders `minBalance` as a raw bigint
+   * (e.g. `"1000000000000000000"`). For user-facing gates, always supply a
+   * human-readable `opts.label` (e.g. `"Hold at least 1 USDC"`).
+   */
+  toManifestAccess(
+    token: Address,
+    minBalance: bigint,
+    opts?: { label?: string },
+  ): Access {
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      [token, minBalance],
+    )
+    const label =
+      opts?.label ?? `Hold at least ${minBalance} of this token`
+    return {
+      logic: "AND",
+      requirements: [{ kind: ERC20_BALANCE_KIND, data, label }],
     }
   }
 }

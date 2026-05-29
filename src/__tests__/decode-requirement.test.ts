@@ -1,8 +1,9 @@
-import { encodeAbiParameters, getAddress } from "viem"
+import { encodeAbiParameters, getAddress, keccak256, toHex } from "viem"
 import { describe, expect, it } from "vitest"
 import {
   type AccessRequirementInfo,
   decodeRequirement,
+  ERC20_BALANCE_KIND,
   ERC721_KIND,
   ERC1155_KIND,
   ERC7496_TRAIT_KIND,
@@ -111,6 +112,30 @@ describe("decodeRequirement", () => {
       traitKey,
       allowedValues,
     })
+  })
+
+  it("decodes an ERC-20 balance requirement", () => {
+    const token = getAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+    const minBalance = 1000000000000000000n
+    const data = encodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      [token, minBalance],
+    )
+    const req: AccessRequirementInfo = {
+      kind: ERC20_BALANCE_KIND,
+      data,
+      label: "Hold at least 1e18 tokens",
+    }
+    expect(decodeRequirement(req)).toEqual({
+      type: "erc20Balance",
+      token,
+      minBalance,
+    })
+  })
+
+  it("ERC20_BALANCE_KIND matches Solidity interfaceId (keccak256 of erc20Balance())", () => {
+    const computed = keccak256(toHex("erc20Balance()")).slice(0, 10)
+    expect(ERC20_BALANCE_KIND).toBe(computed)
   })
 
   it("returns unknown for an unrecognized kind", () => {

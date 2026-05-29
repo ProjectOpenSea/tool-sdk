@@ -1165,3 +1165,155 @@ describe("TraitGatedPredicateClient", () => {
     })
   })
 })
+
+const MIN_BALANCE = 1000000000000000000n // 1e18
+
+describe("ERC20BalancePredicateClient", () => {
+  it("uses the default Base deployment address", async () => {
+    const { ERC20BalancePredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    const client = new ERC20BalancePredicateClient()
+    expect(client).toBeDefined()
+  })
+
+  it("accepts a custom predicateAddress override", async () => {
+    const { ERC20BalancePredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    expect(
+      () =>
+        new ERC20BalancePredicateClient({
+          predicateAddress: DUMMY_PREDICATE,
+        }),
+    ).not.toThrow()
+  })
+
+  it("throws when chain has no deployment and no override", async () => {
+    const { ERC20BalancePredicateClient } = await import(
+      "../lib/onchain/predicate-clients.js"
+    )
+    expect(
+      () =>
+        new ERC20BalancePredicateClient({
+          chain: {
+            id: 999999,
+            name: "test",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: { default: { http: [] } },
+          },
+        }),
+    ).toThrow("ERC20BalancePredicate is not deployed on chain 999999")
+  })
+
+  describe("getToolERC20Config", () => {
+    it("returns config for a tool", async () => {
+      mockReadContract.mockResolvedValueOnce({
+        token: COLLECTION_A,
+        minBalance: MIN_BALANCE,
+      })
+
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const config = await client.getToolERC20Config(TEST_TOOL_ID)
+
+      expect(config).toEqual({
+        token: COLLECTION_A,
+        minBalance: MIN_BALANCE,
+      })
+      expect(mockReadContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "getToolERC20Config",
+          args: [TEST_TOOL_ID],
+        }),
+      )
+    })
+  })
+
+  describe("configureToolERC20", () => {
+    it("writes config and returns tx hash", async () => {
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+        walletClient: mockWalletClient,
+      })
+      const hash = await client.configureToolERC20(
+        TEST_TOOL_ID,
+        COLLECTION_A,
+        MIN_BALANCE,
+      )
+
+      expect(hash).toBe(TX_HASH)
+      expect(mockWriteContract).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionName: "configureToolERC20",
+          args: [TEST_TOOL_ID, COLLECTION_A, MIN_BALANCE],
+        }),
+      )
+    })
+
+    it("throws without walletClient", async () => {
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+
+      await expect(
+        client.configureToolERC20(TEST_TOOL_ID, COLLECTION_A, MIN_BALANCE),
+      ).rejects.toThrow("walletClient required for write operations")
+    })
+  })
+
+  describe("toManifestAccess", () => {
+    it("returns access with correct kind and data", async () => {
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, MIN_BALANCE)
+
+      expect(access.logic).toBe("AND")
+      expect(access.requirements).toHaveLength(1)
+      expect(access.requirements[0].kind).toBe("0x812b02ee")
+      expect(access.requirements[0].label).toBe(
+        `Hold at least ${MIN_BALANCE} of this token`,
+      )
+    })
+
+    it("does not include opensea link", async () => {
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, MIN_BALANCE)
+
+      expect(access.requirements[0].links).toBeUndefined()
+    })
+
+    it("uses custom label when provided", async () => {
+      const { ERC20BalancePredicateClient } = await import(
+        "../lib/onchain/predicate-clients.js"
+      )
+      const client = new ERC20BalancePredicateClient({
+        predicateAddress: DUMMY_PREDICATE,
+      })
+      const access = client.toManifestAccess(CHECKSUMMED_A, MIN_BALANCE, {
+        label: "Hold 1000 USDC",
+      })
+
+      expect(access.requirements[0].label).toBe("Hold 1000 USDC")
+    })
+  })
+})

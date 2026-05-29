@@ -14,12 +14,14 @@ import { validateManifest } from "../../lib/manifest/index.js"
 import { IAccessPredicateABI } from "../../lib/onchain/abis.js"
 import {
   deploymentAddress,
+  ERC20_BALANCE_PREDICATE,
   ERC721_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
   TOOL_REGISTRY,
 } from "../../lib/onchain/chains.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import {
+  ERC20BalancePredicateClient,
   ERC721OwnerPredicateClient,
   ERC1155OwnerPredicateClient,
   SubscriptionPredicateClient,
@@ -38,6 +40,8 @@ interface RegisterOptions {
   metadata: string
   network: string
   nftGate?: string
+  erc20Gate?: string
+  erc20MinBalance?: string
   accessPredicate?: string
   predicateConfig?: string
   walletProvider?: string
@@ -53,6 +57,14 @@ export const registerCommand = new Command("register")
   .option(
     "--nft-gate <address>",
     "ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry)",
+  )
+  .option(
+    "--erc20-gate <token>",
+    "ERC-20 token address; gates the tool via the canonical ERC20BalancePredicate and configures it",
+  )
+  .option(
+    "--erc20-min-balance <amount>",
+    "Minimum token balance required (raw units, e.g. 1000000000000000000 for 1e18); required with --erc20-gate",
   )
   .option("--access-predicate <address>", "Access predicate address")
   .option(
@@ -72,11 +84,14 @@ export const registerCommand = new Command("register")
       process.exit(1)
     }
 
-    if (options.nftGate && options.accessPredicate) {
+    const gateFlags = [
+      options.nftGate && "--nft-gate",
+      options.erc20Gate && "--erc20-gate",
+      options.accessPredicate && "--access-predicate",
+    ].filter(Boolean) as string[]
+    if (gateFlags.length > 1) {
       console.error(
-        pc.red(
-          "Error: --nft-gate and --access-predicate are mutually exclusive",
-        ),
+        pc.red(`Error: ${gateFlags.join(" and ")} are mutually exclusive`),
       )
       process.exit(1)
     }
@@ -88,6 +103,41 @@ export const registerCommand = new Command("register")
         ),
       )
       process.exit(1)
+    }
+
+    if (options.erc20Gate && !isAddress(options.erc20Gate)) {
+      console.error(
+        pc.red(
+          `Error: --erc20-gate value "${options.erc20Gate}" is not a valid address`,
+        ),
+      )
+      process.exit(1)
+    }
+
+    if (options.erc20Gate && !options.erc20MinBalance) {
+      console.error(
+        pc.red("Error: --erc20-min-balance is required with --erc20-gate"),
+      )
+      process.exit(1)
+    }
+
+    if (options.erc20MinBalance && !options.erc20Gate) {
+      console.error(pc.red("Error: --erc20-min-balance requires --erc20-gate"))
+      process.exit(1)
+    }
+
+    let erc20MinBalance: bigint | undefined
+    if (options.erc20MinBalance) {
+      try {
+        erc20MinBalance = BigInt(options.erc20MinBalance)
+        if (erc20MinBalance <= 0n) throw new Error("must be positive")
+      } catch {
+        console.error(
+          pc.red("Error: --erc20-min-balance must be a positive integer"),
+        )
+        process.exit(1)
+        return
+      }
     }
 
     if (options.predicateConfig && !options.accessPredicate) {
@@ -168,6 +218,13 @@ export const registerCommand = new Command("register")
     let accessPredicate =
       "0x0000000000000000000000000000000000000000" as `0x${string}`
     let nftGateInfo: { predicateAddr: `0x${string}` } | undefined
+    let erc20GateInfo:
+      | {
+          predicateAddr: `0x${string}`
+          token: `0x${string}`
+          minBalance: bigint
+        }
+      | undefined
 
     let predicateName: string | undefined
 
@@ -208,6 +265,27 @@ export const registerCommand = new Command("register")
       }
       accessPredicate = predicateAddr
       nftGateInfo = { predicateAddr }
+    } else if (options.erc20Gate && erc20MinBalance !== undefined) {
+      const predicateAddr = deploymentAddress(ERC20_BALANCE_PREDICATE, chain.id)
+      if (!predicateAddr) {
+        console.error(
+          pc.red(
+            `Error: ERC20BalancePredicate is not deployed on ${options.network}.`,
+          ),
+        )
+        console.error(
+          pc.yellow(
+            "  Use --access-predicate to specify the predicate address manually.",
+          ),
+        )
+        process.exit(1)
+      }
+      accessPredicate = predicateAddr
+      erc20GateInfo = {
+        predicateAddr,
+        token: options.erc20Gate as `0x${string}`,
+        minBalance: erc20MinBalance,
+      }
     }
 
     const wallet = options.walletProvider
@@ -233,6 +311,10 @@ export const registerCommand = new Command("register")
     if (nftGateInfo) {
       console.log(
         `  Access Predicate: ${nftGateInfo.predicateAddr} (ERC721OwnerPredicate, gating collection ${options.nftGate})`,
+      )
+    } else if (erc20GateInfo) {
+      console.log(
+        `  Access Predicate: ${erc20GateInfo.predicateAddr} (ERC20BalancePredicate, token ${erc20GateInfo.token}, minBalance ${erc20GateInfo.minBalance})`,
       )
     } else if (options.accessPredicate) {
       const label = predicateName
@@ -266,6 +348,27 @@ export const registerCommand = new Command("register")
       console.log(accessJson)
     }
 
+    if (!manifest.access && erc20GateInfo) {
+      const predicate = new ERC20BalancePredicateClient({
+        chain,
+        predicateAddress: erc20GateInfo.predicateAddr,
+      })
+      const access = predicate.toManifestAccess(
+        erc20GateInfo.token,
+        erc20GateInfo.minBalance,
+      )
+      const accessJson = JSON.stringify(access, null, 2)
+
+      console.log(
+        pc.yellow(
+          "\nYour manifest does not include an access field. " +
+            "Adding one lets agents discover the gating requirement.",
+        ),
+      )
+      console.log(pc.cyan("\nSuggested access block:"))
+      console.log(accessJson)
+    }
+
     if (options.accessPredicate && !predicateConfig) {
       const configHint =
         predicateName === "ERC721OwnerPredicate"
@@ -274,7 +377,9 @@ export const registerCommand = new Command("register")
             ? 'Use --predicate-config \'{"collection":"0x...","tokenIds":["1","2"]}\' or run `tool-sdk set-collection-tokens` after registration.'
             : predicateName === "SubscriptionPredicate"
               ? 'Use --predicate-config \'{"collection":"0x...","minTier":0}\' or run `tool-sdk configure-subscription` after registration.'
-              : "Configure the predicate after registration to enforce access control."
+              : predicateName === "ERC20BalancePredicate"
+                ? 'Use --predicate-config \'{"token":"0x...","minBalance":"1000000000000000000"}\' or run `tool-sdk configure-erc20-gate` after registration.'
+                : "Configure the predicate after registration to enforce access control."
       console.log(
         pc.yellow(
           `\n  WARNING: predicate ${accessPredicate} registered but not configured.` +
@@ -343,6 +448,43 @@ export const registerCommand = new Command("register")
       )
     }
 
+    if (erc20GateInfo) {
+      try {
+        const predicate = new ERC20BalancePredicateClient({
+          chain,
+          walletClient,
+          predicateAddress: erc20GateInfo.predicateAddr,
+        })
+        const txHash = await predicate.configureToolERC20(
+          regResult.toolId,
+          erc20GateInfo.token,
+          erc20GateInfo.minBalance,
+        )
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(options.rpcUrl),
+        })
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+        console.log(pc.green("\nERC-20 balance gate configured!"))
+        console.log(`  configureToolERC20 TX: ${txHash}`)
+        console.log(`  Token: ${erc20GateInfo.token}`)
+        console.log(`  Min Balance: ${erc20GateInfo.minBalance}`)
+      } catch (err) {
+        console.error(
+          pc.red(
+            `\nTool registered as toolId ${regResult.toolId}, but ERC-20 gate config failed:`,
+          ),
+        )
+        console.error(err instanceof Error ? err.message : String(err))
+        console.error(
+          pc.yellow(
+            `\n  Recovery: run \`tool-sdk configure-erc20-gate ${regResult.toolId} ${erc20GateInfo.token} ${erc20GateInfo.minBalance} --network ${options.network}\``,
+          ),
+        )
+        process.exit(1)
+      }
+    }
+
     if (
       options.accessPredicate &&
       predicateName === "SubscriptionPredicate" &&
@@ -379,6 +521,8 @@ export const registerCommand = new Command("register")
           recoveryCmd = `tool-sdk set-collection-tokens ${regResult.toolId} <collection> <tokenIds...> --network ${options.network}`
         } else if (predicateName === "SubscriptionPredicate") {
           recoveryCmd = `tool-sdk configure-subscription ${regResult.toolId} <collection> --network ${options.network}`
+        } else if (predicateName === "ERC20BalancePredicate") {
+          recoveryCmd = `tool-sdk configure-erc20-gate ${regResult.toolId} <token> <minBalance> --network ${options.network}`
         } else {
           recoveryCmd = `tool-sdk set-collections ${regResult.toolId} <collection> --network ${options.network}`
         }
@@ -460,6 +604,28 @@ function validatePredicateConfig(
         process.exit(1)
       }
     }
+  } else if (predicateName === "ERC20BalancePredicate") {
+    const token = config.token
+    if (typeof token !== "string" || !isAddress(token)) {
+      console.error(
+        pc.red('Error: ERC20BalancePredicate config requires "token" address'),
+      )
+      process.exit(1)
+    }
+    const minBalance = config.minBalance
+    if (minBalance === undefined) {
+      console.error(
+        pc.red('Error: ERC20BalancePredicate config requires "minBalance"'),
+      )
+      process.exit(1)
+    }
+    try {
+      const val = BigInt(minBalance as string)
+      if (val <= 0n) throw new Error("must be positive")
+    } catch {
+      console.error(pc.red("Error: minBalance must be a positive integer"))
+      process.exit(1)
+    }
   }
 }
 
@@ -526,6 +692,29 @@ async function executePredicateConfig(params: PredicateConfigParams) {
     console.log(`  configureToolGating TX: ${txHash}`)
     console.log(`  Collection: ${collection}`)
     console.log(`  Min Tier: ${minTier}`)
+    return
+  }
+
+  if (predicateName === "ERC20BalancePredicate") {
+    const token = config.token as Address
+    const minBalance = BigInt(config.minBalance as string)
+    const predicateAddr = deploymentAddress(ERC20_BALANCE_PREDICATE, chain.id)
+    const predicate = new ERC20BalancePredicateClient({
+      chain,
+      walletClient,
+      predicateAddress: predicateAddr ?? predicateAddress,
+      rpcUrl: params.rpcUrl,
+    })
+    const txHash = await predicate.configureToolERC20(toolId, token, minBalance)
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(params.rpcUrl),
+    })
+    await publicClient.waitForTransactionReceipt({ hash: txHash })
+    console.log(pc.green("\nERC-20 balance predicate configured!"))
+    console.log(`  configureToolERC20 TX: ${txHash}`)
+    console.log(`  Token: ${token}`)
+    console.log(`  Min Balance: ${minBalance}`)
     return
   }
 

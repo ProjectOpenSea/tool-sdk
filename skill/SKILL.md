@@ -25,7 +25,7 @@ Use `opensea-tool-sdk` when you need to:
 
 - Scaffold an AI-callable tool endpoint (HTTPS, JSON Schema, `.well-known` manifest) for Vercel, Cloudflare, or Express
 - Register a tool onchain on the Base ToolRegistry so other agents can discover it
-- Gate access via x402 pay-per-call (USDC) or predicates (ERC-721/ERC-1155 ownership, subscriptions, trait gating, composites)
+- Gate access via x402 pay-per-call (USDC) or predicates (ERC-721/ERC-1155 ownership, subscriptions, trait gating, ERC-20 balance, composites)
 - Call a gated tool: SIWE auth (`authenticatedFetch`), 402 payments (`paidFetch`), or both (`paidAuthenticatedFetch`)
 
 ## When NOT to use this skill (`scope_out`, handoff)
@@ -46,14 +46,14 @@ This SDK is for tool *providers and consumers*. To query OpenSea marketplace dat
 | **Tool** | An HTTPS endpoint with a JSON Schema interface, discoverable via `/.well-known/ai-tool/<slug>.json` |
 | **Manifest** | JCS-canonicalized JSON describing the tool's name, endpoint, inputs, outputs, pricing, and access policy |
 | **ToolRegistry** | Onchain contract (Base) where tools are registered with a manifest hash and optional access predicate |
-| **Access Predicate** | An `IAccessPredicate` contract that gates who can invoke a tool (NFT ownership, subscriptions, trait gating, composites) |
+| **Access Predicate** | An `IAccessPredicate` contract that gates who can invoke a tool (NFT ownership, subscriptions, trait gating, ERC-20 balance, composites) |
 | **x402** | HTTP 402-based pay-per-call protocol (caller signs a USDC `TransferWithAuthorization`; server settles after execution) |
 | **SIWE** | Sign-In with Ethereum (EIP-4361), used to authenticate callers for predicate-gated tools |
 | **Facilitator** | Third-party service that verifies and settles x402 payments (PayAI or Coinbase CDP) |
 
-## Deployed Contracts (Ethereum mainnet + Base)
+## Deployed Contracts (Ethereum mainnet, Base, Shape, Abstract)
 
-Canonical v0.2 deployments — identical CREATE2 address on both chains.
+Canonical v0.2 deployments — identical CREATE2 address on every supported chain.
 
 | Contract | Address |
 |----------|---------|
@@ -62,6 +62,7 @@ Canonical v0.2 deployments — identical CREATE2 address on both chains.
 | ERC1155OwnerPredicate (v0.2) | `0x77373Dc3c1AE9A1e937eF3e5E08F4807D47c7c11` |
 | SubscriptionPredicate (v0.2) | `0xCBe0cd9B1d99d95Baa9c58f2767246C52e461f25` |
 | TraitGatedPredicate (v0.2) | `0x10abF07CfA34Bf22372C57f27e8bd9C2DCF93fA1` |
+| ERC20BalancePredicate (v0.2) | `0x1a834FC48B5f6e119c62C12a98b32137bCFA77cD` |
 
 ## 1. Create a Tool
 
@@ -215,7 +216,7 @@ Tools can be gated three ways:
 | Gate | Mechanism | Reference |
 |------|-----------|-----------|
 | **x402 paywall** | Pay-per-call (USDC, EIP-3009) | [`references/x402.md`](references/x402.md) |
-| **Predicate gate** | Onchain check (NFT, subscription, trait gating, composite) | [`references/predicate-gating.md`](references/predicate-gating.md) |
+| **Predicate gate** | Onchain check (NFT, subscription, trait gating, ERC-20 balance, composite) | [`references/predicate-gating.md`](references/predicate-gating.md) |
 | **Combined** | SIWE auth and payment (predicate first, then x402) | [`references/predicate-gating.md`](references/predicate-gating.md) |
 
 For deployed predicate addresses, requirement encodings, and SDK helpers like `describeToolAccess` / `decodeRequirement`, see [`references/known-predicates.md`](references/known-predicates.md).
@@ -270,7 +271,7 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `validate` | Validate a manifest file |
 | `hash` | Compute the JCS keccak256 hash of a manifest |
 | `export` | Export the manifest as JSON |
-| `register` | Register a tool onchain. Supports `--predicate-config` to bundle predicate setup with registration |
+| `register` | Register a tool onchain. Supports `--nft-gate`, `--erc20-gate` + `--erc20-min-balance`, or `--predicate-config` to bundle predicate setup with registration |
 | `update-metadata` | Update a tool's metadata URI and manifest hash onchain |
 | `inspect` | Look up a tool's onchain config by ID |
 | `verify` | Verify a manifest against its onchain hash |
@@ -286,6 +287,8 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `configure-subscription` | Configure SubscriptionPredicate gate (collection + minTier) for a tool |
 | `configure-trait-gating` | Configure TraitGatedPredicate gate (collection, traits contract, trait key, allowed values) for a tool |
 | `get-trait-config` | Read trait gating configuration for a tool |
+| `configure-erc20-gate` | Configure ERC20BalancePredicate gate (token, minBalance) for a tool |
+| `get-erc20-config` | Read ERC-20 balance gating configuration for a tool |
 
 All CLI commands accept `--wallet-provider privy|turnkey|fireblocks|private-key` or auto-detect from env vars.
 
@@ -362,7 +365,27 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   --body '{"query": "hello"}'
 ```
 
-### Example E: NFT-gated + paid tool (both gates)
+### Example E: ERC-20 balance-gated tool
+
+```bash
+# Register with ERC20BalancePredicate and configure in one shot:
+PRIVATE_KEY=0x... npx @opensea/tool-sdk register \
+  --metadata https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json \
+  --network base \
+  --erc20-gate 0xTOKEN_ADDRESS --erc20-min-balance 1000000000000000000
+
+# Or configure after registration:
+npx @opensea/tool-sdk configure-erc20-gate <TOOL_ID> 0xTOKEN_ADDRESS 1000000000000000000 \
+  --network base
+
+# Call via CLI:
+PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
+  npx @opensea/tool-sdk auth \
+  https://my-tool.vercel.app/api \
+  --body '{"query": "hello"}'
+```
+
+### Example F: NFT-gated + paid tool (both gates)
 
 ```bash
 # Server: add both predicateGate and paywall.gate (see references/predicate-gating.md)

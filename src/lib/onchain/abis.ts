@@ -480,6 +480,60 @@ export const TraitGatedPredicateABI = [
   },
 ] as const
 
+export const ERC20BalancePredicateABI = [
+  {
+    type: "error",
+    name: "CallerIsNotToolCreator",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "caller", type: "address" },
+    ],
+  },
+  { type: "error", name: "ZeroToken", inputs: [] },
+  {
+    type: "error",
+    name: "TokenNoCode",
+    inputs: [{ name: "token", type: "address" }],
+  },
+  { type: "error", name: "ZeroMinBalance", inputs: [] },
+  {
+    type: "event",
+    name: "ToolERC20Configured",
+    inputs: [
+      { name: "toolId", type: "uint256", indexed: true },
+      { name: "token", type: "address", indexed: true },
+      { name: "minBalance", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "function",
+    name: "configureToolERC20",
+    inputs: [
+      { name: "toolId", type: "uint256" },
+      { name: "token", type: "address" },
+      { name: "minBalance", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getToolERC20Config",
+    inputs: [{ name: "toolId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "token", type: "address" },
+          { name: "minBalance", type: "uint256" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+] as const
+
 /**
  * Minimal ABI for delegate.xyz's DelegateRegistry V2.
  * Only includes `checkDelegateForAll` which is the function we use to verify

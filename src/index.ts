@@ -83,6 +83,7 @@ export {
 } from "./lib/middleware/x402-facilitators.js"
 export {
   CompositePredicateABI,
+  ERC20BalancePredicateABI,
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   IAccessPredicateABI,
@@ -95,6 +96,7 @@ export type {
   AccessRequirementInfo,
   CheckToolAccessOptions,
   CheckToolAccessResult,
+  DecodedERC20BalanceRequirement,
   DecodedERC721Requirement,
   DecodedERC1155Requirement,
   DecodedERC7496TraitRequirement,
@@ -109,6 +111,7 @@ export {
   checkToolAccess,
   decodeRequirement,
   describeToolAccess,
+  ERC20_BALANCE_KIND,
   ERC721_KIND,
   ERC1155_KIND,
   ERC7496_TRAIT_KIND,
@@ -119,6 +122,7 @@ export type { Deployment } from "./lib/onchain/chains.js"
 export {
   DELEGATE_REGISTRY,
   deploymentAddress,
+  ERC20_BALANCE_PREDICATE,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
@@ -133,6 +137,7 @@ export type {
 export {
   CompositeOp,
   CompositePredicateClient,
+  ERC20BalancePredicateClient,
   ERC721OwnerPredicateClient,
   ERC1155OwnerPredicateClient,
   SubscriptionPredicateClient,
