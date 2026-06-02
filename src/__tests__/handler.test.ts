@@ -3,7 +3,7 @@ import { z } from "zod/v4"
 import { ToolHandlerError } from "../index.js"
 import { createToolHandler } from "../lib/handler/index.js"
 import type { ManifestDefinition } from "../lib/manifest/index.js"
-import type { GateMiddleware } from "../types.js"
+import type { GateMiddleware, InvocationEvent } from "../types.js"
 
 const testManifest = {
   type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
@@ -309,5 +309,139 @@ describe("createToolHandler", () => {
       expect.anything(),
     )
     errorSpy.mockRestore()
+  })
+
+  it("calls onInvocation after handler succeeds and output validates", async () => {
+    const onInvocation = vi.fn()
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      onInvocation,
+    })
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "hello" }),
+    })
+    const response = await handler(request)
+    expect(response.status).toBe(200)
+    expect(onInvocation).toHaveBeenCalledOnce()
+    const event: InvocationEvent = onInvocation.mock.calls[0]![0]
+    expect(event.paid).toBe(false)
+    expect(event.latencyMs).toBeGreaterThanOrEqual(0)
+    expect(event.timestamp).toBeGreaterThan(0)
+  })
+
+  it("does not call onInvocation when gate blocks the request", async () => {
+    const onInvocation = vi.fn()
+    const gate: GateMiddleware = {
+      async check() {
+        return Response.json({ error: "Blocked" }, { status: 403 })
+      },
+    }
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [gate],
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      onInvocation,
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+    expect(response.status).toBe(403)
+    expect(onInvocation).not.toHaveBeenCalled()
+  })
+
+  it("does not call onInvocation when output schema validation fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const onInvocation = vi.fn()
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async () =>
+        ({ wrong: "shape" }) as unknown as { result: string },
+      onInvocation,
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+    expect(response.status).toBe(500)
+    expect(onInvocation).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it("logs but does not bubble onInvocation errors — response stays 200", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const onInvocation = vi.fn().mockRejectedValue(new Error("reporter down"))
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      onInvocation,
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.result).toBe("Echo: hello")
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[tool-sdk] onInvocation failed:",
+      expect.any(Error),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("calls onInvocation after settle() hooks run", async () => {
+    const order: string[] = []
+    const onInvocation = vi.fn(() => {
+      order.push("onInvocation")
+    })
+    const gate: GateMiddleware = {
+      async check() {
+        return null
+      },
+      async settle() {
+        order.push("settle")
+      },
+    }
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [gate],
+      handler: async input => {
+        order.push("handler")
+        return { result: `Echo: ${input.query}` }
+      },
+      onInvocation,
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect(order).toEqual(["handler", "settle", "onInvocation"])
   })
 })

@@ -136,7 +136,7 @@ if (isOpenAccess) {
       checks.push([
         "ERC721 predicate has at least one collection configured",
         collections.length > 0,
-        "no collections — anyone with a SIWE signature would pass the gate",
+        "no collections — anyone with a valid signature would pass the gate",
       ])
     } catch (err) {
       checks.push([

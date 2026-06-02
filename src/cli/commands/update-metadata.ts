@@ -26,7 +26,11 @@ export const updateMetadataCommand = new Command("update-metadata")
   .description("Update a tool's metadata URI and manifest hash onchain")
   .option("--tool-id <id>", "Numeric tool ID (required)")
   .option("--metadata <url>", "New metadata URI (required)")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

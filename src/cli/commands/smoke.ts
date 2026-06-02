@@ -1,8 +1,8 @@
 import { Command } from "commander"
 import pc from "picocolors"
 import { type Address, getAddress } from "viem"
+import { eip3009AuthenticatedFetch } from "../../lib/client/eip3009-auth.js"
 import { createExternalSignerAccount } from "../../lib/client/external-signer.js"
-import { authenticatedFetch } from "../../lib/client/siwe-auth.js"
 import type { PaymentRequirements } from "../../lib/client/x402-payment.js"
 import { signX402Payment } from "../../lib/client/x402-payment.js"
 import {
@@ -42,14 +42,21 @@ interface SmokeOptions {
 
 export const smokeCommand = new Command("smoke")
   .description(
-    "Smoke-test a live tool endpoint: SIWE-sign, send an authenticated request, and assert the HTTP status",
+    "Smoke-test a live tool endpoint: EIP-3009-sign, send an authenticated request, and assert the HTTP status",
   )
   .option("--tool-id <id>", "Onchain tool ID (included in log output)")
   .requiredOption("--endpoint <url>", "Production endpoint URL")
   .option("--input <json>", "JSON body (inline or @path)", "{}")
   .option("--expect <status>", "Expected HTTP status code")
-  .option("--chain <name>", "Chain for wallet client and SIWE message", "base")
-  .option("--paid", "Handle x402 payment challenge after SIWE authentication")
+  .option(
+    "--chain <name>",
+    "Chain for wallet client and EIP-3009 signature",
+    "base",
+  )
+  .option(
+    "--paid",
+    "Handle x402 payment challenge after EIP-3009 authentication",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
@@ -140,21 +147,37 @@ export const smokeCommand = new Command("smoke")
       console.error(pc.dim(err instanceof Error ? err.message : String(err)))
       process.exit(1)
     }
-    const { signMessage } = adapter
-    if (!signMessage) {
+    const { signMessage, signTypedData } = adapter
+    if (!signTypedData) {
       console.error(
         pc.red(
-          "Error: Selected wallet provider does not support message signing",
+          "Error: Selected wallet provider does not support typed data signing (required for EIP-3009 auth)",
         ),
       )
       process.exit(1)
     }
     const account = createExternalSignerAccount({
       address,
-      signMessage: async (message: string) => {
-        const sig = await signMessage.call(adapter, { message })
-        return sig as `0x${string}`
-      },
+      signMessage: signMessage
+        ? async (message: string) => {
+            const sig = await signMessage.call(adapter, { message })
+            return sig as `0x${string}`
+          }
+        : async () => {
+            throw new Error("Wallet does not support message signing")
+          },
+      signTypedData: signTypedData
+        ? async (typedData: unknown) => {
+            const td = typedData as {
+              domain: Record<string, unknown>
+              types: Record<string, Array<{ name: string; type: string }>>
+              primaryType: string
+              message: Record<string, unknown>
+            }
+            const sig = await signTypedData.call(adapter, td)
+            return sig as `0x${string}`
+          }
+        : undefined,
     })
 
     console.log(pc.cyan("Smoke test configuration:"))
@@ -166,7 +189,7 @@ export const smokeCommand = new Command("smoke")
     console.log(`  Chain:    ${chain.name} (${chain.id})`)
     console.log(`  Expected: HTTP ${expectedStatus}`)
 
-    console.log(pc.cyan("\nProbing endpoint before SIWE signing...\n"))
+    console.log(pc.cyan("\nProbing endpoint before EIP-3009 signing...\n"))
 
     const probeResult = await probeEndpoint(parsedUrl.href)
     printProbeResult(probeResult)
@@ -178,13 +201,13 @@ export const smokeCommand = new Command("smoke")
     if (options.paid) {
       console.log(
         pc.cyan(
-          "\nBuilding SIWE message and sending authenticated request...\n",
+          "\nBuilding EIP-3009 authorization and sending authenticated request...\n",
         ),
       )
 
       let initialRes: globalThis.Response
       try {
-        initialRes = await authenticatedFetch(parsedUrl.href, {
+        initialRes = await eip3009AuthenticatedFetch(parsedUrl.href, {
           account,
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -265,12 +288,12 @@ export const smokeCommand = new Command("smoke")
       })
 
       console.log(
-        pc.cyan("Replaying request with SIWE auth + X-Payment headers..."),
+        pc.cyan("Replaying request with EIP-3009 auth + X-Payment headers..."),
       )
 
       let paidRes: globalThis.Response
       try {
-        paidRes = await authenticatedFetch(parsedUrl.href, {
+        paidRes = await eip3009AuthenticatedFetch(parsedUrl.href, {
           account,
           method: "POST",
           headers: {
@@ -295,11 +318,13 @@ export const smokeCommand = new Command("smoke")
 
       await printResult(paidRes, expectedStatus)
     } else {
-      console.log(pc.cyan("\nBuilding SIWE message and sending request...\n"))
+      console.log(
+        pc.cyan("\nBuilding EIP-3009 authorization and sending request...\n"),
+      )
 
       let res: globalThis.Response
       try {
-        res = await authenticatedFetch(parsedUrl.href, {
+        res = await eip3009AuthenticatedFetch(parsedUrl.href, {
           account,
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -352,7 +377,7 @@ function printPaywallSuccess(text: string): void {
   }
   console.log(
     pc.green(
-      "\nAuth OK — paywall fired (expected for paywalled tools). Pair with `pay --auth siwe` for full E2E.",
+      "\nAuth OK — paywall fired (expected for paywalled tools). Pair with `pay --auth eip3009` for full E2E.",
     ),
   )
 }

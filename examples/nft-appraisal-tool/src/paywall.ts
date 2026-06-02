@@ -50,7 +50,7 @@ export function buildHolderPaywall({
 /**
  * Compose the holder gate chain: `predicateGate` first (so non-holders
  * get a clean 403 before being asked to pay), then the x402 paywall gate.
- * `predicateGate` verifies SIWE auth and asks the onchain `ToolRegistry`
+ * `predicateGate` verifies EIP-3009 auth and asks the onchain `ToolRegistry`
  * whether the caller satisfies the tool's registered access predicate.
  */
 export function buildHolderGates(

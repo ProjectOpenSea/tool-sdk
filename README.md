@@ -155,29 +155,29 @@ npx @opensea/tool-sdk deploy --host vercel --non-interactive -y
 
 ### `pay <url>`
 
-Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements, signs an EIP-3009 `transferWithAuthorization`, and replays the request with the `X-Payment` header. Optionally includes SIWE authentication for predicate-gated endpoints.
+Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements, signs an EIP-3009 `transferWithAuthorization`, and replays the request with the `X-Payment` header. Optionally includes EIP-3009 authentication for predicate-gated endpoints.
 
 ```bash
 npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
   --body '{"query":"hello"}'
 
-# Combined payment + SIWE auth (for predicate-gated paid tools):
+# Combined payment + EIP-3009 auth (for predicate-gated paid tools):
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
-  --auth siwe --body '{"query":"hello"}'
+  --auth eip3009 --body '{"query":"hello"}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
-| `--auth <type>` | Authentication type (`siwe`). Auto-enabled when manifest declares an access block |
-| `--manifest <path>` | Path to tool manifest (JSON or TS). If it declares an access block, SIWE auth is auto-enabled |
-| `--chain <name>` | Chain for SIWE message (default: `base`) |
+| `--auth <type>` | Authentication type (`eip3009`). Auto-enabled when manifest declares an access block |
+| `--manifest <path>` | Path to tool manifest (JSON or TS). If it declares an access block, EIP-3009 auth is auto-enabled |
+| `--chain <name>` | Chain for EIP-3009 signature (default: `base`) |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
 
 ### `auth <url>`
 
-Make an authenticated call to a predicate-gated tool endpoint via SIWE.
+Make an authenticated call to a predicate-gated tool endpoint via EIP-3009 zero-value authorization.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk auth https://my-tool.vercel.app/api/tool \
@@ -206,7 +206,7 @@ npx @opensea/tool-sdk dry-run-gate \
 
 ### `dry-run-predicate-gate`
 
-Invoke a tool handler locally with no SIWE auth header and assert a valid 401 response (predicate gate test).
+Invoke a tool handler locally with no auth header and assert a valid 401 response (predicate gate test).
 
 ```bash
 npx @opensea/tool-sdk dry-run-predicate-gate \
@@ -222,7 +222,7 @@ npx @opensea/tool-sdk dry-run-predicate-gate \
 
 ### `smoke`
 
-Smoke-test a live tool endpoint: SIWE-sign, send an authenticated request, and assert the HTTP status. Classifies 402 as "auth passed, payment required" for paywalled tools.
+Smoke-test a live tool endpoint: sign an EIP-3009 authorization, send an authenticated request, and assert the HTTP status. Classifies 402 as "auth passed, payment required" for paywalled tools.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
@@ -238,8 +238,8 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 | `--tool-id <id>` | Onchain tool ID (included in log output) |
 | `--input <json>` | JSON body (inline or `@path`; default: `{}`) |
 | `--expect <status>` | Expected HTTP status code |
-| `--chain <name>` | Chain for wallet client and SIWE message (default: `base`) |
-| `--paid` | Handle x402 payment challenge after SIWE authentication |
+| `--chain <name>` | Chain for wallet client and EIP-3009 signature (default: `base`) |
+| `--paid` | Handle x402 payment challenge after EIP-3009 authentication |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
 | `--max-amount <amount>` | Maximum payment amount in base units (default: `1000000` = 1 USDC) |
 
@@ -521,7 +521,8 @@ const { toolId, txHash } = await client.registerTool({
 ### Predicate Gate (recommended)
 
 Delegates the access decision to the onchain `ToolRegistry`. The middleware
-verifies SIWE auth, recovers the caller's address, and staticcalls
+verifies an EIP-3009 zero-value authorization, recovers the caller's address
+via `ecrecover`, and staticcalls
 `IToolRegistry.tryHasAccess(toolId, caller, data)`. Whatever predicate the
 tool's creator registered (single-collection ERC-721, multi-collection,
 ERC-1155, subscription, composite, anything future) is the policy enforced.
@@ -551,7 +552,7 @@ Status code mapping:
 
 | Outcome | Status | Body |
 | --- | --- | --- |
-| Missing or malformed SIWE | `401` | `{ error, hint }` |
+| Missing or malformed authorization | `401` | `{ error, hint }` |
 | `tryHasAccess` returned `(true, true)` | (passes) | n/a |
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "Predicate misbehaved..." }` |
@@ -561,12 +562,11 @@ address, fetched lazily from `getToolConfig` on first denial and cached
 in-process. Callers can read the predicate's onchain config to learn what
 they need to satisfy.
 
-Authorization header format: `SIWE <base64url(siwe-message)>.<hex-signature>`
+Authorization header format: `EIP-3009 <base64url(json)>` (also accepts deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility)
 
-> **Note:** Stateless SIWE: does not track nonces. Callers should include a
-> short-lived `expirationTime` in their SIWE messages to limit replay window.
-> Tool operators requiring stronger replay protection should implement
-> server-side nonce tracking.
+> **Note:** The gate enforces a short-lived `validBefore` window (the SDK
+> defaults to 5 minutes). Each authorization includes a random nonce bound
+> into the signature. The gate does not track nonces server-side.
 
 #### Delegated agent access (delegate.xyz)
 
@@ -576,9 +576,9 @@ without the holder's private key. The holder delegates to the agent at
 and the agent includes the holder's address in the request:
 
 ```typescript
-import { authenticatedFetch } from "@opensea/tool-sdk"
+import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
 
-const response = await authenticatedFetch(toolUrl, {
+const response = await eip3009AuthenticatedFetch(toolUrl, {
   method: "POST",
   headers: {
     "X-Delegate-For": holderAddress,      // holder who delegated
@@ -590,7 +590,7 @@ const response = await authenticatedFetch(toolUrl, {
 
 When `X-Delegate-For` is present, the middleware:
 
-1. Verifies the agent's SIWE signature normally
+1. Verifies the agent's EIP-3009 signature normally
 2. Calls `checkDelegateForAll(agent, holder)` on the [delegate.xyz DelegateRegistry](https://docs.delegate.xyz)
 3. If valid, runs the access predicate against the **holder** (not the agent)
 4. Sets `ctx.callerAddress = holderAddress` and `ctx.agentAddress = agentAddress`
@@ -607,7 +607,7 @@ full delegation walkthrough.
 ### Client-side access preview
 
 Off-chain helper for clients that want to gate UI before invocation. Same
-staticcall as `predicateGate`, no SIWE required.
+staticcall as `predicateGate`, no authentication required.
 
 ```typescript
 import { checkToolAccess } from "@opensea/tool-sdk"
@@ -835,9 +835,41 @@ const data = await res.json()
 
 ### Predicate-Gated Tools
 
-Gate your tool using the onchain access predicate system. The `predicateGate` middleware verifies SIWE auth, recovers the caller's address, and delegates the access decision to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
+Gate your tool using the onchain access predicate system. The `predicateGate` middleware verifies an EIP-3009 zero-value authorization, recovers the caller's address via `ecrecover`, and delegates the access decision to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
 
 See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
+
+## Security Considerations
+
+### Input Validation
+
+`createToolHandler` validates every request automatically:
+
+1. **Method check** — only `POST` is accepted (405 otherwise).
+2. **Body parsing** — malformed JSON returns 400.
+3. **Input schema** — the request body is validated against your Zod `inputSchema` before reaching your handler. Invalid payloads return 400 with structured error details.
+4. **Output schema** — handler return values are validated against `outputSchema` before being sent. Schema mismatches return 500 without leaking internal state.
+
+The `ToolManifestSchema` enforces structural invariants on manifests: HTTPS-only endpoints, lowercase hex addresses, bounded field lengths, JSON Schema depth limits, and cross-field consistency (e.g. `hardware-attested` tier requires an `attestation` block).
+
+### Rate Limiting
+
+The SDK does not ship a built-in rate limiter. Rate limiting is inherently deployment-specific — Cloudflare Workers, Vercel, AWS API Gateway, and self-hosted Node all have different preferred mechanisms, and in-memory counters do not work in serverless environments where each invocation may run in a separate isolate.
+
+Recommended approaches by platform:
+
+- **Cloudflare Workers** — [Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) at the edge, or [Durable Objects](https://developers.cloudflare.com/durable-objects/) for per-key counters.
+- **Vercel** — [Vercel WAF rate limiting](https://vercel.com/docs/security/vercel-waf) or [Upstash Ratelimit](https://github.com/upstash/ratelimit) with Redis.
+- **Express / self-hosted** — [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) or a reverse proxy (nginx, Caddy) in front of your process.
+
+You can also implement a custom `GateMiddleware` that performs rate-limit checks in the `check()` hook and returns a 429 response when limits are exceeded.
+
+### Sensitive Data Handling
+
+- **Private keys** are never handled directly by the SDK runtime. They flow through `@opensea/wallet-adapters`, which supports Privy, Turnkey, Fireblocks, and local key signing. The SDK accepts a `WalletAdapter` interface — it never reads or stores raw key material.
+- **Environment variables** — the `deploy` command detects sensitive env vars (names ending in `_KEY`, `_SECRET`, `_TOKEN`, `_PASSWORD`, `_PRIVATE`) and masks their values during interactive prompts.
+- **EIP-3009 auth** — the `predicateGate` middleware verifies EIP-3009 zero-value authorizations via `ecrecover` (no RPC call needed). The SDK defaults to a 5-minute `validBefore` window to limit replay.
+- **x402 payments** — the `paidFetch` client validates payment parameters before signing: `maxAmount` caps the spend, `allowedRecipients` restricts payees, and `allowedAssets` defaults to the canonical USDC contract for the network. These guard against malicious 402 responses.
 
 ## Tips
 

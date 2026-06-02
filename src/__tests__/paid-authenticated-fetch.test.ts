@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe("paidAuthenticatedFetch", () => {
-  it("sends SIWE auth header on initial request", async () => {
+  it("sends EIP-3009 auth header on initial request", async () => {
     let capturedInit: RequestInit | undefined
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       capturedInit = init
@@ -56,7 +56,7 @@ describe("paidAuthenticatedFetch", () => {
     const headers = new Headers(capturedInit?.headers)
     const authHeader = headers.get("Authorization")
     expect(authHeader).toBeTruthy()
-    expect(authHeader).toMatch(/^SIWE .+\..+$/)
+    expect(authHeader).toMatch(/^EIP-3009 /)
   })
 
   it("returns non-402 responses directly without payment attempt", async () => {
@@ -112,11 +112,11 @@ describe("paidAuthenticatedFetch", () => {
     expect(res.status).toBe(200)
 
     const firstHeaders = new Headers(capturedInits[0].headers)
-    expect(firstHeaders.get("Authorization")).toMatch(/^SIWE /)
+    expect(firstHeaders.get("Authorization")).toMatch(/^EIP-3009 /)
     expect(firstHeaders.get("X-Payment")).toBeNull()
 
     const secondHeaders = new Headers(capturedInits[1].headers)
-    expect(secondHeaders.get("Authorization")).toMatch(/^SIWE /)
+    expect(secondHeaders.get("Authorization")).toMatch(/^EIP-3009 /)
     expect(secondHeaders.get("X-Payment")).toBeTruthy()
   })
 
@@ -358,7 +358,7 @@ describe("paidAuthenticatedFetch", () => {
     const headers = new Headers(secondCallInit?.headers)
     expect(headers.get("Content-Type")).toBe("application/json")
     expect(headers.get("X-Custom")).toBe("value")
-    expect(headers.get("Authorization")).toMatch(/^SIWE /)
+    expect(headers.get("Authorization")).toMatch(/^EIP-3009 /)
     expect(headers.get("X-Payment")).toBeTruthy()
   })
 })

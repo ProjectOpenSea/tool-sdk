@@ -26,6 +26,10 @@ vi.mock("../lib/onchain/registry.js", () => ({
   },
 }))
 
+const mockRecoverTypedDataAddress = vi
+  .fn()
+  .mockResolvedValue(TEST_CALLER as `0x${string}`)
+
 vi.mock("viem", async importOriginal => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
@@ -33,6 +37,8 @@ vi.mock("viem", async importOriginal => {
     createPublicClient: () => ({
       verifySiweMessage: vi.fn().mockResolvedValue(true),
     }),
+    recoverTypedDataAddress: (...args: unknown[]) =>
+      mockRecoverTypedDataAddress(...args),
   }
 })
 
@@ -59,6 +65,8 @@ beforeEach(() => {
     accessPredicate: TEST_PREDICATE,
   })
   mockConstructorArgs.mockReset()
+  mockRecoverTypedDataAddress.mockReset()
+  mockRecoverTypedDataAddress.mockResolvedValue(TEST_CALLER as `0x${string}`)
 })
 
 afterEach(() => {
@@ -91,7 +99,7 @@ describe("predicateGate", () => {
     expect(response).not.toBeNull()
     expect(response?.status).toBe(401)
     const body = await response?.json()
-    expect(body.error).toContain("SIWE authorization required")
+    expect(body.error).toContain("authorization required")
   })
 
   it("returns 401 when Authorization scheme is not SIWE", async () => {
@@ -402,5 +410,190 @@ describe("predicateGate", () => {
         registryAddress: expect.any(String),
       }),
     )
+  })
+
+  // -------------------------------------------------------------------------
+  // EIP-3009 auth path
+  // -------------------------------------------------------------------------
+
+  function makeEip3009Token(overrides: Record<string, unknown> = {}) {
+    const payload = {
+      from: TEST_CALLER,
+      to: "0x0000000000000000000000000000000000000000",
+      value: "0",
+      validAfter: "0",
+      validBefore: String(Math.floor(Date.now() / 1000) + 300),
+      nonce:
+        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      signature: "0xabcd",
+      chainId: 8453,
+      ...overrides,
+    }
+    const json = JSON.stringify(payload)
+    const encoded = btoa(json)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "")
+    return encoded
+  }
+
+  function makeEip3009Request(overrides: Record<string, unknown> = {}) {
+    const token = makeEip3009Token(overrides)
+    return new Request("https://example.com/api", {
+      method: "POST",
+      headers: { Authorization: `EIP-3009 ${token}` },
+    })
+  }
+
+  it("EIP-3009: succeeds and sets callerAddress", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(makeEip3009Request(), ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.gates?.predicate).toEqual({ granted: true })
+  })
+
+  it("EIP-3009: returns 401 when required fields are missing (no 'to')", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const token = makeEip3009Token()
+    const payload = JSON.parse(
+      atob(token.replace(/-/g, "+").replace(/_/g, "/")),
+    )
+    delete payload.to
+    const badJson = JSON.stringify(payload)
+    const badToken = btoa(badJson)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "")
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { Authorization: `EIP-3009 ${badToken}` },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/missing required fields/i)
+  })
+
+  it("EIP-3009: returns 401 when value !== '0'", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(makeEip3009Request({ value: "100" }), ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/value=0/i)
+  })
+
+  it("EIP-3009: returns 401 when operatorAddress mismatches 'to'", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress:
+        "0x1111111111111111111111111111111111111111" as `0x${string}`,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeEip3009Request({
+        to: "0x2222222222222222222222222222222222222222",
+      }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/address mismatch/i)
+  })
+
+  it("EIP-3009: returns 401 when authorization is expired", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeEip3009Request({
+        validBefore: String(Math.floor(Date.now() / 1000) - 60),
+      }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/expired/i)
+  })
+
+  it("EIP-3009: returns 401 when authorization is not yet valid", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeEip3009Request({
+        validAfter: String(Math.floor(Date.now() / 1000) + 3600),
+      }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/not yet valid/i)
+  })
+
+  it("EIP-3009: returns 401 when signature recovery fails", async () => {
+    mockRecoverTypedDataAddress.mockRejectedValueOnce(
+      new Error("bad signature"),
+    )
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(makeEip3009Request(), ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/invalid EIP-3009 signature/i)
+  })
+
+  it("EIP-3009: returns 401 when recovered address does not match 'from'", async () => {
+    mockRecoverTypedDataAddress.mockResolvedValueOnce(
+      "0x9999999999999999999999999999999999999999" as `0x${string}`,
+    )
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(makeEip3009Request(), ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/signer does not match/i)
   })
 })

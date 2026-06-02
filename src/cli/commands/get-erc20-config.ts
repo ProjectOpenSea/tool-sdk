@@ -23,7 +23,11 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
     "--predicate-address <address>",
     "Override the canonical ERC20BalancePredicate address",
   )
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetERC20ConfigOptions) => {
     let toolId: bigint

@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe("auth command", () => {
-  it("sends Authorization: SIWE header with base64url message and signature", async () => {
+  it("sends Authorization: EIP-3009 header with base64url JSON payload", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -46,29 +46,25 @@ describe("auth command", () => {
 
     const authHeader = calls[0].headers.Authorization
     expect(authHeader).toBeDefined()
-    expect(authHeader).toMatch(/^SIWE /)
+    expect(authHeader).toMatch(/^EIP-3009 /)
 
-    const token = authHeader.slice(5)
-    const dotIndex = token.lastIndexOf(".")
-    expect(dotIndex).toBeGreaterThan(0)
+    const token = authHeader.slice("EIP-3009 ".length)
 
-    const messageB64 = token.slice(0, dotIndex)
-    const signature = token.slice(dotIndex + 1)
-
-    // Message should be valid base64url-decodable SIWE text
-    const message = Buffer.from(messageB64, "base64url").toString("utf-8")
-    expect(message).toContain("tool.example.com")
-    expect(message).toContain("Authenticate to access this tool")
-
-    // Signature should be a 0x-prefixed hex string
-    expect(signature).toMatch(/^0x[0-9a-f]+$/i)
+    // Token should be valid base64url-decodable JSON
+    const json = Buffer.from(token, "base64url").toString("utf-8")
+    const payload = JSON.parse(json)
+    expect(payload).toHaveProperty("from")
+    expect(payload).toHaveProperty("to")
+    expect(payload).toHaveProperty("signature")
+    expect(payload).toHaveProperty("chainId")
+    expect(payload.value).toBe("0")
 
     expect(calls[0].headers["content-type"]).toBe("application/json")
 
     logSpy.mockRestore()
   })
 
-  it("sends SIWE header when using --wallet-provider flag", async () => {
+  it("sends EIP-3009 header when using --wallet-provider flag", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -102,7 +98,7 @@ describe("auth command", () => {
 
     const authHeader = calls[0].headers.Authorization
     expect(authHeader).toBeDefined()
-    expect(authHeader).toMatch(/^SIWE /)
+    expect(authHeader).toMatch(/^EIP-3009 /)
 
     logSpy.mockRestore()
   })
@@ -134,7 +130,7 @@ describe("auth command", () => {
     ])
 
     const output = logSpy.mock.calls.map(c => c.join(" ")).join("\n")
-    expect(output).toContain("SIWE authentication failed")
+    expect(output).toContain("Authentication failed")
 
     logSpy.mockRestore()
   })

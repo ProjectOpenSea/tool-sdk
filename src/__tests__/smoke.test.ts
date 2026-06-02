@@ -11,6 +11,10 @@ vi.mock("viem", async importOriginal => {
       readContract: vi.fn().mockResolvedValue(1n),
       verifySiweMessage: vi.fn().mockResolvedValue(true),
     }),
+    createWalletClient: (opts: Record<string, unknown>) => ({
+      account: opts.account,
+      signTypedData: vi.fn().mockResolvedValue("0x" + "ab".repeat(65)),
+    }),
   }
 })
 
@@ -131,7 +135,7 @@ describe("smoke command", () => {
     logSpy.mockRestore()
   })
 
-  it("sends SIWE Authorization header with the request", async () => {
+  it("sends EIP-3009 Authorization header with the request", async () => {
     let capturedInit: RequestInit | undefined
     vi.stubGlobal(
       "fetch",
@@ -159,7 +163,7 @@ describe("smoke command", () => {
     const headers = new Headers(capturedInit?.headers)
     const authHeader = headers.get("Authorization")
     expect(authHeader).toBeTruthy()
-    expect(authHeader).toMatch(/^SIWE .+\..+$/)
+    expect(authHeader).toMatch(/^EIP-3009 /)
   })
 
   it("pretty-prints JSON response body", async () => {
@@ -349,16 +353,15 @@ describe("smoke command", () => {
 
     const headers = new Headers(capturedInit?.headers)
     const authHeader = headers.get("Authorization")!
-    const token = authHeader.slice(5)
-    const dotIndex = token.lastIndexOf(".")
-    const messageB64 = token.slice(0, dotIndex)
-    const messageStr = Buffer.from(messageB64, "base64url").toString("utf-8")
-    expect(messageStr).toContain("Chain ID: 8453")
+    const token = authHeader.slice("EIP-3009 ".length)
+    const json = Buffer.from(token, "base64url").toString("utf-8")
+    const payload = JSON.parse(json)
+    expect(payload.chainId).toBe(8453)
 
     logSpy.mockRestore()
   })
 
-  it("exits before SIWE signing when probe returns 405", async () => {
+  it("exits before EIP-3009 signing when probe returns 405", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 405 })),
@@ -391,14 +394,14 @@ describe("smoke command", () => {
     ].join("\n")
     expect(allOutput).toContain("FAIL")
     expect(allOutput).toContain("405")
-    expect(allOutput).not.toContain("Building SIWE message")
+    expect(allOutput).not.toContain("Building EIP-3009 authorization")
 
     exitSpy.mockRestore()
     logSpy.mockRestore()
     errorSpy.mockRestore()
   })
 
-  it("exits before SIWE signing when probe returns 404", async () => {
+  it("exits before EIP-3009 signing when probe returns 404", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 404 })),
@@ -431,14 +434,14 @@ describe("smoke command", () => {
     ].join("\n")
     expect(allOutput).toContain("FAIL")
     expect(allOutput).toContain("handler not found")
-    expect(allOutput).not.toContain("Building SIWE message")
+    expect(allOutput).not.toContain("Building EIP-3009 authorization")
 
     exitSpy.mockRestore()
     logSpy.mockRestore()
     errorSpy.mockRestore()
   })
 
-  it("proceeds to SIWE when probe returns 401", async () => {
+  it("proceeds to EIP-3009 auth when probe returns 401", async () => {
     let callCount = 0
     vi.stubGlobal(
       "fetch",
@@ -467,12 +470,12 @@ describe("smoke command", () => {
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("Endpoint probe:")
     expect(output).toContain("PASS")
-    expect(output).toContain("Building SIWE message")
+    expect(output).toContain("Building EIP-3009 authorization")
 
     logSpy.mockRestore()
   })
 
-  it("proceeds to SIWE when probe warns (200 without auth)", async () => {
+  it("proceeds to EIP-3009 auth when probe warns (200 without auth)", async () => {
     let callCount = 0
     vi.stubGlobal(
       "fetch",
@@ -501,7 +504,7 @@ describe("smoke command", () => {
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("WARN")
     expect(output).toContain("gate may not be enforcing")
-    expect(output).toContain("Building SIWE message")
+    expect(output).toContain("Building EIP-3009 authorization")
 
     logSpy.mockRestore()
   })

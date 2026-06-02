@@ -1,5 +1,20 @@
 # @opensea/tool-sdk
 
+## 0.13.0
+
+### Minor Changes
+
+- 8809203: Add Shape and Abstract chain support to all CLI commands. The `--network` flag now accepts `shape` and `abstract` in addition to `base` and `mainnet`.
+- bddd1e1: Switch predicate gate and CLI auth from SIWE to EIP-3009.
+
+  - `predicateGate` now accepts both `Authorization: EIP-3009 <token>` (preferred) and `Authorization: SIWE <token>` (deprecated). EIP-3009 verification uses pure `ecrecover` on EIP-712 typed data — no RPC call needed.
+  - New exports: `createEip3009AuthHeader`, `eip3009AuthenticatedFetch`, `Eip3009AuthenticatedFetchOptions`.
+  - Deprecated exports: `createSiweMessage`, `createSiweAuthHeader`, `authenticatedFetch`.
+  - CLI `auth` command now uses EIP-3009 by default. `pay --auth siwe` (deprecated) is still accepted and silently maps to EIP-3009 with a deprecation warning.
+  - Zero-value authorizations use 5-minute expiry (`validBefore`) instead of `MAX_UINT256`.
+
+- dc56d72: Add EIP-3009 zero-value authorization for usage tracking (`signZeroValueAuthorization`, `createEip3009UsageReporter`, `onInvocation` callback on `createToolHandler`).
+
 ## 0.12.0
 
 ### Minor Changes

@@ -13,6 +13,10 @@ function generateNonce(): string {
  *
  * Uses viem's `createSiweMessage` under the hood. The returned string is
  * ready to be signed with `account.signMessage`.
+ *
+ * @deprecated Use `eip3009AuthenticatedFetch` or `signZeroValueAuthorization`
+ * from `@opensea/tool-sdk` instead. SIWE auth is being replaced by EIP-3009
+ * zero-value authorizations across all tool-sdk auth flows.
  */
 export function createSiweMessage(params: {
   account: Account
@@ -59,6 +63,8 @@ export function createSiweMessage(params: {
  * Construct an `Authorization: SIWE <base64url(message)>.<signature>` header
  * value from a pre-signed SIWE message. Useful for agent wallets (Bankr, MPC,
  * HSM) that sign via an external API rather than a local viem Account.
+ *
+ * @deprecated Use `createEip3009AuthHeader` from `@opensea/tool-sdk` instead.
  */
 export function createSiweAuthHeader(
   message: string,
@@ -87,6 +93,8 @@ export interface AuthenticatedFetchOptions extends RequestInit {
  *
  * Does NOT retry on 401/403 — SIWE auth is one-shot since the gate is
  * identity-based, not payment-based.
+ *
+ * @deprecated Use `eip3009AuthenticatedFetch` from `@opensea/tool-sdk` instead.
  */
 export async function authenticatedFetch(
   url: string,

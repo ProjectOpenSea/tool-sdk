@@ -17,7 +17,11 @@ interface GetTraitConfigOptions {
 export const getTraitConfigCommand = new Command("get-trait-config")
   .description("Read the trait gating configuration for a registered tool")
   .argument("<toolId>", "Tool ID (uint256)")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--predicate-address <address>",
     "Override the canonical TraitGatedPredicate address",

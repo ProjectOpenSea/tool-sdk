@@ -37,7 +37,11 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
     "--predicate-address <address>",
     "Override the canonical ERC20BalancePredicate address",
   )
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

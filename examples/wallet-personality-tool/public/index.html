@@ -32,7 +32,7 @@ GET /.well-known/ai-tool/wallet-personality-subscriber.json</pre>
   <pre>{ "targetAddress": "0x..." }</pre>
 
   <h2>Subscriber tier</h2>
-  <p>POST to <code>/api/subscriber</code> with a SIWE auth header from a wallet that holds an active subscription NFT on Base. Free for subscribers; non-holders get a clean 403.</p>
+  <p>POST to <code>/api/subscriber</code> with an EIP-3009 auth header from a wallet that holds an active subscription NFT on Base. Free for subscribers; non-holders get a clean 403.</p>
 
   <p class="meta">Powered by <a href="https://github.com/ProjectOpenSea/tool-sdk">@opensea/tool-sdk</a> + ERC-8257 <code>ToolRegistry</code> + Anthropic Claude.</p>
 </body>

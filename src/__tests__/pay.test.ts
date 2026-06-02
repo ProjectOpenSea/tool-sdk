@@ -118,8 +118,8 @@ describe("pay command", () => {
   })
 })
 
-describe("pay --auth siwe", () => {
-  it("uses paidAuthenticatedFetch when --auth siwe is set", async () => {
+describe("pay --auth eip3009", () => {
+  it("uses paidAuthenticatedFetch when --auth siwe is set (deprecated, maps to EIP-3009)", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -128,7 +128,7 @@ describe("pay --auth siwe", () => {
       ) as Record<string, string>
       calls.push({ url: url as string, headers })
 
-      // First call has Authorization (SIWE) but no X-Payment → return 402
+      // First call has Authorization (EIP-3009) but no X-Payment → return 402
       if (headers.Authorization && !headers["X-Payment"]) {
         return new Response(
           JSON.stringify({
@@ -170,12 +170,12 @@ describe("pay --auth siwe", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    // First call: SIWE auth, no payment
-    expect(calls[0].headers.Authorization).toMatch(/^SIWE /)
+    // First call: EIP-3009 auth, no payment
+    expect(calls[0].headers.Authorization).toMatch(/^EIP-3009 /)
     expect(calls[0].headers["X-Payment"]).toBeUndefined()
 
-    // Second call: SIWE auth + payment
-    expect(calls[1].headers.Authorization).toMatch(/^SIWE /)
+    // Second call: EIP-3009 auth + payment
+    expect(calls[1].headers.Authorization).toMatch(/^EIP-3009 /)
     expect(calls[1].headers["X-Payment"]).toBeDefined()
 
     logSpy.mockRestore()
@@ -221,7 +221,7 @@ describe("pay --auth siwe", () => {
     logSpy.mockRestore()
   })
 
-  it("auto-enables SIWE when manifest declares an access block", async () => {
+  it("auto-enables EIP-3009 auth when manifest declares an access block", async () => {
     const manifest = {
       type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "Test Tool",
@@ -274,13 +274,13 @@ describe("pay --auth siwe", () => {
       "{}",
     ])
 
-    // Should have used SIWE auth (paidAuthenticatedFetch adds Authorization header)
-    expect(calls[0].headers.Authorization).toMatch(/^SIWE /)
+    // Should have used EIP-3009 auth (paidAuthenticatedFetch adds Authorization header)
+    expect(calls[0].headers.Authorization).toMatch(/^EIP-3009 /)
 
     logSpy.mockRestore()
   })
 
-  it("does not auto-enable SIWE when manifest has no access block", async () => {
+  it("does not auto-enable auth when manifest has no access block", async () => {
     const manifest = {
       type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
       name: "Test Tool",
@@ -327,7 +327,7 @@ describe("pay --auth siwe", () => {
       "{}",
     ])
 
-    // Should NOT have used SIWE — no Authorization header
+    // Should NOT have used auth — no Authorization header
     expect(calls[0].headers.Authorization).toBeUndefined()
 
     logSpy.mockRestore()

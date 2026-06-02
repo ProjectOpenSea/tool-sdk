@@ -28,7 +28,7 @@ and served at https://wallet-personality-tool.vercel.app.
 | Tier | Endpoint | Price | Gating | Tool ID |
 |------|----------|-------|--------|---------|
 | Public | `/api` | $0.05 USDC | Open access | [3](https://basescan.org/tx/0x63b79b68a234572517bf1309ec06409e558827b88eeab289cb1dc6019b575145) |
-| Subscriber | `/api/subscriber` | Free | SIWE + active subscription on Base, via `SubscriptionPredicate` | [4](https://basescan.org/tx/0xfe172b4796b7e01f3f13ff15b8395239797cb10191567ecd6c58922266abf99d) |
+| Subscriber | `/api/subscriber` | Free | EIP-3009 auth + active subscription on Base, via `SubscriptionPredicate` | [4](https://basescan.org/tx/0xfe172b4796b7e01f3f13ff15b8395239797cb10191567ecd6c58922266abf99d) |
 
 Manifests:
 - https://wallet-personality-tool.vercel.app/.well-known/ai-tool/wallet-personality.json
@@ -43,7 +43,7 @@ Manifests:
 ```
 
 If `targetAddress` is omitted, the subscriber route defaults it to the
-SIWE-recovered caller. The response is a structured personality plus an
+authenticated caller (recovered from the EIP-3009 signature). The response is a structured personality plus an
 assembled markdown blob (see `ResponseSchema` in `src/schemas.ts`).
 
 ### Wallet configuration
@@ -77,25 +77,25 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
     --body '{"targetAddress":"0x..."}'
 ```
 
-### Subscriber tier (free, requires holding the subscription NFT): `tool-sdk pay --auth siwe`
+### Subscriber tier (free, requires holding the subscription NFT): `tool-sdk pay --auth eip3009`
 
-The same `pay` command does SIWE handshake when you pass `--auth siwe`
+The same `pay` command does EIP-3009 auth when you pass `--auth eip3009`
 (or point `--manifest` at a manifest that declares an `access` block, in
-which case the SDK auto-enables SIWE). Wallet must hold an active
+which case the SDK auto-enables EIP-3009 auth). Wallet must hold an active
 subscription on Base or the onchain `predicateGate` returns `403` before
 the handler runs.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay https://wallet-personality-tool.vercel.app/api/subscriber \
-    --auth siwe \
+    --auth eip3009 \
     --body '{}'
 ```
 
 ## Architecture
 
 ```
-client (POST + X-Payment / Authorization: SIWE)
+client (POST + X-Payment / Authorization: EIP-3009)
   │
   ▼
 api/index.ts (public)        ─┐
@@ -119,7 +119,7 @@ tiers:
 - **Subscriber tier**: `predicateGate` only. The onchain `accessPredicate`
   for toolId=4 is the
   [`SubscriptionPredicate` (v0.2)](https://basescan.org/address/0xcbe0cd9b1d99d95baa9c58f2767246c52e461f25#code)
-  configured with the subscription collection. SIWE-authenticated callers
+  configured with the subscription collection. EIP-3009-authenticated callers
   who pass `tryHasAccess(4, caller)` call free.
 
 ## Local development

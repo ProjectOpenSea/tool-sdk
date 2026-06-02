@@ -32,7 +32,11 @@ export const configureSubscriptionCommand = new Command(
   .argument("<toolId>", "Tool ID (uint256)")
   .argument("<collection>", "Subscription NFT collection address")
   .option("--min-tier <tier>", "Minimum subscription tier (uint8, 0-255)", "0")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

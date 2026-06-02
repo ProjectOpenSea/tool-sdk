@@ -16,7 +16,7 @@ const INPUTS = {
     targetAddress: {
       type: "string",
       description:
-        "Optional 0x-prefixed 42-character EVM address. If omitted, defaults to the SIWE-recovered caller address.",
+        "Optional 0x-prefixed 42-character EVM address. If omitted, defaults to the authenticated caller address.",
     },
   },
   required: [],

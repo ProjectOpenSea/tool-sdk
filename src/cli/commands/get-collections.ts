@@ -17,7 +17,11 @@ interface GetCollectionsOptions {
 export const getCollectionsCommand = new Command("get-collections")
   .description("Read the ERC-721 collection gate list for a registered tool")
   .argument("<toolId>", "Tool ID (uint256)")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetCollectionsOptions) => {
     let toolId: bigint

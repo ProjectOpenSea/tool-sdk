@@ -1,5 +1,9 @@
 import type { z } from "zod/v4"
-import type { GateMiddleware, ToolContext } from "../../types.js"
+import type {
+  GateMiddleware,
+  InvocationEvent,
+  ToolContext,
+} from "../../types.js"
 import type { ManifestDefinition } from "../manifest/index.js"
 import { resolveManifest } from "../manifest/index.js"
 import { ToolHandlerError } from "./error.js"
@@ -11,6 +15,12 @@ export interface ToolHandlerConfig<TIn, TOut> {
   outputSchema: z.ZodType<TOut>
   gates?: GateMiddleware[]
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>
+  /**
+   * Called after the handler succeeds and output validates. Fires for
+   * every successful invocation — paid or free. Use for usage reporting,
+   * analytics, or rate limiting. Errors are caught and logged.
+   */
+  onInvocation?: (event: InvocationEvent) => void | Promise<void>
 }
 
 export function createToolHandler<TIn, TOut>(
@@ -64,7 +74,9 @@ export function createToolHandler<TIn, TOut>(
         }
       }
 
+      const handlerStart = Date.now()
       const output = await config.handler(inputResult.data, ctx)
+      const latencyMs = Date.now() - handlerStart
 
       const outputResult = config.outputSchema.safeParse(output)
       if (!outputResult.success) {
@@ -95,6 +107,24 @@ export function createToolHandler<TIn, TOut>(
               console.error("[tool-sdk] gate.settle failed:", err)
             }
           }
+        }
+      }
+
+      if (config.onInvocation) {
+        try {
+          const event: InvocationEvent = {
+            callerAddress: ctx.callerAddress,
+            agentAddress: ctx.agentAddress,
+            paid: ctx.gates.x402?.paid ?? false,
+            payer: ctx.gates.x402?.payer,
+            settlementTxHash: ctx.gates.x402?.settlementTxHash,
+            toolName: resolvedManifest.name,
+            latencyMs,
+            timestamp: Date.now(),
+          }
+          await config.onInvocation(event)
+        } catch (err) {
+          console.error("[tool-sdk] onInvocation failed:", err)
         }
       }
 

@@ -1,10 +1,10 @@
 /**
- * Tier 3 smoke for the holder tier: SIWE-authenticated + x402-paid call
+ * Tier 3 smoke for the holder tier: EIP-3009-authenticated + x402-paid call
  * against /api/holder. Uses the SDK's `paidAuthenticatedFetch`, which:
  *
- *   1. Builds a SIWE message and signs it
- *   2. POSTs with `Authorization: SIWE <token>`
- *   3. On 402, signs an EIP-3009 transferWithAuthorization
+ *   1. Signs a zero-value EIP-3009 TransferWithAuthorization
+ *   2. POSTs with `Authorization: EIP-3009 <token>`
+ *   3. On 402, signs an EIP-3009 transferWithAuthorization for payment
  *   4. Replays with `Authorization` + `X-Payment` headers
  *   5. Returns the final response
  *
@@ -78,7 +78,7 @@ console.log(
 )
 console.log(`Endpoint: ${toolUrl}`)
 
-console.log("\n--- paidAuthenticatedFetch (SIWE + x402) ---")
+console.log("\n--- paidAuthenticatedFetch (EIP-3009 + x402) ---")
 const startedAt = Date.now()
 const res = await paidAuthenticatedFetch(toolUrl, {
   account,
@@ -104,7 +104,7 @@ if (res.status === 200) {
   )
 } else if (res.status === 401) {
   console.error(
-    "\n✗ 401 — SIWE auth failed. paidAuthenticatedFetch should have signed; check chainId / account.",
+    "\n✗ 401 — EIP-3009 auth failed. paidAuthenticatedFetch should have signed; check chainId / account.",
   )
   process.exit(1)
 } else if (res.status === 403) {

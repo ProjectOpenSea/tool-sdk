@@ -3,10 +3,13 @@ import pc from "picocolors"
 import type { Account } from "viem"
 import { type Address, getAddress } from "viem"
 import {
+  type Eip3009AuthenticatedFetchOptions,
+  eip3009AuthenticatedFetch,
+} from "../../lib/client/eip3009-auth.js"
+import {
   createBankrAccount,
   createExternalSignerAccount,
 } from "../../lib/client/external-signer.js"
-import { authenticatedFetch } from "../../lib/client/siwe-auth.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -20,11 +23,12 @@ interface AuthOptions {
   body?: string
   bankrKey?: string
   walletProvider?: string
+  chain?: string
 }
 
 export const authCommand = new Command("auth")
   .description(
-    "Make an authenticated call to a predicate-gated tool endpoint via SIWE",
+    "Make an authenticated call to a predicate-gated tool endpoint via EIP-3009 zero-value authorization",
   )
   .argument("<url>", "Tool endpoint URL")
   .option("--body <json>", "JSON body (inline string or @path/to/file.json)")
@@ -35,6 +39,11 @@ export const authCommand = new Command("auth")
   .option(
     "--bankr-key <api-key>",
     "Bankr API key for agent wallet signing (defaults to BANKR_API_KEY env var)",
+  )
+  .option(
+    "--chain <name>",
+    "Chain for EIP-3009 signature (default: base)",
+    "base",
   )
   .action(async (url: string, options: AuthOptions) => {
     const bankrKey = options.bankrKey ?? process.env.BANKR_API_KEY
@@ -60,9 +69,8 @@ export const authCommand = new Command("auth")
       process.exit(1)
     }
 
-    let parsedUrl: URL
     try {
-      parsedUrl = new URL(url)
+      new URL(url)
     } catch {
       console.error(pc.red(`Error: Invalid URL: ${url}`))
       process.exit(1)
@@ -94,42 +102,63 @@ export const authCommand = new Command("auth")
         console.error(pc.dim(err instanceof Error ? err.message : String(err)))
         process.exit(1)
       }
-      const { signMessage } = adapter
-      if (!signMessage) {
+      const { signMessage, signTypedData } = adapter
+      if (!signTypedData) {
         console.error(
           pc.red(
-            "Error: Selected wallet provider does not support message signing",
+            "Error: Selected wallet provider does not support typed data signing (required for EIP-3009 auth)",
           ),
         )
         process.exit(1)
       }
       account = createExternalSignerAccount({
         address,
-        signMessage: async (message: string) => {
-          const sig = await signMessage.call(adapter, { message })
-          return sig as `0x${string}`
-        },
+        signMessage: signMessage
+          ? async (message: string) => {
+              const sig = await signMessage.call(adapter, { message })
+              return sig as `0x${string}`
+            }
+          : async () => {
+              throw new Error("Wallet does not support message signing")
+            },
+        signTypedData: signTypedData
+          ? async (typedData: unknown) => {
+              const td = typedData as {
+                domain: Record<string, unknown>
+                types: Record<string, Array<{ name: string; type: string }>>
+                primaryType: string
+                message: Record<string, unknown>
+              }
+              const sig = await signTypedData.call(adapter, td)
+              return sig as `0x${string}`
+            }
+          : undefined,
       })
     }
 
-    console.log(pc.cyan("Building SIWE message..."))
+    const { getChain } = await import("./get-chain.js")
+    const chain = getChain(options.chain ?? "base")
+
+    console.log(pc.cyan("Building EIP-3009 zero-value authorization..."))
     console.log(`  Address: ${account.address}`)
-    console.log(`  Domain: ${parsedUrl.host}`)
-    console.log(`  Expires: ${new Date(Date.now() + 5 * 60_000).toISOString()}`)
+    console.log(`  Chain:   ${chain.name} (${chain.id})`)
 
     console.log(
       pc.cyan(`\nSigning and sending authenticated request to ${url}...\n`),
     )
 
+    const fetchOptions: Eip3009AuthenticatedFetchOptions = {
+      account,
+      chainId: chain.id,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: inputBody,
+      signal: AbortSignal.timeout(30_000),
+    }
+
     let res: globalThis.Response
     try {
-      res = await authenticatedFetch(url, {
-        account,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: inputBody,
-        signal: AbortSignal.timeout(30_000),
-      })
+      res = await eip3009AuthenticatedFetch(url, fetchOptions)
     } catch (err) {
       console.error(pc.red(`Error: Failed to reach ${url}`))
       console.error(pc.dim(err instanceof Error ? err.message : String(err)))
@@ -143,7 +172,7 @@ export const authCommand = new Command("auth")
     if (res.status === 401) {
       console.log(
         pc.yellow(
-          "\nSIWE authentication failed — check that your wallet key is correct and the message format matches the tool's expectations",
+          "\nAuthentication failed — check that your wallet key is correct and the EIP-3009 signature is valid",
         ),
       )
     } else if (res.status === 403) {
@@ -162,7 +191,7 @@ export const authCommand = new Command("auth")
         }
       } catch {
         hint +=
-          " Check the tool's requirements with tool-sdk inspect --tool-id <id>"
+          " Run `tool-sdk inspect` with the tool ID to see the predicate requirements."
       }
       console.log(pc.yellow(`\n${hint}`))
     }

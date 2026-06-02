@@ -27,7 +27,7 @@ and served at https://nft-appraisal-tool.vercel.app.
 | Tier | Endpoint | Price | Gating | Tool ID |
 |------|----------|-------|--------|---------|
 | Public | `/api` | $0.05 USDC | Open access | [1](https://basescan.org/tx/0x000c4664fdec1eb06a552d5dd43da3c296be9849a0e065d90348f06cb2bfdfa2) |
-| CHONK holder | `/api/holder` | $0.01 USDC | SIWE + ERC-721 ownership of [CHONKs on Base](https://opensea.io/assets/base/0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9) | [2](https://basescan.org/tx/0x9e24fb1055af17297969da7ba8b3c7ffc8c26294d448a623c0cccded1ebc8300) |
+| CHONK holder | `/api/holder` | $0.01 USDC | EIP-3009 auth + ERC-721 ownership of [CHONKs on Base](https://opensea.io/assets/base/0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9) | [2](https://basescan.org/tx/0x9e24fb1055af17297969da7ba8b3c7ffc8c26294d448a623c0cccded1ebc8300) |
 
 Manifests:
 - https://nft-appraisal-tool.vercel.app/.well-known/ai-tool/nft-appraiser.json
@@ -46,7 +46,7 @@ Manifests:
 ```
 
 Without a payment proof, the response is an `HTTP 402` with x402
-`PaymentRequirements`. With a valid signed payment (and SIWE auth on the
+`PaymentRequirements`. With a valid signed payment (and EIP-3009 auth on the
 holder route), the response is a structured appraisal.
 
 ### Wallet configuration
@@ -97,18 +97,18 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
     --body '{"chain":"ethereum","contractAddress":"0x79fcdef22feed20eddacbb2587640e45491b757f","tokenId":"4707"}'
 ```
 
-### Holder tier ($0.01, requires holding a CHONK) — `tool-sdk pay --auth siwe`
+### Holder tier ($0.01, requires holding a CHONK) — `tool-sdk pay --auth eip3009`
 
-The same `pay` command does SIWE + x402 in one shot when you pass
-`--auth siwe` (or point `--manifest` at a manifest that declares an
-`access` block — the SDK auto-enables SIWE in that case). Wallet must
+The same `pay` command does EIP-3009 auth + x402 in one shot when you pass
+`--auth eip3009` (or point `--manifest` at a manifest that declares an
+`access` block — the SDK auto-enables EIP-3009 auth in that case). Wallet must
 hold a CHONK on Base or the onchain `predicateGate` returns `403`
 before payment.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay https://nft-appraisal-tool.vercel.app/api/holder \
-    --auth siwe \
+    --auth eip3009 \
     --body '{"chain":"ethereum","contractAddress":"0x79fcdef22feed20eddacbb2587640e45491b757f","tokenId":"4707"}'
 ```
 
@@ -121,7 +121,7 @@ needed for ordinary calls.
 ## Architecture
 
 ```
-client (POST + X-Payment + Authorization: SIWE)
+client (POST + X-Payment + Authorization: EIP-3009)
   │
   ▼
 api/index.ts (public)        ─┐
@@ -144,7 +144,7 @@ differs:
 - **Holder tier**: `predicateGate` → x402 paywall. The onchain
   `accessPredicate` for `toolId=2` is the
   [`ERC721OwnerPredicate` (v0.2)](https://basescan.org/address/0xc8721c9a776958ffffeb602da1b708bf1d318379#code)
-  configured with the CHONK collection. SIWE-authenticated callers who
+  configured with the CHONK collection. EIP-3009-authenticated callers who
   pass `tryHasAccess(2, caller)` get the discounted price.
 
 ## Local development

@@ -51,4 +51,4 @@ Your tool is a standard HTTP endpoint — any platform that can serve a `POST` r
 
 All four targets are supported by `@opensea/tool-sdk` via framework adapters (`toVercelHandler`, `toCloudflareHandler`, `toExpressHandler`). The core handler logic (`createToolHandler`) is platform-agnostic — only the thin entry-point adapter changes between targets.
 
-Predicate-gated tools work on all supported hosts. The `predicateGate` middleware is purely HTTP-header-based (it reads the `Authorization: SIWE ...` header and makes an onchain `tryHasAccess` staticcall), so it requires no platform-specific APIs or persistent state. See [predicate-gating-guide.md](predicate-gating-guide.md) for the full setup walkthrough.
+Predicate-gated tools work on all supported hosts. The `predicateGate` middleware is purely HTTP-header-based (it reads the `Authorization: EIP-3009 ...` header and recovers the caller via `ecrecover` + makes an onchain `tryHasAccess` staticcall), so it requires no platform-specific APIs or persistent state. See [predicate-gating-guide.md](predicate-gating-guide.md) for the full setup walkthrough.

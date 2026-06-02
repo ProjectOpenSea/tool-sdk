@@ -27,49 +27,61 @@ interface PayOptions {
 
 export const payCommand = new Command("pay")
   .description(
-    "Make a paid call to a tool endpoint via x402 (optionally with SIWE authentication)",
+    "Make a paid call to a tool endpoint via x402 (optionally with EIP-3009 authentication)",
   )
   .argument("<url>", "Tool endpoint URL")
   .option("--body <json>", "JSON body (inline string or @path/to/file.json)")
   .option(
     "--auth <type>",
-    "Authentication type (siwe). Auto-enabled when manifest declares an access block",
+    "Authentication type (eip3009). Auto-enabled when manifest declares an access block",
   )
   .option(
     "--manifest <path>",
-    "Path to tool manifest (JSON or TS). If it declares an access block, SIWE auth is auto-enabled",
+    "Path to tool manifest (JSON or TS). If it declares an access block, EIP-3009 auth is auto-enabled",
   )
-  .option("--chain <name>", "Chain for SIWE message (default: base)", "base")
+  .option(
+    "--chain <name>",
+    "Chain for EIP-3009 signature (default: base)",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
   )
   .action(async (url: string, options: PayOptions) => {
-    let useSiwe = options.auth === "siwe"
+    let useAuth = options.auth === "eip3009" || options.auth === "siwe"
 
-    if (options.auth && options.auth !== "siwe") {
+    if (options.auth && options.auth !== "eip3009" && options.auth !== "siwe") {
       console.error(
         pc.red(
-          `Error: Unsupported --auth type "${options.auth}". Only "siwe" is supported.`,
+          `Error: Unsupported --auth type "${options.auth}". Supported: "eip3009" (recommended), "siwe" (deprecated).`,
         ),
       )
       process.exit(1)
     }
 
-    if (options.manifest && !useSiwe) {
+    if (options.auth === "siwe") {
+      console.warn(
+        pc.yellow(
+          "Warning: --auth siwe is deprecated. Using EIP-3009 authentication instead.",
+        ),
+      )
+    }
+
+    if (options.manifest && !useAuth) {
       const raw = await loadManifest(options.manifest)
       const parsed = ToolManifestSchema.safeParse(raw)
       if (!parsed.success) {
         console.warn(
           pc.yellow(
-            "Warning: --manifest did not match ToolManifestSchema — SIWE auto-detection skipped",
+            "Warning: --manifest did not match ToolManifestSchema — auth auto-detection skipped",
           ),
         )
       } else if (parsed.data.access) {
-        useSiwe = true
+        useAuth = true
         console.log(
           pc.cyan(
-            "Manifest declares an access block — auto-enabling SIWE authentication",
+            "Manifest declares an access block — auto-enabling EIP-3009 authentication",
           ),
         )
       }
@@ -113,7 +125,7 @@ export const payCommand = new Command("pay")
       process.exit(1)
     }
 
-    if (useSiwe) {
+    if (useAuth) {
       await runPaidAuthenticated(url, inputBody, adapter, options)
     } else {
       await runPaymentOnly(url, inputBody, adapter)
@@ -128,11 +140,11 @@ async function runPaidAuthenticated(
 ): Promise<void> {
   const chain = getChain(options.chain ?? "base")
   const walletAddress = getAddress(await adapter.getAddress()) as Address
-  const { signMessage } = adapter
-  if (!signMessage) {
+  const { signMessage, signTypedData } = adapter
+  if (!signTypedData) {
     console.error(
       pc.red(
-        "Error: Selected wallet provider does not support message signing (required for SIWE)",
+        "Error: Selected wallet provider does not support typed data signing (required for EIP-3009 auth)",
       ),
     )
     process.exit(1)
@@ -140,13 +152,29 @@ async function runPaidAuthenticated(
 
   const account = createExternalSignerAccount({
     address: walletAddress,
-    signMessage: async (message: string) => {
-      const sig = await signMessage.call(adapter, { message })
-      return sig as `0x${string}`
-    },
+    signMessage: signMessage
+      ? async (message: string) => {
+          const sig = await signMessage.call(adapter, { message })
+          return sig as `0x${string}`
+        }
+      : async () => {
+          throw new Error("Wallet does not support message signing")
+        },
+    signTypedData: signTypedData
+      ? async (typedData: unknown) => {
+          const td = typedData as {
+            domain: Record<string, unknown>
+            types: Record<string, Array<{ name: string; type: string }>>
+            primaryType: string
+            message: Record<string, unknown>
+          }
+          const sig = await signTypedData.call(adapter, td)
+          return sig as `0x${string}`
+        }
+      : undefined,
   })
 
-  console.log(pc.cyan("Sending SIWE-authenticated + paid request..."))
+  console.log(pc.cyan("Sending EIP-3009-authenticated + paid request..."))
 
   let res: globalThis.Response
   try {

@@ -1,4 +1,4 @@
-import { base, mainnet } from "viem/chains"
+import { abstract as abstractChain, base, mainnet, shape } from "viem/chains"
 
 export function getChain(network: string) {
   switch (network) {
@@ -6,6 +6,10 @@ export function getChain(network: string) {
       return base
     case "mainnet":
       return mainnet
+    case "shape":
+      return shape
+    case "abstract":
+      return abstractChain
     default:
       throw new Error(`Unsupported network: ${network}`)
   }

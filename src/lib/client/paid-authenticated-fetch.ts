@@ -1,11 +1,17 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
+import { createWalletClient, http } from "viem"
 import {
   USDC_BASE_ADDRESS,
   USDC_BASE_SEPOLIA_ADDRESS,
 } from "../middleware/x402-facilitators.js"
 import type { X402Network } from "../middleware/x402-facilitators.js"
-import { createSiweAuthHeader, createSiweMessage } from "./siwe-auth.js"
+import { signZeroValueAuthorization } from "../usage/eip3009-auth.js"
+import {
+  EIP3009_CHAIN_MAP,
+  ZERO_ADDRESS,
+  createEip3009AuthHeader,
+} from "./eip3009-auth.js"
 import {
   type PaymentRequirements,
   signX402Payment,
@@ -14,11 +20,17 @@ import {
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
   account: Account
   signer?: WalletAdapter | Account
+  /** @deprecated Ignored — EIP-3009 does not use expiration minutes. */
   expirationMinutes?: number
   chainId?: number
   maxAmount?: string
   allowedRecipients?: string[]
   allowedAssets?: string[]
+  /**
+   * Tool operator address used as the `to` field in the zero-value
+   * EIP-3009 authorization. Falls back to `0x0` when omitted.
+   */
+  to?: `0x${string}`
 }
 
 // Keep in sync with REJECTED_ADDRESSES in x402-payment.ts
@@ -33,12 +45,14 @@ const NETWORK_USDC: Record<X402Network, string> = {
   "base-sepolia": USDC_BASE_SEPOLIA_ADDRESS,
 }
 
+
 /**
- * Combined SIWE-authenticated + x402-paid fetch for tools that use both a
+ * Combined EIP-3009-authenticated + x402-paid fetch for tools that use both a
  * predicate gate and a paywall.
  *
- * 1. Builds a SIWE message and signs it (like `authenticatedFetch`)
- * 2. Makes the initial POST with `Authorization: SIWE <token>`
+ * 1. Signs a zero-value EIP-3009 `TransferWithAuthorization` proving wallet
+ *    ownership (replaces the deprecated SIWE signing step)
+ * 2. Makes the initial POST with `Authorization: EIP-3009 <token>`
  * 3. If the response is 402 with x402 payment requirements, signs the payment
  *    (like `paidFetch`)
  * 4. Retries the request with both `Authorization` and `X-Payment` headers
@@ -54,11 +68,12 @@ export async function paidAuthenticatedFetch(
   const {
     account,
     signer,
-    expirationMinutes,
-    chainId,
+    expirationMinutes: _expirationMinutes,
+    chainId = 8453,
     maxAmount,
     allowedRecipients,
     allowedAssets,
+    to,
     ...fetchOptions
   } = options
 
@@ -74,20 +89,27 @@ export async function paidAuthenticatedFetch(
     )
   }
 
-  const parsed = new URL(url)
-  const domain = parsed.host
-  const uri = parsed.href
+  const chain = EIP3009_CHAIN_MAP[chainId]
+  if (!chain) {
+    throw new Error(
+      `Unsupported chainId ${chainId} for EIP-3009 auth. Supported: ${Object.keys(EIP3009_CHAIN_MAP).join(", ")}`,
+    )
+  }
 
-  const message = createSiweMessage({
+  const walletClient = createWalletClient({
     account,
-    domain,
-    uri,
-    expirationMinutes,
+    chain,
+    transport: http(),
+  })
+
+  const authorization = await signZeroValueAuthorization({
+    walletClient,
+    from: account.address,
+    to: to ?? ZERO_ADDRESS,
     chainId,
   })
 
-  const signature = await account.signMessage({ message })
-  const authHeader = createSiweAuthHeader(message, signature)
+  const authHeader = createEip3009AuthHeader(authorization)
 
   const headers = {
     ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),

@@ -2,14 +2,20 @@ export type { ExpressRequest, ExpressResponse } from "./lib/adapters/express.js"
 export { toExpressHandler } from "./lib/adapters/express.js"
 export type { VercelRequest, VercelResponse } from "./lib/adapters/vercel.js"
 export { toVercelHandler } from "./lib/adapters/vercel.js"
-
+export type { Eip3009AuthenticatedFetchOptions } from "./lib/client/eip3009-auth.js"
+export {
+  createEip3009AuthHeader,
+  eip3009AuthenticatedFetch,
+} from "./lib/client/eip3009-auth.js"
 export {
   createBankrAccount,
   createExternalSignerAccount,
 } from "./lib/client/external-signer.js"
 export type { PaidAuthenticatedFetchOptions } from "./lib/client/paid-authenticated-fetch.js"
 export { paidAuthenticatedFetch } from "./lib/client/paid-authenticated-fetch.js"
+/** @deprecated Use `eip3009AuthenticatedFetch` instead. */
 export type { AuthenticatedFetchOptions } from "./lib/client/siwe-auth.js"
+/** @deprecated Use `eip3009AuthenticatedFetch` and `createEip3009AuthHeader` instead. */
 export {
   authenticatedFetch,
   createSiweAuthHeader,
@@ -144,6 +150,13 @@ export {
   TraitGatedPredicateClient,
 } from "./lib/onchain/predicate-clients.js"
 export { ToolRegistryClient } from "./lib/onchain/registry.js"
+export type {
+  SignZeroValueAuthorizationParams,
+  ZeroValueAuthorization,
+} from "./lib/usage/eip3009-auth.js"
+export { signZeroValueAuthorization } from "./lib/usage/eip3009-auth.js"
+export type { Eip3009UsageReporterConfig } from "./lib/usage/eip3009-reporter.js"
+export { createEip3009UsageReporter } from "./lib/usage/eip3009-reporter.js"
 export { deriveSlug } from "./lib/utils.js"
 export type {
   TransactionRequest,
@@ -165,5 +178,6 @@ export {
 } from "./lib/wallet/index.js"
 export type {
   GateMiddleware,
+  InvocationEvent,
   ToolContext,
 } from "./types.js"

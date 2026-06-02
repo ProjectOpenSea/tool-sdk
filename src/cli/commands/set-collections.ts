@@ -28,7 +28,11 @@ export const setCollectionsCommand = new Command("set-collections")
   )
   .argument("<toolId>", "Tool ID (uint256)")
   .argument("<addresses...>", "Collection addresses to gate on")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

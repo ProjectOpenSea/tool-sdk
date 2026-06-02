@@ -28,7 +28,7 @@ export function createExternalSignerAccount(params: {
     },
     signTransaction: async () => {
       throw new Error(
-        "createExternalSignerAccount does not support signTransaction — use it for SIWE auth only",
+        "createExternalSignerAccount does not support signTransaction — use it for EIP-3009 auth only",
       )
     },
     signTypedData: async (typedData) => {
@@ -72,6 +72,44 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
           signatureType: "personal_sign",
           message,
         }),
+      })
+      if (!signRes.ok) {
+        const text = await signRes.text()
+        throw new Error(
+          `Bankr /wallet/sign failed (${signRes.status}): ${text}`,
+        )
+      }
+      const data = (await signRes.json()) as { signature: `0x${string}` }
+      return data.signature
+    },
+    signTypedData: async (typedData: unknown) => {
+      const td = typedData as {
+        domain: Record<string, unknown>
+        types: Record<string, Array<{ name: string; type: string }>>
+        primaryType: string
+        message: Record<string, unknown>
+      }
+      // Bankr API expects JSON — convert BigInt values to strings
+      const replacer = (_k: string, v: unknown) =>
+        typeof v === "bigint" ? v.toString() : v
+      const signRes = await fetch(`${BANKR_API_BASE}/wallet/sign`, {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          {
+            signatureType: "eth_signTypedData_v4",
+            typedData: {
+              domain: td.domain,
+              types: td.types,
+              primaryType: td.primaryType,
+              message: td.message,
+            },
+          },
+          replacer,
+        ),
       })
       if (!signRes.ok) {
         const text = await signRes.text()

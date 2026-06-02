@@ -10,6 +10,18 @@ export type GateMiddleware = {
   settle?(ctx: ToolContext): Promise<void>
 }
 
+export interface InvocationEvent {
+  callerAddress?: `0x${string}`
+  agentAddress?: `0x${string}`
+  paid: boolean
+  payer?: string
+  settlementTxHash?: string
+  /** Resolved tool name from the manifest, used to derive tool_slug. */
+  toolName?: string
+  latencyMs: number
+  timestamp: number
+}
+
 export interface ToolContext {
   callerAddress?: `0x${string}`
   /** When a delegated agent call is verified, this holds the agent's address. */

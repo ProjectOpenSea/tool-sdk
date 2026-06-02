@@ -48,7 +48,11 @@ export const configureTraitGatingCommand = new Command("configure-trait-gating")
     "--traits-contract <address>",
     "ERC-7496 traits contract address (defaults to collection if omitted)",
   )
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

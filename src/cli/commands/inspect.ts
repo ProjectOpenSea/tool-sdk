@@ -32,7 +32,11 @@ export const inspectCommand = new Command("inspect")
     "Read onchain tool state and cross-check against the live manifest",
   )
   .option("--tool-id <id>", "Numeric tool ID (required)")
-  .option("--network <network>", "Network: base or mainnet", "base")
+  .option(
+    "--network <network>",
+    "Network: base, mainnet, shape, or abstract",
+    "base",
+  )
   .option(
     "--check-access <address>",
     "Check whether an address has access to the tool",
