@@ -1,5 +1,13 @@
 # @opensea/tool-sdk
 
+## 0.14.2
+
+### Patch Changes
+
+- d7c1191: Await the `usageReporting` reporter before returning the tool response.
+
+  Previously the handler fired the reporter fire-and-forget after the response was built. On serverless runtimes (Vercel, AWS Lambda) the function is frozen the moment the response flushes, which killed the in-flight request so the usage report silently never arrived. The handler now awaits the report (bounded by the reporter's `timeoutMs`, default 5s) so it reliably completes; failures are still caught and logged and never fail the tool call.
+
 ## 0.14.1
 
 ### Patch Changes

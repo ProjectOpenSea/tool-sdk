@@ -876,7 +876,7 @@ const handler = createToolHandler({
 
 > **Reporting is the service's job, never the caller's.** The `apiKey` authenticates *you* (the operator) as the reporter. The caller is identified by data they already supplied (the x402 payer, or the EIP-3009 authorization `predicateGate` verified), so no caller wallet, signing, or `walletClient` is involved.
 
-That's it: the handler fires the reporter as a fire-and-forget async call at the very end of the lifecycle, after the response is built. It never blocks or fails the tool call.
+That's it: the handler runs the reporter at the very end of the lifecycle, after the output is computed and gates have settled. It is **awaited** before the response is returned (bounded by the reporter's `timeoutMs`, default 5s) so the report reliably completes even on serverless runtimes that freeze the function the moment the response flushes. Reporter failures are caught and logged; they never fail the tool call.
 
 ### How it works
 

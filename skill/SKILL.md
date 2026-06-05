@@ -381,7 +381,7 @@ Tool-sdk reports usage to OpenSea's analytics endpoint (`POST /api/v2/tools/usag
 
 ### usageReporting (recommended)
 
-Pass `usageReporting` to `createToolHandler` and it fires the reporter as a fire-and-forget call at the very end of the lifecycle (after the response is built). No `walletClient` is needed server-side:
+Pass `usageReporting` to `createToolHandler` and it runs the reporter at the very end of the lifecycle, awaited before the response returns (bounded by `timeoutMs`, default 5s) so it completes even on serverless runtimes that freeze on response flush. Failures are logged, never fatal. No `walletClient` is needed server-side:
 
 - **Paid x402 calls** → `verification_type: "x402_settlement"` with the payer address and settlement tx hash. The backend verifies the tx directly.
 - **EIP-3009-authenticated calls** (behind `predicateGate`) → `verification_type: "eip3009_authorization"`, **forwarding the caller's original signed authorization**. The caller already signed it to authenticate, so the reported identity is the real caller.

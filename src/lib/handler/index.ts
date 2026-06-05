@@ -147,15 +147,20 @@ export function createToolHandler<TIn, TOut>(
         }
       }
 
-      const response = Response.json(outputResult.data, { status: 200 })
-
+      // Await the report so it completes before the response is returned.
+      // On serverless runtimes (Vercel/AWS Lambda) the function is frozen
+      // once the response flushes, which kills any fire-and-forget request
+      // still in flight — the report would silently never arrive. The
+      // reporter has its own AbortController timeout (default 5s) and never
+      // throws; the catch is belt-and-suspenders so a misbehaving reporter
+      // can never turn a successful tool call into a failure.
       if (usageReporter) {
-        void usageReporter(event).catch((err) => {
+        await usageReporter(event).catch((err) => {
           console.error("[tool-sdk] usageReporting failed:", err)
         })
       }
 
-      return response
+      return Response.json(outputResult.data, { status: 200 })
     } catch (error) {
       if (error instanceof ToolHandlerError) {
         console.error("[tool-sdk] tool handler error:", error)

@@ -489,7 +489,7 @@ describe("createToolHandler", () => {
     expect(order).toEqual(["handler", "settle", "onInvocation"])
   })
 
-  it("fires usageReporting as fire-and-forget on successful invocation", async () => {
+  it("fires usageReporting on successful invocation", async () => {
     const { createEip3009UsageReporter } = await import(
       "../lib/usage/eip3009-reporter.js"
     )
@@ -522,23 +522,26 @@ describe("createToolHandler", () => {
     )
     expect(response.status).toBe(200)
 
-    // flush fire-and-forget microtask
-    await vi.waitFor(() => expect(mockReporter).toHaveBeenCalledOnce())
+    // Awaited before the response resolves — no waitFor needed.
+    expect(mockReporter).toHaveBeenCalledOnce()
     const event: InvocationEvent = mockReporter.mock.calls[0]![0]
     expect(event.paid).toBe(false)
     expect(event.latencyMs).toBeGreaterThanOrEqual(0)
   })
 
-  it("fires usageReporting after response is built", async () => {
+  it("awaits usageReporting before returning the response", async () => {
+    // Regression guard: on serverless the function freezes once the response
+    // flushes, so the report must complete *before* the handler resolves, not
+    // fire-and-forget after.
     const { createEip3009UsageReporter } = await import(
       "../lib/usage/eip3009-reporter.js"
     )
-    let reporterCalledBeforeReturn = false
-    const mockReporter = vi.fn().mockResolvedValue(undefined)
-    vi.mocked(createEip3009UsageReporter).mockReturnValue(mockReporter)
-    const onInvocation = vi.fn(() => {
-      reporterCalledBeforeReturn = mockReporter.mock.calls.length > 0
+    let releaseReport: () => void = () => {}
+    const reportGate = new Promise<void>(resolve => {
+      releaseReport = resolve
     })
+    const mockReporter = vi.fn(() => reportGate)
+    vi.mocked(createEip3009UsageReporter).mockReturnValue(mockReporter)
 
     const handler = createToolHandler({
       manifest: testManifest,
@@ -546,21 +549,30 @@ describe("createToolHandler", () => {
       outputSchema: OutputSchema,
       handler: async input => ({ result: `Echo: ${input.query}` }),
       usageReporting: {} as unknown as Eip3009UsageReporterConfig,
-      onInvocation,
     })
 
-    const response = await handler(
+    let settled = false
+    const pending = handler(
       new Request("https://test.example.com/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: "test" }),
       }),
-    )
+    ).then(res => {
+      settled = true
+      return res
+    })
+
+    // Let all of the handler's own awaits drain. The report promise is still
+    // pending, so the handler must not have resolved.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(mockReporter).toHaveBeenCalledOnce()
+    expect(settled).toBe(false)
+
+    releaseReport()
+    const response = await pending
+    expect(settled).toBe(true)
     expect(response.status).toBe(200)
-    expect(onInvocation).toHaveBeenCalledOnce()
-    // onInvocation runs before usageReporting (which is fire-and-forget)
-    expect(reporterCalledBeforeReturn).toBe(false)
-    await vi.waitFor(() => expect(mockReporter).toHaveBeenCalledOnce())
   })
 
   it("logs usageReporting errors without affecting the response", async () => {
