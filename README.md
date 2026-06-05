@@ -841,7 +841,7 @@ See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the ful
 
 ## Usage Reporting
 
-Report tool invocations to OpenSea's analytics endpoint (`POST /api/v2/tools/usage`) using EIP-3009 zero-value authorizations for caller verification.
+Report tool invocations to OpenSea's analytics endpoint (`POST /api/v2/tools/usage`). For each call the SDK reports the **verified caller**: the on-chain **payer** for paid x402 calls, or the caller's **own EIP-3009 authorization** for calls authenticated by `predicateGate`. A tool server never signs on the caller's behalf.
 
 ### Setup
 
@@ -851,7 +851,7 @@ Report tool invocations to OpenSea's analytics endpoint (`POST /api/v2/tools/usa
 export OPENSEA_API_KEY="your-api-key"
 ```
 
-2. **Add `usageReporting` to your handler config** — both free (EIP-3009) and paid (x402) invocations are reported automatically:
+2. **Add `usageReporting` to your handler config** — both free (EIP-3009 auth) and paid (x402) invocations are reported automatically:
 
 ```typescript
 import { createToolHandler } from "@opensea/tool-sdk"
@@ -860,62 +860,66 @@ const handler = createToolHandler({
   manifest,
   inputSchema,
   outputSchema,
+  gates: [/* x402 paywall and/or predicateGate */],
   handler: async (input, ctx) => {
     // your tool logic
   },
   usageReporting: {
-    walletClient,             // caller's viem WalletClient (must have account attached)
-    chainId: 8453,            // chain for EIP-712 USDC domain (Base in this example)
-    operatorAddress: "0x...", // tool operator / pricing recipient
-    toolChainId: 8453,        // ERC-8257: chain where tool is registered
+    chainId: 8453,                // chain for the EIP-712 USDC domain / x402 fallback
+    toolChainId: 8453,            // ERC-8257: chain where the tool is registered
     toolRegistryAddress: "0x...", // ERC-8257: registry contract
-    toolOnchainId: 42,        // ERC-8257: tool ID in registry
+    toolOnchainId: 42,            // ERC-8257: tool ID in the registry
     apiKey: process.env.OPENSEA_API_KEY!,
   },
 })
 ```
 
-That's it — the handler fires the reporter as a fire-and-forget async call at the very end of the lifecycle, after the response is built. It never blocks or fails the tool call. Free calls send a signed EIP-3009 authorization; paid x402 calls send the settlement tx hash.
+> **Reporting is the service's job, never the caller's.** The `apiKey` authenticates *you* (the operator) as the reporter. The caller is identified by data they already supplied (the x402 payer, or the EIP-3009 authorization `predicateGate` verified), so no caller wallet, signing, or `walletClient` is involved.
+
+That's it: the handler fires the reporter as a fire-and-forget async call at the very end of the lifecycle, after the response is built. It never blocks or fails the tool call.
 
 ### How it works
 
-The caller's wallet signs a zero-value EIP-3009 `TransferWithAuthorization` message (USDC domain, `value = 0`) proving address ownership. The SDK sends this signature plus the ERC-8257 composite key to the endpoint. No tokens are transferred — this is purely for identity verification and analytics.
+- **Paid (x402) calls** report `verification_type: "x402_settlement"` with the on-chain payer address and the settlement transaction hash. The backend verifies the settlement directly, so no signature is needed.
+- **EIP-3009-authenticated calls** (e.g. behind `predicateGate`) report `verification_type: "eip3009_authorization"` by **forwarding the caller's original zero-value `TransferWithAuthorization`** (USDC domain, `value = 0`). The caller already signed it to authenticate; the SDK passes that exact signature through, so the reported identity is the real caller, not the server. No tokens are transferred.
 
 ### Configuration reference
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `walletClient` | Yes | Caller's viem `WalletClient` with attached account |
-| `chainId` | Yes | Chain ID for the EIP-712 USDC domain (1, 8453, 137, 42161, 10, 43114) |
-| `operatorAddress` | Yes | Tool operator address (used as `to` in the authorization) |
+| `chainId` | Yes | Chain ID for the EIP-712 USDC domain / x402 `chain_id` fallback (1, 8453, 137, 42161, 10, 43114) |
 | `toolChainId` | Yes | ERC-8257 composite key: chain of registration |
 | `toolRegistryAddress` | Yes | ERC-8257 composite key: registry contract |
 | `toolOnchainId` | Yes | ERC-8257 composite key: numeric tool ID |
-| `apiKey` | Yes | OpenSea API key ([get one here](https://docs.opensea.io/reference/api-keys)) |
+| `apiKey` | Yes | OpenSea API key ([get one here](https://docs.opensea.io/reference/api-keys)). Authenticates the tool service as the reporter |
 | `aggregatorUrl` | No | Override endpoint URL (default: `https://api.opensea.io/api/v2/tools/usage`) |
-| `tokenAddress` | No | Override USDC address (default: canonical address for `chainId`) |
 | `timeoutMs` | No | Request timeout in ms (default: 5000) |
 
 ### Standalone Reporters
 
-If you need to report usage outside the handler flow (e.g. from a client or a custom pipeline), use the standalone reporter functions directly:
+If you report usage outside the handler flow (a custom pipeline or a separate reporting service), use the standalone reporter functions directly.
 
 #### EIP-3009 Reporter
+
+Forwards a caller's already-collected EIP-3009 authorization. Pass an `InvocationEvent` whose `callerAuthorization` holds the authorization your auth layer verified:
 
 ```typescript
 import { createEip3009UsageReporter } from "@opensea/tool-sdk"
 
 const reportUsage = createEip3009UsageReporter({
-  walletClient,
   chainId: 8453,
-  operatorAddress: "0x...",
   toolChainId: 8453,
   toolRegistryAddress: "0x...",
   toolOnchainId: 42,
   apiKey: process.env.OPENSEA_API_KEY!,
 })
 
-await reportUsage({ latencyMs: 123 })
+await reportUsage({
+  paid: false,
+  latencyMs: 123,
+  timestamp: Date.now(),
+  callerAuthorization, // the caller's verified zero-value authorization
+})
 ```
 
 #### x402 Settlement Reporter

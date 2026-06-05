@@ -457,6 +457,14 @@ describe("predicateGate", () => {
     expect(response).toBeNull()
     expect(ctx.callerAddress).toBe(TEST_CALLER)
     expect(ctx.gates?.predicate).toEqual({ granted: true })
+    // The verified authorization is stashed so usage reporting can forward
+    // the caller's own signature instead of re-signing server-side.
+    expect(ctx.callerAuthorization).toMatchObject({
+      from: TEST_CALLER,
+      value: "0",
+      signature: "0xabcd",
+      chainId: 8453,
+    })
   })
 
   it("EIP-3009: returns 401 when required fields are missing (no 'to')", async () => {

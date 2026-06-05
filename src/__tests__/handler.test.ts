@@ -341,6 +341,43 @@ describe("createToolHandler", () => {
     expect(event.timestamp).toBeGreaterThan(0)
   })
 
+  it("threads ctx.callerAuthorization from a gate into the invocation event", async () => {
+    const callerAuthorization = {
+      signature: "0xabcd" as `0x${string}`,
+      from: "0x1111111111111111111111111111111111111111" as `0x${string}`,
+      to: "0x2222222222222222222222222222222222222222" as `0x${string}`,
+      value: "0" as const,
+      validAfter: "0",
+      validBefore: "9999999999",
+      nonce: "0xbeef" as `0x${string}`,
+      chainId: 8453,
+    }
+    const authGate: GateMiddleware = {
+      check: async (_req, ctx) => {
+        ctx.callerAddress = callerAuthorization.from
+        ctx.callerAuthorization = callerAuthorization
+        return null
+      },
+    }
+    const onInvocation = vi.fn()
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      gates: [authGate],
+      onInvocation,
+    })
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "hello" }),
+    })
+    await handler(request)
+    const event: InvocationEvent = onInvocation.mock.calls[0]![0]
+    expect(event.callerAuthorization).toEqual(callerAuthorization)
+  })
+
   it("does not call onInvocation when gate blocks the request", async () => {
     const onInvocation = vi.fn()
     const gate: GateMiddleware = {

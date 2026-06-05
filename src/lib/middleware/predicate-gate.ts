@@ -162,6 +162,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       }
 
       let recoveredAddress: `0x${string}` | null = null
+      let callerAuthorization: ZeroValueAuthorization | undefined
 
       if (authHeader.startsWith("EIP-3009 ")) {
         const result = await verifyEip3009Auth(authHeader, config, chain)
@@ -172,6 +173,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
           )
         }
         recoveredAddress = result.address!
+        callerAuthorization = result.authorization
       } else if (authHeader.startsWith("SIWE ")) {
         const result = await verifySiweAuth(
           authHeader,
@@ -306,6 +308,9 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       if (agentAddress) {
         ctx.agentAddress = agentAddress
       }
+      if (callerAuthorization) {
+        ctx.callerAuthorization = callerAuthorization
+      }
       if (ctx.gates) {
         ctx.gates.predicate = { granted: true }
       }
@@ -320,6 +325,8 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
 
 interface AuthResult {
   address?: `0x${string}`
+  /** The verified caller authorization (EIP-3009 path only). */
+  authorization?: ZeroValueAuthorization
   error?: string
   status: number
 }
@@ -450,7 +457,7 @@ async function verifyEip3009Auth(
     }
   }
 
-  return { address: recoveredAddress, status: 200 }
+  return { address: recoveredAddress, authorization, status: 200 }
 }
 
 // ---------------------------------------------------------------------------

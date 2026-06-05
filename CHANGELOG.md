@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.14.1
+
+### Patch Changes
+
+- 776788d: Fix usage reporting to attribute the real caller, and make reporting a service-side-only responsibility.
+
+  - x402 usage reports now use the on-chain payer as `caller_address` (after any gate-verified caller), instead of a placeholder address.
+  - EIP-3009 usage reports now forward the caller's original signed authorization, stashed by `predicateGate` on `ctx.callerAuthorization` and surfaced via `InvocationEvent.callerAuthorization`. The server no longer re-signs as itself.
+  - Removed `walletClient`, `operatorAddress`, and `tokenAddress` from `Eip3009UsageReporterConfig`. Reporting is authenticated by `apiKey`, and there is no caller self-reporting or signing path. `signZeroValueAuthorization` remains exported for building `Authorization: EIP-3009` request headers.
+
 ## 0.14.0
 
 ### Minor Changes

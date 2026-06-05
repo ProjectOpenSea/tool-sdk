@@ -377,45 +377,42 @@ All CLI commands accept `--wallet-provider privy|turnkey|fireblocks|private-key`
 
 ## 7. Usage Tracking
 
-Tool-sdk supports usage tracking via the `onInvocation` callback on `createToolHandler`. This fires after every successful invocation (post-settle, pre-response) with an `InvocationEvent` containing caller identity, payment status, and timing.
+Tool-sdk reports usage to OpenSea's analytics endpoint (`POST /api/v2/tools/usage`) for each successful call. It reports the **verified caller**: the on-chain payer for paid x402 calls, or the caller's own EIP-3009 authorization for `predicateGate`-authenticated calls. A tool server never signs on the caller's behalf.
 
-### createEip3009UsageReporter (recommended)
+### usageReporting (recommended)
 
-`createEip3009UsageReporter` is the recommended `onInvocation` implementation. It reports tool usage via EIP-3009 zero-value `TransferWithAuthorization` signatures:
+Pass `usageReporting` to `createToolHandler` and it fires the reporter as a fire-and-forget call at the very end of the lifecycle (after the response is built). No `walletClient` is needed server-side:
 
-- **Free / gated calls**: signs a zero-value authorization proving the operator controls the wallet, and POSTs with `verification_type: "eip3009_authorization"`.
-- **Paid x402 calls**: POSTs with `verification_type: "x402_settlement"` and the settlement tx hash — no additional signature needed.
+- **Paid x402 calls** → `verification_type: "x402_settlement"` with the payer address and settlement tx hash. The backend verifies the tx directly.
+- **EIP-3009-authenticated calls** (behind `predicateGate`) → `verification_type: "eip3009_authorization"`, **forwarding the caller's original signed authorization**. The caller already signed it to authenticate, so the reported identity is the real caller.
 
 ```typescript
-import { createToolHandler, createEip3009UsageReporter } from "@opensea/tool-sdk"
-import { createWalletClient, http } from "viem"
-import { privateKeyToAccount } from "viem/accounts"
-import { base } from "viem/chains"
-
-const walletClient = createWalletClient({
-  account: privateKeyToAccount("0x..."),
-  chain: base,
-  transport: http(),
-})
+import { createToolHandler } from "@opensea/tool-sdk"
 
 export const toolHandler = createToolHandler({
   manifest,
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
-  onInvocation: createEip3009UsageReporter({
-    walletClient,
-    chainId: 8453,
-    // optional: aggregatorUrl, tokenAddress, toolSlug, timeoutMs
-  }),
+  gates: [/* x402 paywall and/or predicateGate */],
+  usageReporting: {
+    chainId: 8453,                // EIP-712 USDC domain / x402 chain_id fallback
+    toolChainId: 8453,            // ERC-8257: chain where the tool is registered
+    toolRegistryAddress: "0x...", // ERC-8257: registry contract
+    toolOnchainId: 42,            // ERC-8257: tool ID in the registry
+    apiKey: process.env.OPENSEA_API_KEY!,
+    // optional: aggregatorUrl, tokenAddress, timeoutMs
+  },
   handler: async (input) => {
     return { result: `Processed: ${input.query}` }
   },
 })
 ```
 
+Reporting is always the service's responsibility (authenticated by `apiKey`), never the caller's; there is no caller self-reporting path. To report from a custom pipeline instead of the handler, use the standalone `createEip3009UsageReporter` / `createX402UsageReporter` (see the tool-sdk README "Usage Reporting" section).
+
 ### onInvocation callback
 
-You can also provide a custom `onInvocation` callback for bespoke analytics:
+You can also provide a custom `onInvocation` callback for bespoke analytics. It fires after the handler succeeds and settles, before the response is returned, with an `InvocationEvent` containing caller identity, payment status, and timing:
 
 ```typescript
 import { createToolHandler } from "@opensea/tool-sdk"

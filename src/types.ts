@@ -13,6 +13,13 @@ export type GateMiddleware = {
 export interface InvocationEvent {
   callerAddress?: `0x${string}`
   agentAddress?: `0x${string}`
+  /**
+   * The caller's original verified EIP-3009 zero-value authorization, when an
+   * auth gate (e.g. `predicateGate`) recovered one from the request. Carried
+   * through so usage reporting can forward the caller's own signature instead
+   * of re-signing server-side.
+   */
+  callerAuthorization?: import("./lib/usage/eip3009-auth.js").ZeroValueAuthorization
   paid: boolean
   payer?: string
   settlementTxHash?: string
@@ -28,6 +35,12 @@ export interface ToolContext {
   callerAddress?: `0x${string}`
   /** When a delegated agent call is verified, this holds the agent's address. */
   agentAddress?: `0x${string}`
+  /**
+   * The caller's verified EIP-3009 zero-value authorization, stashed by an
+   * auth gate so downstream usage reporting can forward the caller's own
+   * signature rather than re-signing server-side.
+   */
+  callerAuthorization?: import("./lib/usage/eip3009-auth.js").ZeroValueAuthorization
   gates: {
     predicate?: { granted: boolean }
     x402?: {

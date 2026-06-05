@@ -129,6 +129,7 @@ export function createToolHandler<TIn, TOut>(
       const event: InvocationEvent = {
         callerAddress: ctx.callerAddress,
         agentAddress: ctx.agentAddress,
+        callerAuthorization: ctx.callerAuthorization,
         paid: ctx.gates.x402?.paid ?? false,
         payer: ctx.gates.x402?.payer,
         settlementTxHash: ctx.gates.x402?.settlementTxHash,

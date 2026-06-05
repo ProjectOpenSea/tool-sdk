@@ -1,7 +1,5 @@
-import type { WalletClient } from "viem"
 import { isAddress } from "viem"
 import type { InvocationEvent } from "../../types.js"
-import { signZeroValueAuthorization } from "./eip3009-auth.js"
 
 export interface Eip3009UsageReporterConfig {
   /**
@@ -10,25 +8,11 @@ export interface Eip3009UsageReporterConfig {
    */
   aggregatorUrl?: string
   /**
-   * Viem WalletClient with an attached account — the **caller's** wallet.
-   * Used to sign the zero-value EIP-3009 authorization proving the caller
-   * controls the address.
-   */
-  walletClient: WalletClient
-  /**
-   * Chain ID for the EIP-712 USDC domain (e.g. 1 for Ethereum, 8453 for Base).
+   * Chain ID used as the `chain_id` fallback for x402 settlement reports when
+   * the gate did not record a settlement chain (e.g. 1 for Ethereum, 8453 for
+   * Base). Forwarded EIP-3009 authorizations carry their own chain id.
    */
   chainId: number
-  /**
-   * USDC token contract address. Defaults to the canonical USDC address
-   * for the given `chainId`.
-   */
-  tokenAddress?: `0x${string}`
-  /**
-   * Tool operator or pricing recipient address — used as the `to` field
-   * in the zero-value EIP-3009 authorization.
-   */
-  operatorAddress: `0x${string}`
   /**
    * ERC-8257 composite key: chain where the tool is registered.
    */
@@ -42,7 +26,8 @@ export interface Eip3009UsageReporterConfig {
    */
   toolOnchainId: number
   /**
-   * API key sent as `x-api-key` header.
+   * API key sent as `x-api-key` header. This authenticates the **tool
+   * service** as the reporter.
    */
   apiKey: string
   /**
@@ -55,24 +40,22 @@ const DEFAULT_AGGREGATOR_URL = "https://api.opensea.io/api/v2/tools/usage"
 const DEFAULT_TIMEOUT_MS = 5_000
 
 /**
- * Creates an `onInvocation` callback that reports tool usage via
- * EIP-3009 zero-value `TransferWithAuthorization` signatures.
+ * Creates a usage reporter for a tool **service** (the operator authenticates
+ * with `apiKey`). Reporting is never done by the caller; the service proves
+ * who called using data the caller already supplied:
  *
- * The **caller** signs the EIP-3009 message (`from` = caller address,
- * `to` = operator address, `value` = 0). The operator's SDK collects
- * this signature and forwards it to the usage endpoint along with the
- * ERC-8257 composite key identifying the tool.
+ * - **Paid x402 calls** (`event.paid && event.settlementTxHash`): POSTs
+ *   `verification_type: "x402_settlement"` with the on-chain payer and
+ *   settlement tx hash. The backend verifies the settlement directly.
+ * - **EIP-3009-authenticated calls** (`event.callerAuthorization`, stashed by
+ *   an auth gate): POSTs `verification_type: "eip3009_authorization"`,
+ *   **forwarding the caller's original signed authorization**. The service
+ *   never signs on the caller's behalf.
  *
- * For **paid x402 calls** (where `event.paid && event.settlementTxHash`):
- * POSTs with `verification_type: "x402_settlement"` and the settlement
- * tx hash — no additional signature is needed.
+ * Calls with neither a payment nor a caller authorization have no verifiable
+ * caller identity and are skipped.
  */
 function validateConfig(config: Eip3009UsageReporterConfig): void {
-  if (!isAddress(config.operatorAddress)) {
-    throw new Error(
-      `[tool-sdk] invalid operatorAddress: ${config.operatorAddress}`,
-    )
-  }
   if (!isAddress(config.toolRegistryAddress)) {
     throw new Error(
       `[tool-sdk] invalid toolRegistryAddress: ${config.toolRegistryAddress}`,
@@ -105,16 +88,6 @@ function validateConfig(config: Eip3009UsageReporterConfig): void {
   if (!config.apiKey?.trim()) {
     throw new Error("[tool-sdk] apiKey is required")
   }
-  if (config.tokenAddress && !isAddress(config.tokenAddress)) {
-    throw new Error(
-      `[tool-sdk] invalid tokenAddress: ${config.tokenAddress}`,
-    )
-  }
-  if (!config.walletClient.account) {
-    throw new Error(
-      "[tool-sdk] walletClient must have an account attached",
-    )
-  }
 }
 
 export function createEip3009UsageReporter(
@@ -129,70 +102,75 @@ export function createEip3009UsageReporter(
     let timer: ReturnType<typeof setTimeout> | undefined
     timer = setTimeout(() => controller.abort(), timeoutMs)
 
+    const post = (body: unknown): Promise<void> =>
+      fetch(aggregatorUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": config.apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }).then(handleResponse)
+
     try {
       if (event.paid && event.settlementTxHash) {
-        await fetch(aggregatorUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": config.apiKey,
+        // Paid x402 call: attribute to the on-chain payer. `callerAddress` is
+        // only set when an auth gate ran; otherwise fall back to the x402
+        // payer (the actual caller).
+        const caller =
+          event.callerAddress ?? (event.payer as `0x${string}` | undefined)
+        if (!caller) {
+          console.warn(
+            "[tool-sdk] x402 invocation without a resolvable caller address — skipping usage report",
+          )
+          return
+        }
+        await post({
+          verification_type: "x402_settlement",
+          tool_chain_id: config.toolChainId,
+          tool_registry_address: config.toolRegistryAddress,
+          tool_onchain_id: config.toolOnchainId,
+          latency_ms: event.latencyMs,
+          x402: {
+            caller_address: caller,
+            tx_hash: event.settlementTxHash,
+            chain_id: event.settlementChainId ?? config.chainId,
           },
-          body: JSON.stringify({
-            verification_type: "x402_settlement",
-            tool_chain_id: config.toolChainId,
-            tool_registry_address: config.toolRegistryAddress,
-            tool_onchain_id: config.toolOnchainId,
-            latency_ms: event.latencyMs,
-            x402: {
-              caller_address: (event.callerAddress ??
-                config.walletClient.account!.address) as `0x${string}`,
-              tx_hash: event.settlementTxHash,
-              chain_id: event.settlementChainId ?? config.chainId,
-            },
-          }),
-          signal: controller.signal,
-        }).then(handleResponse)
+        })
       } else if (event.paid && !event.settlementTxHash) {
         console.warn(
           "[tool-sdk] paid invocation without settlementTxHash — skipping usage report",
         )
         return
-      } else {
-        const callerAddress = config.walletClient.account!.address as `0x${string}`
-        const auth = await signZeroValueAuthorization({
-          walletClient: config.walletClient,
-          from: callerAddress,
-          to: config.operatorAddress,
-          chainId: config.chainId,
-          tokenAddress: config.tokenAddress,
-        })
-
-        await fetch(aggregatorUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": config.apiKey,
+      } else if (event.callerAuthorization) {
+        // Server-side path: forward the caller's *original* signed
+        // authorization. The caller already proved control of `from`; the
+        // server must not re-sign as itself.
+        const a = event.callerAuthorization
+        await post({
+          verification_type: "eip3009_authorization",
+          tool_chain_id: config.toolChainId,
+          tool_registry_address: config.toolRegistryAddress,
+          tool_onchain_id: config.toolOnchainId,
+          latency_ms: event.latencyMs,
+          eip3009: {
+            caller_address: a.from,
+            signature: a.signature,
+            chain_id: a.chainId,
+            from: a.from,
+            to: a.to,
+            value: a.value,
+            valid_after: a.validAfter,
+            valid_before: a.validBefore,
+            nonce: a.nonce,
           },
-          body: JSON.stringify({
-            verification_type: "eip3009_authorization",
-            tool_chain_id: config.toolChainId,
-            tool_registry_address: config.toolRegistryAddress,
-            tool_onchain_id: config.toolOnchainId,
-            latency_ms: event.latencyMs,
-            eip3009: {
-              caller_address: callerAddress,
-              signature: auth.signature,
-              chain_id: auth.chainId,
-              from: auth.from,
-              to: auth.to,
-              value: auth.value,
-              valid_after: auth.validAfter,
-              valid_before: auth.validBefore,
-              nonce: auth.nonce,
-            },
-          }),
-          signal: controller.signal,
-        }).then(handleResponse)
+        })
+      } else {
+        console.warn(
+          "[tool-sdk] invocation with no x402 payment and no caller authorization — nothing to attribute, skipping usage report",
+        )
+        return
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
