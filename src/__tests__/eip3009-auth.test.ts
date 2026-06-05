@@ -28,9 +28,11 @@ describe("signZeroValueAuthorization", () => {
     })
 
     expect(result.value).toBe("0")
-    expect(result.validAfter).toBe("0")
-    const validBefore = Number(result.validBefore)
+    const validAfter = Number(result.validAfter)
     const nowSec = Math.floor(Date.now() / 1000)
+    expect(validAfter).toBeGreaterThanOrEqual(nowSec - 62)
+    expect(validAfter).toBeLessThanOrEqual(nowSec - 58)
+    const validBefore = Number(result.validBefore)
     expect(validBefore).toBeGreaterThan(nowSec)
     expect(validBefore).toBeLessThanOrEqual(nowSec + 300)
     expect(result.from).toBe("0xabcdefabcdef1234567890abcdefabcdef12345678")
@@ -56,25 +58,6 @@ describe("signZeroValueAuthorization", () => {
     const callArgs = signSpy.mock.calls[0]![0]
     expect(callArgs.domain.verifyingContract).toBe(
       "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-    )
-  })
-
-  it("uses Base Sepolia USDC address for chainId 84532", async () => {
-    const client = mockWalletClient()
-    const signSpy = (
-      client as unknown as { signTypedData: ReturnType<typeof vi.fn> }
-    ).signTypedData
-
-    await signZeroValueAuthorization({
-      walletClient: client,
-      from: "0xabcdefabcdef1234567890abcdefabcdef12345678",
-      to: "0x0000000000000000000000000000000000000000",
-      chainId: 84532,
-    })
-
-    const callArgs = signSpy.mock.calls[0]![0]
-    expect(callArgs.domain.verifyingContract).toBe(
-      "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
     )
   })
 
@@ -146,7 +129,10 @@ describe("signZeroValueAuthorization", () => {
     expect(callArgs.domain.version).toBe("2")
     expect(callArgs.domain.chainId).toBe(8453)
     expect(callArgs.message.value).toBe(0n)
-    expect(callArgs.message.validAfter).toBe(0n)
+    const validAfterBigInt = callArgs.message.validAfter as bigint
+    const nowSec = Math.floor(Date.now() / 1000)
+    expect(Number(validAfterBigInt)).toBeGreaterThanOrEqual(nowSec - 62)
+    expect(Number(validAfterBigInt)).toBeLessThanOrEqual(nowSec - 58)
   })
 
   it("generates a unique nonce per call", async () => {

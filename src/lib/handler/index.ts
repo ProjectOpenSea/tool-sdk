@@ -6,6 +6,8 @@ import type {
 } from "../../types.js"
 import type { ManifestDefinition } from "../manifest/index.js"
 import { resolveManifest } from "../manifest/index.js"
+import type { Eip3009UsageReporterConfig } from "../usage/eip3009-reporter.js"
+import { createEip3009UsageReporter } from "../usage/eip3009-reporter.js"
 import { ToolHandlerError } from "./error.js"
 
 export interface ToolHandlerConfig<TIn, TOut> {
@@ -16,9 +18,19 @@ export interface ToolHandlerConfig<TIn, TOut> {
   gates?: GateMiddleware[]
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>
   /**
+   * Automatically reports tool usage to the OpenSea metrics endpoint.
+   *
+   * Fires as a fire-and-forget async call at the very end of the
+   * handler lifecycle — after the response is built. Never blocks or
+   * fails the tool call. Free invocations send a signed zero-value
+   * EIP-3009 authorization; paid x402 invocations send the settlement
+   * tx hash.
+   */
+  usageReporting?: Eip3009UsageReporterConfig
+  /**
    * Called after the handler succeeds and output validates. Fires for
-   * every successful invocation — paid or free. Use for usage reporting,
-   * analytics, or rate limiting. Errors are caught and logged.
+   * every successful invocation — paid or free. Use for custom
+   * analytics or rate limiting. Errors are caught and logged.
    */
   onInvocation?: (event: InvocationEvent) => void | Promise<void>
 }
@@ -26,6 +38,10 @@ export interface ToolHandlerConfig<TIn, TOut> {
 export function createToolHandler<TIn, TOut>(
   config: ToolHandlerConfig<TIn, TOut>,
 ): (request: Request) => Promise<Response> {
+  const usageReporter = config.usageReporting
+    ? createEip3009UsageReporter(config.usageReporting)
+    : undefined
+
   return async (request: Request): Promise<Response> => {
     try {
       if (request.method !== "POST") {
@@ -110,25 +126,35 @@ export function createToolHandler<TIn, TOut>(
         }
       }
 
+      const event: InvocationEvent = {
+        callerAddress: ctx.callerAddress,
+        agentAddress: ctx.agentAddress,
+        paid: ctx.gates.x402?.paid ?? false,
+        payer: ctx.gates.x402?.payer,
+        settlementTxHash: ctx.gates.x402?.settlementTxHash,
+        settlementChainId: ctx.gates.x402?.settlementChainId,
+        toolName: resolvedManifest.name,
+        latencyMs,
+        timestamp: Date.now(),
+      }
+
       if (config.onInvocation) {
         try {
-          const event: InvocationEvent = {
-            callerAddress: ctx.callerAddress,
-            agentAddress: ctx.agentAddress,
-            paid: ctx.gates.x402?.paid ?? false,
-            payer: ctx.gates.x402?.payer,
-            settlementTxHash: ctx.gates.x402?.settlementTxHash,
-            toolName: resolvedManifest.name,
-            latencyMs,
-            timestamp: Date.now(),
-          }
           await config.onInvocation(event)
         } catch (err) {
           console.error("[tool-sdk] onInvocation failed:", err)
         }
       }
 
-      return Response.json(outputResult.data, { status: 200 })
+      const response = Response.json(outputResult.data, { status: 200 })
+
+      if (usageReporter) {
+        void usageReporter(event).catch((err) => {
+          console.error("[tool-sdk] usageReporting failed:", err)
+        })
+      }
+
+      return response
     } catch (error) {
       if (error instanceof ToolHandlerError) {
         console.error("[tool-sdk] tool handler error:", error)

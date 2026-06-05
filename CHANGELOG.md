@@ -1,5 +1,23 @@
 # @opensea/tool-sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- fc83682: Add usage reporting integration to `createToolHandler` and update reporters to match os2-core `POST /api/v2/tools/usage` endpoint.
+
+  **Breaking changes:**
+
+  - `Eip3009UsageReporterConfig` now requires `apiKey`, `operatorAddress`, and ERC-8257 composite key fields (`toolChainId`, `toolRegistryAddress`, `toolOnchainId`). Previously `tool_slug` was used; it has been removed.
+  - Default aggregator URL changed from `https://api.opensea.io/api/v2/agent-tools/usage` to `https://api.opensea.io/api/v2/tools/usage`.
+  - Base Sepolia (84532) removed from `NETWORK_USDC` map.
+
+  **New features:**
+
+  - `ToolHandlerConfig.usageReporting` — pass an `Eip3009UsageReporterConfig` and the handler auto-fires the reporter on every successful invocation (both free EIP-3009 and paid x402 paths). Works alongside `onInvocation`.
+  - `createX402UsageReporter` — standalone reporter for paid x402 tools (no wallet signing, just settlement tx hash).
+  - Per-event `txHash` hex format validation in x402 reporter.
+
 ## 0.13.0
 
 ### Minor Changes

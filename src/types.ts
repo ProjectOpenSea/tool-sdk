@@ -16,7 +16,9 @@ export interface InvocationEvent {
   paid: boolean
   payer?: string
   settlementTxHash?: string
-  /** Resolved tool name from the manifest, used to derive tool_slug. */
+  /** Chain ID where the x402 settlement tx was mined. */
+  settlementChainId?: number
+  /** Resolved tool name from the manifest. */
   toolName?: string
   latencyMs: number
   timestamp: number
@@ -37,6 +39,8 @@ export interface ToolContext {
        * `settle()` after the facilitator confirms.
        */
       settlementTxHash?: string
+      /** Chain ID where the settlement transaction was mined. */
+      settlementChainId?: number
     }
   }
   manifest: import("./lib/manifest/types.js").ToolManifest

@@ -157,6 +157,11 @@ export type {
 export { signZeroValueAuthorization } from "./lib/usage/eip3009-auth.js"
 export type { Eip3009UsageReporterConfig } from "./lib/usage/eip3009-reporter.js"
 export { createEip3009UsageReporter } from "./lib/usage/eip3009-reporter.js"
+export type {
+  X402UsageEvent,
+  X402UsageReporterConfig,
+} from "./lib/usage/x402-reporter.js"
+export { createX402UsageReporter } from "./lib/usage/x402-reporter.js"
 export { deriveSlug } from "./lib/utils.js"
 export type {
   TransactionRequest,

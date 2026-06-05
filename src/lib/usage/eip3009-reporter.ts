@@ -1,62 +1,126 @@
 import type { WalletClient } from "viem"
+import { isAddress } from "viem"
 import type { InvocationEvent } from "../../types.js"
 import { signZeroValueAuthorization } from "./eip3009-auth.js"
-import { deriveSlug } from "../utils.js"
 
 export interface Eip3009UsageReporterConfig {
   /**
-   * URL of the OpenSea usage aggregator endpoint.
-   * Defaults to `https://api.opensea.io/api/v2/agent-tools/usage`.
+   * URL of the OpenSea usage endpoint.
+   * Defaults to `https://api.opensea.io/api/v2/tools/usage`.
    */
   aggregatorUrl?: string
   /**
-   * Viem WalletClient with an attached account, used to sign the
-   * zero-value EIP-3009 authorization.
+   * Viem WalletClient with an attached account — the **caller's** wallet.
+   * Used to sign the zero-value EIP-3009 authorization proving the caller
+   * controls the address.
    */
   walletClient: WalletClient
   /**
-   * Chain ID for the EIP-712 domain (e.g. 8453 for Base).
+   * Chain ID for the EIP-712 USDC domain (e.g. 1 for Ethereum, 8453 for Base).
    */
   chainId: number
   /**
    * USDC token contract address. Defaults to the canonical USDC address
-   * for Base (8453) or Base Sepolia (84532).
+   * for the given `chainId`.
    */
   tokenAddress?: `0x${string}`
   /**
-   * Tool slug derived from the tool name. If not provided, it is derived
-   * from the manifest name attached to the invocation event.
+   * Tool operator or pricing recipient address — used as the `to` field
+   * in the zero-value EIP-3009 authorization.
    */
-  toolSlug?: string
+  operatorAddress: `0x${string}`
+  /**
+   * ERC-8257 composite key: chain where the tool is registered.
+   */
+  toolChainId: number
+  /**
+   * ERC-8257 composite key: registry contract address.
+   */
+  toolRegistryAddress: `0x${string}`
+  /**
+   * ERC-8257 composite key: the tool's onchain ID in the registry.
+   */
+  toolOnchainId: number
+  /**
+   * API key sent as `x-api-key` header.
+   */
+  apiKey: string
   /**
    * Request timeout in milliseconds. Defaults to 5000.
    */
   timeoutMs?: number
 }
 
-const DEFAULT_AGGREGATOR_URL =
-  "https://api.opensea.io/api/v2/agent-tools/usage"
+const DEFAULT_AGGREGATOR_URL = "https://api.opensea.io/api/v2/tools/usage"
 const DEFAULT_TIMEOUT_MS = 5_000
 
 /**
  * Creates an `onInvocation` callback that reports tool usage via
  * EIP-3009 zero-value `TransferWithAuthorization` signatures.
  *
- * For **free / gated calls**: signs a zero-value authorization proving
- * the caller controls the wallet, and POSTs with
- * `verification_type: "eip3009_authorization"`.
+ * The **caller** signs the EIP-3009 message (`from` = caller address,
+ * `to` = operator address, `value` = 0). The operator's SDK collects
+ * this signature and forwards it to the usage endpoint along with the
+ * ERC-8257 composite key identifying the tool.
  *
  * For **paid x402 calls** (where `event.paid && event.settlementTxHash`):
  * POSTs with `verification_type: "x402_settlement"` and the settlement
  * tx hash — no additional signature is needed.
- *
- * This replaces the SIWE-based `createUsageReporter`. Unlike SIWE, it
- * does not require the caller to have passed through a SIWE gate; the
- * tool operator signs directly.
  */
+function validateConfig(config: Eip3009UsageReporterConfig): void {
+  if (!isAddress(config.operatorAddress)) {
+    throw new Error(
+      `[tool-sdk] invalid operatorAddress: ${config.operatorAddress}`,
+    )
+  }
+  if (!isAddress(config.toolRegistryAddress)) {
+    throw new Error(
+      `[tool-sdk] invalid toolRegistryAddress: ${config.toolRegistryAddress}`,
+    )
+  }
+  if (
+    !Number.isInteger(config.toolOnchainId) ||
+    config.toolOnchainId < 0
+  ) {
+    throw new Error(
+      `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${config.toolOnchainId}`,
+    )
+  }
+  if (
+    !Number.isInteger(config.toolChainId) ||
+    config.toolChainId <= 0
+  ) {
+    throw new Error(
+      `[tool-sdk] toolChainId must be a positive integer, got: ${config.toolChainId}`,
+    )
+  }
+  if (
+    !Number.isInteger(config.chainId) ||
+    config.chainId <= 0
+  ) {
+    throw new Error(
+      `[tool-sdk] chainId must be a positive integer, got: ${config.chainId}`,
+    )
+  }
+  if (!config.apiKey?.trim()) {
+    throw new Error("[tool-sdk] apiKey is required")
+  }
+  if (config.tokenAddress && !isAddress(config.tokenAddress)) {
+    throw new Error(
+      `[tool-sdk] invalid tokenAddress: ${config.tokenAddress}`,
+    )
+  }
+  if (!config.walletClient.account) {
+    throw new Error(
+      "[tool-sdk] walletClient must have an account attached",
+    )
+  }
+}
+
 export function createEip3009UsageReporter(
   config: Eip3009UsageReporterConfig,
 ): (event: InvocationEvent) => Promise<void> {
+  validateConfig(config)
   const aggregatorUrl = config.aggregatorUrl ?? DEFAULT_AGGREGATOR_URL
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
@@ -66,21 +130,25 @@ export function createEip3009UsageReporter(
     timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      const callerAddress =
-        event.callerAddress ??
-        (config.walletClient.account?.address as `0x${string}` | undefined)
-      const toolSlug = config.toolSlug ?? deriveSlug(event.toolName ?? "")
-
       if (event.paid && event.settlementTxHash) {
         await fetch(aggregatorUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": config.apiKey,
+          },
           body: JSON.stringify({
             verification_type: "x402_settlement",
-            tx_hash: event.settlementTxHash,
-            caller_address: callerAddress,
-            tool_slug: toolSlug,
+            tool_chain_id: config.toolChainId,
+            tool_registry_address: config.toolRegistryAddress,
+            tool_onchain_id: config.toolOnchainId,
             latency_ms: event.latencyMs,
+            x402: {
+              caller_address: (event.callerAddress ??
+                config.walletClient.account!.address) as `0x${string}`,
+              tx_hash: event.settlementTxHash,
+              chain_id: event.settlementChainId ?? config.chainId,
+            },
           }),
           signal: controller.signal,
         }).then(handleResponse)
@@ -90,30 +158,38 @@ export function createEip3009UsageReporter(
         )
         return
       } else {
+        const callerAddress = config.walletClient.account!.address as `0x${string}`
         const auth = await signZeroValueAuthorization({
           walletClient: config.walletClient,
-          from: config.walletClient.account!.address,
-          to: "0x0000000000000000000000000000000000000000",
+          from: callerAddress,
+          to: config.operatorAddress,
           chainId: config.chainId,
           tokenAddress: config.tokenAddress,
         })
 
         await fetch(aggregatorUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": config.apiKey,
+          },
           body: JSON.stringify({
             verification_type: "eip3009_authorization",
-            caller_address: callerAddress,
-            signature: auth.signature,
-            tool_slug: toolSlug,
-            chain_id: auth.chainId,
-            from: auth.from,
-            to: auth.to,
-            value: auth.value,
-            valid_after: auth.validAfter,
-            valid_before: auth.validBefore,
-            nonce: auth.nonce,
+            tool_chain_id: config.toolChainId,
+            tool_registry_address: config.toolRegistryAddress,
+            tool_onchain_id: config.toolOnchainId,
             latency_ms: event.latencyMs,
+            eip3009: {
+              caller_address: callerAddress,
+              signature: auth.signature,
+              chain_id: auth.chainId,
+              from: auth.from,
+              to: auth.to,
+              value: auth.value,
+              valid_after: auth.validAfter,
+              valid_before: auth.validBefore,
+              nonce: auth.nonce,
+            },
           }),
           signal: controller.signal,
         }).then(handleResponse)

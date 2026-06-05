@@ -3,7 +3,14 @@ import { z } from "zod/v4"
 import { ToolHandlerError } from "../index.js"
 import { createToolHandler } from "../lib/handler/index.js"
 import type { ManifestDefinition } from "../lib/manifest/index.js"
+import type { Eip3009UsageReporterConfig } from "../lib/usage/eip3009-reporter.js"
 import type { GateMiddleware, InvocationEvent } from "../types.js"
+
+vi.mock("../lib/usage/eip3009-reporter.js", () => ({
+  createEip3009UsageReporter: vi.fn((_config: Eip3009UsageReporterConfig) => {
+    return vi.fn().mockResolvedValue(undefined)
+  }),
+}))
 
 const testManifest = {
   type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
@@ -443,5 +450,145 @@ describe("createToolHandler", () => {
     )
     expect(response.status).toBe(200)
     expect(order).toEqual(["handler", "settle", "onInvocation"])
+  })
+
+  it("fires usageReporting as fire-and-forget on successful invocation", async () => {
+    const { createEip3009UsageReporter } = await import(
+      "../lib/usage/eip3009-reporter.js"
+    )
+    const mockReporter = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(createEip3009UsageReporter).mockReturnValue(mockReporter)
+
+    const usageReporting = {
+      apiKey: "test-key",
+      toolChainId: 8453,
+      toolRegistryAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      toolOnchainId: 42,
+    } as unknown as Eip3009UsageReporterConfig
+
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      usageReporting,
+    })
+
+    expect(createEip3009UsageReporter).toHaveBeenCalledWith(usageReporting)
+
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+
+    // flush fire-and-forget microtask
+    await vi.waitFor(() => expect(mockReporter).toHaveBeenCalledOnce())
+    const event: InvocationEvent = mockReporter.mock.calls[0]![0]
+    expect(event.paid).toBe(false)
+    expect(event.latencyMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it("fires usageReporting after response is built", async () => {
+    const { createEip3009UsageReporter } = await import(
+      "../lib/usage/eip3009-reporter.js"
+    )
+    let reporterCalledBeforeReturn = false
+    const mockReporter = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(createEip3009UsageReporter).mockReturnValue(mockReporter)
+    const onInvocation = vi.fn(() => {
+      reporterCalledBeforeReturn = mockReporter.mock.calls.length > 0
+    })
+
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      usageReporting: {} as unknown as Eip3009UsageReporterConfig,
+      onInvocation,
+    })
+
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect(onInvocation).toHaveBeenCalledOnce()
+    // onInvocation runs before usageReporting (which is fire-and-forget)
+    expect(reporterCalledBeforeReturn).toBe(false)
+    await vi.waitFor(() => expect(mockReporter).toHaveBeenCalledOnce())
+  })
+
+  it("logs usageReporting errors without affecting the response", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const { createEip3009UsageReporter } = await import(
+      "../lib/usage/eip3009-reporter.js"
+    )
+    vi.mocked(createEip3009UsageReporter).mockReturnValue(
+      vi.fn().mockRejectedValue(new Error("network error")),
+    )
+
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      usageReporting: {} as unknown as Eip3009UsageReporterConfig,
+    })
+
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    await vi.waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[tool-sdk] usageReporting failed:",
+        expect.any(Error),
+      ),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("does not fire usageReporting when gate blocks", async () => {
+    const { createEip3009UsageReporter } = await import(
+      "../lib/usage/eip3009-reporter.js"
+    )
+    const mockReporter = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(createEip3009UsageReporter).mockReturnValue(mockReporter)
+
+    const gate: GateMiddleware = {
+      async check() {
+        return Response.json({ error: "Blocked" }, { status: 403 })
+      },
+    }
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [gate],
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+      usageReporting: {} as unknown as Eip3009UsageReporterConfig,
+    })
+
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+    expect(response.status).toBe(403)
+    expect(mockReporter).not.toHaveBeenCalled()
   })
 })

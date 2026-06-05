@@ -839,6 +839,107 @@ Gate your tool using the onchain access predicate system. The `predicateGate` mi
 
 See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
 
+## Usage Reporting
+
+Report tool invocations to OpenSea's analytics endpoint (`POST /api/v2/tools/usage`) using EIP-3009 zero-value authorizations for caller verification.
+
+### Setup
+
+1. **Get an API key** at [docs.opensea.io/reference/api-keys](https://docs.opensea.io/reference/api-keys) and set it in your environment:
+
+```bash
+export OPENSEA_API_KEY="your-api-key"
+```
+
+2. **Add `usageReporting` to your handler config** — both free (EIP-3009) and paid (x402) invocations are reported automatically:
+
+```typescript
+import { createToolHandler } from "@opensea/tool-sdk"
+
+const handler = createToolHandler({
+  manifest,
+  inputSchema,
+  outputSchema,
+  handler: async (input, ctx) => {
+    // your tool logic
+  },
+  usageReporting: {
+    walletClient,             // caller's viem WalletClient (must have account attached)
+    chainId: 8453,            // chain for EIP-712 USDC domain (Base in this example)
+    operatorAddress: "0x...", // tool operator / pricing recipient
+    toolChainId: 8453,        // ERC-8257: chain where tool is registered
+    toolRegistryAddress: "0x...", // ERC-8257: registry contract
+    toolOnchainId: 42,        // ERC-8257: tool ID in registry
+    apiKey: process.env.OPENSEA_API_KEY!,
+  },
+})
+```
+
+That's it — the handler fires the reporter as a fire-and-forget async call at the very end of the lifecycle, after the response is built. It never blocks or fails the tool call. Free calls send a signed EIP-3009 authorization; paid x402 calls send the settlement tx hash.
+
+### How it works
+
+The caller's wallet signs a zero-value EIP-3009 `TransferWithAuthorization` message (USDC domain, `value = 0`) proving address ownership. The SDK sends this signature plus the ERC-8257 composite key to the endpoint. No tokens are transferred — this is purely for identity verification and analytics.
+
+### Configuration reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `walletClient` | Yes | Caller's viem `WalletClient` with attached account |
+| `chainId` | Yes | Chain ID for the EIP-712 USDC domain (1, 8453, 137, 42161, 10, 43114) |
+| `operatorAddress` | Yes | Tool operator address (used as `to` in the authorization) |
+| `toolChainId` | Yes | ERC-8257 composite key: chain of registration |
+| `toolRegistryAddress` | Yes | ERC-8257 composite key: registry contract |
+| `toolOnchainId` | Yes | ERC-8257 composite key: numeric tool ID |
+| `apiKey` | Yes | OpenSea API key ([get one here](https://docs.opensea.io/reference/api-keys)) |
+| `aggregatorUrl` | No | Override endpoint URL (default: `https://api.opensea.io/api/v2/tools/usage`) |
+| `tokenAddress` | No | Override USDC address (default: canonical address for `chainId`) |
+| `timeoutMs` | No | Request timeout in ms (default: 5000) |
+
+### Standalone Reporters
+
+If you need to report usage outside the handler flow (e.g. from a client or a custom pipeline), use the standalone reporter functions directly:
+
+#### EIP-3009 Reporter
+
+```typescript
+import { createEip3009UsageReporter } from "@opensea/tool-sdk"
+
+const reportUsage = createEip3009UsageReporter({
+  walletClient,
+  chainId: 8453,
+  operatorAddress: "0x...",
+  toolChainId: 8453,
+  toolRegistryAddress: "0x...",
+  toolOnchainId: 42,
+  apiKey: process.env.OPENSEA_API_KEY!,
+})
+
+await reportUsage({ latencyMs: 123 })
+```
+
+#### x402 Settlement Reporter
+
+For paid tools using x402, report usage with the onchain settlement transaction hash — no wallet signing needed:
+
+```typescript
+import { createX402UsageReporter } from "@opensea/tool-sdk"
+
+const reportX402Usage = createX402UsageReporter({
+  toolChainId: 8453,
+  toolRegistryAddress: "0x...",
+  toolOnchainId: 42,
+  apiKey: process.env.OPENSEA_API_KEY!,
+})
+
+await reportX402Usage({
+  callerAddress: "0x...",
+  txHash: "0x...",
+  chainId: 8453,
+  latencyMs: 200,
+})
+```
+
 ## Security Considerations
 
 ### Input Validation
