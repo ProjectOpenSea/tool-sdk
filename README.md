@@ -206,7 +206,7 @@ npx @opensea/tool-sdk dry-run-gate \
 
 ### `dry-run-predicate-gate`
 
-Invoke a tool handler locally with no auth header and assert a valid 401 response (predicate gate test).
+Invoke a tool handler locally with no auth header and assert a valid challenge response (402 when `operatorAddress` is configured, 401 otherwise).
 
 ```bash
 npx @opensea/tool-sdk dry-run-predicate-gate \
@@ -520,12 +520,15 @@ const { toolId, txHash } = await client.registerTool({
 
 ### Predicate Gate (recommended)
 
-Delegates the access decision to the onchain `ToolRegistry`. The middleware
-verifies an EIP-3009 zero-value authorization, recovers the caller's address
-via `ecrecover`, and staticcalls
-`IToolRegistry.tryHasAccess(toolId, caller, data)`. Whatever predicate the
-tool's creator registered (single-collection ERC-721, multi-collection,
-ERC-1155, subscription, composite, anything future) is the policy enforced.
+Delegates the access decision to the onchain `ToolRegistry`. When
+`operatorAddress` is configured, the gate returns a 402 challenge with
+`PaymentRequirements` (`maxAmountRequired: "0"`); the caller signs a
+zero-value `X-Payment` and retries — the same flow as x402. The middleware
+recovers the caller's address from the `X-Payment` signature via `ecrecover`
+and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)`. Whatever
+predicate the tool's creator registered (single-collection ERC-721,
+multi-collection, ERC-1155, subscription, composite, anything future) is the
+policy enforced.
 
 ```typescript
 import { predicateGate } from "@opensea/tool-sdk"
@@ -552,7 +555,9 @@ Status code mapping:
 
 | Outcome | Status | Body |
 | --- | --- | --- |
-| Missing or malformed authorization | `401` | `{ error, hint }` |
+| No auth, `operatorAddress` configured | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
+| No auth, no `operatorAddress` | `401` | `{ error, hint }` |
+| Malformed auth header or `X-Payment` | `401` | `{ error }` |
 | `tryHasAccess` returned `(true, true)` | (passes) | n/a |
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "Predicate misbehaved..." }` |
@@ -562,7 +567,7 @@ address, fetched lazily from `getToolConfig` on first denial and cached
 in-process. Callers can read the predicate's onchain config to learn what
 they need to satisfy.
 
-Authorization header format: `EIP-3009 <base64url(json)>` (also accepts deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility)
+Preferred auth mechanism: `X-Payment` header (zero-value EIP-3009 `TransferWithAuthorization` via the 402 challenge flow). Also accepts `Authorization: EIP-3009 <base64url(json)>` and deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility.
 
 > **Note:** The gate enforces a short-lived `validBefore` window (the SDK
 > defaults to 5 minutes). Each authorization includes a random nonce bound
@@ -590,7 +595,7 @@ const response = await eip3009AuthenticatedFetch(toolUrl, {
 
 When `X-Delegate-For` is present, the middleware:
 
-1. Verifies the agent's EIP-3009 signature normally
+1. Verifies the agent's identity (via `X-Payment` or `Authorization: EIP-3009`) normally
 2. Calls `checkDelegateForAll(agent, holder)` on the [delegate.xyz DelegateRegistry](https://docs.delegate.xyz)
 3. If valid, runs the access predicate against the **holder** (not the agent)
 4. Sets `ctx.callerAddress = holderAddress` and `ctx.agentAddress = agentAddress`
@@ -835,7 +840,7 @@ const data = await res.json()
 
 ### Predicate-Gated Tools
 
-Gate your tool using the onchain access predicate system. The `predicateGate` middleware verifies an EIP-3009 zero-value authorization, recovers the caller's address via `ecrecover`, and delegates the access decision to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
+Gate your tool using the onchain access predicate system. When `operatorAddress` is configured, `predicateGate` uses a unified 402 challenge flow: it returns `PaymentRequirements` with `maxAmountRequired: "0"`, the caller signs a zero-value `X-Payment`, and the middleware recovers the caller's address via `ecrecover`. Access is then delegated to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
 
 See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
 

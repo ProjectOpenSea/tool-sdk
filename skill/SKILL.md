@@ -339,8 +339,8 @@ const account = await createBankrAccount("your-bankr-api-key")
 |------|---------|--------|
 | 200 | Success | Parse the JSON body per the manifest's `outputs` schema |
 | 400 | Invalid input | Fix request body to match the manifest's `inputs` schema |
-| 401 | Missing/invalid auth | Sign an EIP-3009 zero-value authorization and include `Authorization: EIP-3009 <token>` |
-| 402 | Payment required | Read `body.accepts[0]` for payment requirements, sign and retry with `X-Payment` |
+| 401 | Missing/invalid auth (no `operatorAddress`) | Sign an EIP-3009 zero-value authorization and include `Authorization: EIP-3009 <token>` (legacy) |
+| 402 | Payment / identity required | Read `body.accepts[0]` for `PaymentRequirements`. For predicate gates (`maxAmountRequired: "0"`), sign a zero-value `X-Payment` and retry. For x402 paywalls, sign and pay the requested amount. |
 | 403 | Access denied | Inspect `body.predicate` to discover what's needed; acquire the required token/subscription |
 | 405 | Method not allowed | Use POST |
 | 500 | Internal tool error | Retry or contact the tool creator |
@@ -542,6 +542,6 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 ## References
 
 - [`references/x402.md`](references/x402.md): pay-per-call protocol, server-side paywall, `paidFetch`
-- [`references/predicate-gating.md`](references/predicate-gating.md): EIP-3009-based access control, combined gates
+- [`references/predicate-gating.md`](references/predicate-gating.md): 402-based predicate access control (zero-value `X-Payment`), combined gates
 - [`references/known-predicates.md`](references/known-predicates.md): deployed predicate contracts and SDK helpers
 - [Tool SDK GitHub](https://github.com/ProjectOpenSea/tool-sdk)

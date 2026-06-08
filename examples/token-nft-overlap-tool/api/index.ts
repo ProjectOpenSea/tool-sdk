@@ -30,6 +30,7 @@ const vercelHandler = toVercelHandler(
     gates: buildGates({
       toolId: BigInt(holderToolId),
       rpcUrl: process.env.ETH_RPC_URL,
+      operatorAddress: creator,
     }),
     usageReporting: buildUsageReporting({
       apiKey: openseaKey,

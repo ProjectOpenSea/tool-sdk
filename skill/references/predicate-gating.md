@@ -1,14 +1,25 @@
-# Predicate-Gated Tools (403 Access Control)
+# Predicate-Gated Tools (402 Challenge + 403 Access Control)
 
-Predicate gating restricts tool access based on onchain state (NFT ownership, subscriptions, composite logic). The caller authenticates with an EIP-3009 zero-value authorization; the server recovers the caller's address via `ecrecover` and checks the configured `IAccessPredicate` contract via the ToolRegistry.
+Predicate gating restricts tool access based on onchain state (NFT ownership, subscriptions, composite logic). When `operatorAddress` is configured, the gate uses the same 402 challenge flow as x402: the server returns `HTTP 402` with `PaymentRequirements` (`maxAmountRequired: "0"`), and the caller replays with a zero-value `X-Payment` header. The server recovers the caller's address from the `X-Payment` signature and checks the configured `IAccessPredicate` contract via the ToolRegistry.
 
 ## How predicate gating works
 
 ```
 Agent                        Tool Server                   ToolRegistry (onchain)
   |--- POST /api ------------->|                                |
-  |    Authorization: EIP-3009 |                                |
-  |                            |  (verify EIP-3009 signature)   |
+  |    (no auth headers)       |                                |
+  |                            |  (no X-Payment → 402)          |
+  |<-- 402 + PaymentReqs ------|                                |
+  |    {payTo: operator,       |                                |
+  |     maxAmountRequired: "0"}|                                |
+  |                            |                                |
+  |  (sign X-Payment with      |                                |
+  |   to=operator, value=0)    |                                |
+  |                            |                                |
+  |--- POST /api ------------->|                                |
+  |    X-Payment: <base64>     |                                |
+  |                            |  (verify X-Payment signature)  |
+  |                            |  (recover signer = from)       |
   |                            |--- staticcall tryHasAccess --->|
   |                            |    (toolId, callerAddr, data)  |
   |                            |<-- (ok=true, granted=true) ----|
@@ -17,13 +28,17 @@ Agent                        Tool Server                   ToolRegistry (onchain
   |<-- 200 + result -----------|                                |
 ```
 
-1. Agent signs a zero-value EIP-3009 `TransferWithAuthorization` (EIP-712 typed data)
-2. Agent sends `Authorization: EIP-3009 <base64url(json)>`
-3. Server recovers the caller's address via `ecrecover` on the EIP-712 typed data (no RPC call needed)
-4. Server calls `ToolRegistry.tryHasAccess(toolId, callerAddress, data)` which delegates to the tool's configured `IAccessPredicate`
-5. If access is granted: execute handler, return 200
-6. If access is denied: return 403 with predicate address for self-diagnosis
-7. If predicate misbehaved: return 502
+1. Agent sends a bare request (no auth headers)
+2. Server returns `402` with `PaymentRequirements` (`payTo`=operator, `maxAmountRequired`=`"0"`, `scheme`=`"exact"`)
+3. Agent signs a zero-value `X-Payment` (EIP-3009 `TransferWithAuthorization` with `to`=operator, `value`=0)
+4. Agent retries the request with the `X-Payment` header
+5. Server recovers the caller's address via `ecrecover` on the EIP-712 typed data (no RPC call needed)
+6. Server calls `ToolRegistry.tryHasAccess(toolId, callerAddress, data)` which delegates to the tool's configured `IAccessPredicate`
+7. If access is granted: execute handler, return 200
+8. If access is denied: return 403 with predicate address for self-diagnosis
+9. If predicate misbehaved: return 502
+
+> **Backward compatibility:** The gate still accepts `Authorization: EIP-3009 <base64url(json)>` and deprecated `Authorization: SIWE <token>` headers. However, the 402 + `X-Payment` flow is preferred for new integrations because it mirrors the x402 pattern and lets the client discover the correct `to` address from the challenge.
 
 ## Build a predicate-gated tool (server side)
 
@@ -83,6 +98,8 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 
 ### Via SDK: `eip3009AuthenticatedFetch`
 
+`eip3009AuthenticatedFetch` handles the 402 challenge automatically: it sends a bare request, reads the `PaymentRequirements` from the 402 response, signs a zero-value `X-Payment`, and retries.
+
 ```typescript
 import { eip3009AuthenticatedFetch, createWalletFromEnv, walletAdapterToClient } from "@opensea/tool-sdk"
 import { base } from "viem/chains"
@@ -95,8 +112,7 @@ const res = await eip3009AuthenticatedFetch("https://my-tool.example.com/api", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "hello" }),
-  // to: "0xOPERATOR_ADDRESS",  // tool operator address for domain binding
-  // chainId: 8453,              // default: Base
+  allowedRecipients: ["0xOPERATOR_ADDRESS"],  // optional: restrict which payTo addresses to sign for
 })
 
 const data = await res.json()
@@ -153,7 +169,7 @@ const [requirements, logic] = await client.readContract({
 
 ## Combined gates (predicate + x402)
 
-Tools can require both EIP-3009 authentication and x402 payment. The server runs gates sequentially: predicate first (identity), then x402 (payment).
+Tools can require both identity verification and x402 payment. The server runs gates sequentially: predicate first (identity via zero-value `X-Payment`), then x402 (real payment via `X-Payment`). The client handles multiple 402 challenges in a retry loop.
 
 ### Server side
 
@@ -201,6 +217,8 @@ export const toolHandler = createToolHandler({
 
 ### Client side: `paidAuthenticatedFetch`
 
+`paidAuthenticatedFetch` handles multiple 402 challenges automatically: it sends a bare request, then on each 402 it reads the `PaymentRequirements`, signs an `X-Payment`, and retries. For a combined predicate + x402 tool, the first 402 is the predicate's zero-value challenge and the second is the x402 real payment.
+
 ```typescript
 import { paidAuthenticatedFetch, createWalletFromEnv, walletAdapterToClient } from "@opensea/tool-sdk"
 import { base } from "viem/chains"
@@ -209,7 +227,7 @@ const adapter = createWalletFromEnv()
 const client = await walletAdapterToClient(adapter, base)
 
 const res = await paidAuthenticatedFetch("https://my-tool.example.com/api", {
-  account: client.account,   // for EIP-3009 signing
+  account: client.account,   // for X-Payment signing (identity + payment)
   signer: adapter,           // for x402 payment signing (can differ from account)
   method: "POST",
   headers: { "Content-Type": "application/json" },

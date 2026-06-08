@@ -53,18 +53,22 @@ Manifest: `/.well-known/ai-tool/token-nft-overlap.json`
 }
 ```
 
-Without valid EIP-3009 auth proving NFT ownership, the response is
-`HTTP 403`. With valid auth, the response is a structured overlap report.
+The tool is free but gated. An unauthenticated request returns an x402
+`HTTP 402` with `PaymentRequirements` whose `payTo` is the tool operator
+and whose `maxAmountRequired` is `"0"`. The caller replays the request
+with a zero-value `X-Payment` header; the gate recovers the signer from
+its `from` field and checks tiny-dinos ownership on Ethereum mainnet. A
+holder receives the structured overlap report; a non-holder gets `403`.
 
 ### Calling via `tool-sdk pay`
 
-Even though the tool is free, `tool-sdk pay --auth eip3009` handles
-the EIP-3009 authentication flow:
+`tool-sdk pay` performs the 402 handshake for you: it sends the request,
+reads the `PaymentRequirements`, signs a zero-value `X-Payment` (the tool
+is free), and replays. The signing wallet must hold a gating NFT.
 
 ```bash
-PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
+PRIVATE_KEY=0x... \
   npx @opensea/tool-sdk pay https://your-deploy.example.com/api \
-    --auth eip3009 \
     --body '{"tokenAddress":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","collectionSlug":"boredapeyachtclub"}'
 ```
 

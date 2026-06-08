@@ -1,6 +1,6 @@
 # Predicate-Gated Tools Guide
 
-Gate your tool using the onchain access predicate system. Callers prove their identity by signing an EIP-3009 zero-value `TransferWithAuthorization` ([EIP-3009](https://eips.ethereum.org/EIPS/eip-3009)), and the SDK delegates the access decision to the `ToolRegistry` contract — whatever predicate the tool's creator registered is the policy enforced.
+Gate your tool using the onchain access predicate system. When `operatorAddress` is configured, the gate uses a unified 402 challenge flow: it returns `PaymentRequirements` with `maxAmountRequired: "0"`, and the caller signs a zero-value `X-Payment` header (an EIP-3009 `TransferWithAuthorization` with `value=0`). The SDK recovers the caller's address and delegates the access decision to the `ToolRegistry` contract — whatever predicate the tool's creator registered is the policy enforced.
 
 ## Overview
 
@@ -8,7 +8,7 @@ The tool-sdk supports two independent gating mechanisms:
 
 | Gate | Purpose | How it works |
 |------|---------|--------------|
-| **Predicate gate** | Identity-based access control | Caller signs an EIP-3009 zero-value authorization; the middleware recovers the address via `ecrecover` and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate. Supports [delegated agent access](#delegated-agent-access-delegatexyz) via `X-Delegate-For` header. |
+| **Predicate gate** | Identity-based access control | With `operatorAddress` configured, the gate returns 402 with `PaymentRequirements` (`maxAmountRequired: "0"`). The caller signs a zero-value `X-Payment` and retries. The middleware recovers the address via `ecrecover` and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate. Supports [delegated agent access](#delegated-agent-access-delegatexyz) via `X-Delegate-For` header. |
 | **x402 gate** | Payment-based access control | Caller includes an `X-Payment` header with a signed USDC transfer authorization; a facilitator verifies and settles the payment |
 
 Use predicate gating when access should be tied to **who the caller is**. Use x402 when access should be tied to **per-call payment**. You can [combine both](#combining-predicate-gating-with-x402-payment).
@@ -83,9 +83,9 @@ const handler = createToolHandler({
 
 The middleware (`src/lib/middleware/predicate-gate.ts`) does the following on each request:
 
-1. Extracts the `Authorization: EIP-3009 <token>` header (also accepts deprecated `Authorization: SIWE <token>` for backward compatibility)
-2. Decodes and parses the EIP-3009 authorization JSON (base64url-encoded)
-3. Validates required fields (`from`, `to`, `value`, `validAfter`, `validBefore`, `nonce`, `signature`)
+1. Checks for an `X-Payment` header (preferred) or `Authorization: EIP-3009 <token>` header (also accepts deprecated `Authorization: SIWE <token>` for backward compatibility)
+2. If no auth is present and `operatorAddress` is configured, returns 402 with `PaymentRequirements` (`payTo`=operator, `maxAmountRequired`=`"0"`, `scheme`=`"exact"`)
+3. Decodes and validates the authorization (from `X-Payment` or `Authorization` header)
 4. Checks `validBefore` (must be in the future) and `validAfter` (must be in the past)
 5. Recovers the signer via `ecrecover` on the EIP-712 typed data — no RPC call needed
 6. Calls `registry.tryHasAccess(toolId, recoveredAddress, data)` — a staticcall to the onchain `ToolRegistry`
@@ -95,7 +95,9 @@ Status code mapping:
 
 | Outcome | Status | Body |
 |---------|--------|------|
-| Missing or malformed authorization | `401` | `{ error, hint }` |
+| No auth, `operatorAddress` configured | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
+| No auth, no `operatorAddress` | `401` | `{ error, hint }` |
+| Malformed `X-Payment` or `Authorization` | `401` | `{ error }` |
 | `tryHasAccess` returned `(true, true)` | (passes) | n/a |
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "predicate misbehaved..." }` |
@@ -166,27 +168,11 @@ if (ok && granted) {
 
 ## Step 4: Client-side authentication
 
-Callers authenticate by signing an EIP-3009 zero-value `TransferWithAuthorization` and including it in the `Authorization` header.
+When `operatorAddress` is configured, the gate returns a 402 challenge. The client handles this automatically via `eip3009AuthenticatedFetch`: it sends a bare request, reads the `PaymentRequirements` from the 402, signs a zero-value `X-Payment`, and retries.
 
-### Header format
+### Preferred flow (402 + X-Payment)
 
-```
-Authorization: EIP-3009 <base64url(json)>
-```
-
-The token is a base64url-encoded JSON object containing the EIP-3009 authorization fields:
-
-```json
-{
-  "from": "0xCallerAddress",
-  "to": "0xOperatorOrZeroAddress",
-  "value": "0",
-  "validAfter": "0",
-  "validBefore": "1735689900",
-  "nonce": "0xrandom32bytes",
-  "signature": "0x..."
-}
-```
+The `X-Payment` header carries a base64-encoded JSON payload containing an EIP-3009 `TransferWithAuthorization` (value=0) signed against the operator address from the 402 challenge.
 
 Key constraints enforced by the middleware:
 
@@ -194,12 +180,11 @@ Key constraints enforced by the middleware:
 - **`validAfter`** must be in the past (typically `0`)
 - **`value`** must be `"0"` (zero-value transfer — used for identity proof, not payment)
 - **`from`** is recovered via `ecrecover` and used as the caller address
-
-> **Tip:** The `to` field can be the tool operator's address for domain binding, or `0x0` as a fallback. The SDK's `eip3009AuthenticatedFetch` accepts an optional `to` parameter.
+- **`to`** must match the gate's `operatorAddress` (the 402 challenge advertises this as `payTo`)
 
 ### Example client code (SDK)
 
-The simplest approach is `eip3009AuthenticatedFetch`:
+The simplest approach is `eip3009AuthenticatedFetch`, which handles the 402 challenge automatically:
 
 ```typescript
 import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
@@ -213,12 +198,11 @@ const response = await eip3009AuthenticatedFetch(toolUrl, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "hello" }),
-  // to: "0xOperatorAddress",  // optional domain binding
-  // chainId: 8453,             // default: Base
+  allowedRecipients: ["0xOperatorAddress"],  // optional: restrict payTo addresses
 })
 ```
 
-For external signers (Bankr, MPC, HSM) that sign via an API, build the header manually:
+> **Backward compatibility:** The gate still accepts `Authorization: EIP-3009 <base64url(json)>` headers directly. For external signers (Bankr, MPC, HSM) that build headers manually, `createEip3009AuthHeader` and `signZeroValueAuthorization` remain available.
 
 ```typescript
 import { createEip3009AuthHeader, signZeroValueAuthorization } from "@opensea/tool-sdk"
@@ -230,7 +214,7 @@ const walletClient = createWalletClient({ account, chain: base, transport: http(
 const authorization = await signZeroValueAuthorization({
   walletClient,
   from: account.address,
-  to: "0x0000000000000000000000000000000000000000",
+  to: "0xOperatorAddress",
   chainId: 8453,
 })
 
@@ -248,7 +232,7 @@ const response = await fetch(toolUrl, {
 
 Run your tool locally and send a request with a valid EIP-3009 authorization header to verify the full flow. Use the client code from Step 4 against your local or deployed endpoint.
 
-For a quick smoke test of the gate rejecting unauthenticated requests, `curl` the endpoint without the `Authorization` header:
+For a quick smoke test of the gate rejecting unauthenticated requests, `curl` the endpoint without any auth headers:
 
 ```bash
 curl -X POST https://my-tool.vercel.app/api \
@@ -256,13 +240,23 @@ curl -X POST https://my-tool.vercel.app/api \
   -d '{"query": "test"}'
 ```
 
-Expected response:
+Expected response (when `operatorAddress` is configured):
 
 ```json
 {
-  "error": "Predicate gate: EIP-3009 authorization required",
-  "hint": "Include Authorization: EIP-3009 <base64url(json)>"
+  "x402Version": 1,
+  "error": "Predicate gate: X-PAYMENT header is required",
+  "accepts": [{
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "0",
+    "payTo": "0xOperatorAddress",
+    "asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+  }]
 }
+```
+
+HTTP status: `402`. If `operatorAddress` is not configured, the gate returns `401` with `{ error, hint }` (legacy behavior).
 ```
 
 ## Delegated agent access (delegate.xyz)
@@ -376,21 +370,14 @@ const handler = createToolHandler({
 
 Gates run in array order (see `src/lib/handler/index.ts`). Put `predicateGate` **first**:
 
-1. **Predicate gate** runs first — verifies the EIP-3009 signature and establishes `ctx.callerAddress`. Returns `401` if the signature is invalid or `403` if the predicate denies access.
-2. **x402 gate** runs second — checks the `X-Payment` header and verifies the payment. Returns `402` if no payment is provided.
+1. **Predicate gate** runs first — returns 402 with zero-value `PaymentRequirements`. The client signs a zero-value `X-Payment` and retries. Once verified, the predicate gate establishes `ctx.callerAddress`. Returns `403` if the predicate denies access.
+2. **x402 gate** runs second — returns 402 with real payment `PaymentRequirements`. The client signs a real `X-Payment` and retries. Returns `402` if no payment is provided.
 
-This ordering ensures identity is established before payment is processed.
+The client handles multiple 402 challenges in a retry loop — `paidAuthenticatedFetch` does this automatically.
 
 ### Client requirements
 
-Callers must include **both** headers:
-
-```
-Authorization: EIP-3009 <base64url(json)>
-X-Payment: <base64-encoded-payment-payload>
-```
-
-The easiest way is `paidAuthenticatedFetch`, which handles both headers automatically:
+`paidAuthenticatedFetch` handles the multi-402 flow automatically: it sends a bare request, then on each 402 reads `PaymentRequirements`, signs an `X-Payment`, and retries. No separate `Authorization` header is needed.
 
 ```typescript
 import { paidAuthenticatedFetch } from "@opensea/tool-sdk"
@@ -400,7 +387,6 @@ const response = await paidAuthenticatedFetch(toolUrl, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "hello" }),
+  maxAmount: "100000",  // safety cap for the x402 payment
 })
 ```
-
-Alternatively, use the EIP-3009 client code from [Step 4](#step-4-client-side-authentication) for the `Authorization` header and `signX402Payment` or `paidFetch` from `@opensea/tool-sdk` for the `X-Payment` header.
