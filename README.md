@@ -842,6 +842,27 @@ const data = await res.json()
 
 Gate your tool using the onchain access predicate system. When `operatorAddress` is configured, `predicateGate` uses a unified 402 challenge flow: it returns `PaymentRequirements` with `maxAmountRequired: "0"`, the caller signs a zero-value `X-Payment`, and the middleware recovers the caller's address via `ecrecover`. Access is then delegated to `IToolRegistry.tryHasAccess` — it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
 
+#### Combined predicate + payment (`paidPredicateGate`)
+
+For tools that require **both** predicate access and x402 payment, use `paidPredicateGate` to resolve identity and payment in a single 402 round trip (2 requests instead of 3):
+
+```typescript
+import { paidPredicateGate } from "@opensea/tool-sdk"
+import { mainnet } from "viem/chains"
+
+gates: [
+  paidPredicateGate({
+    toolId: 1n,
+    operatorAddress: "0xYOUR_WALLET",
+    amountUsdc: "0.05",
+    chain: mainnet,
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
+  }),
+]
+```
+
+The gate advertises the real payment amount in the 402 challenge. The caller's `X-Payment` signature proves identity (`from`) AND authorizes payment in one step. The predicate is verified before payment settles — if access is denied, no funds move.
+
 See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
 
 ## Usage Reporting

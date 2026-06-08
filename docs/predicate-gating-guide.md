@@ -327,23 +327,19 @@ The holder can revoke the delegation at any time by visiting [delegate.xyz](http
 
 ## Combining predicate gating with x402 payment
 
-You can stack both gates to require **identity verification and per-call payment**:
+Use `paidPredicateGate` to require **identity verification and per-call payment** in a single 402 round trip (2 requests total instead of 3):
 
 ```typescript
 import {
   createToolHandler,
   defineManifest,
-  payaiX402Gate,
-  predicateGate,
-  x402UsdcPricing,
+  paidPredicateGate,
 } from "@opensea/tool-sdk"
+import { mainnet } from "viem/chains"
 
 export const manifest = defineManifest({
   // ...
-  pricing: x402UsdcPricing({
-    recipient: "0xYourPayoutAddress",
-    amountUsdc: "0.01",
-  }),
+  pricing: { model: "pay_per_call", amount: "0.01", currency: "USDC" },
 })
 
 const handler = createToolHandler({
@@ -351,14 +347,16 @@ const handler = createToolHandler({
   inputSchema,
   outputSchema,
   gates: [
-    predicateGate({ toolId: 1n }),
-    payaiX402Gate({
-      recipient: "0xYourPayoutAddress",
+    paidPredicateGate({
+      toolId: 1n,
+      operatorAddress: "0xYourPayoutAddress",
       amountUsdc: "0.01",
+      chain: mainnet,
+      rpcUrl: "https://ethereum-rpc.publicnode.com",
     }),
   ],
   handler: async (input, ctx) => {
-    // ctx.callerAddress — verified wallet (set by predicate gate)
+    // ctx.callerAddress — verified wallet (recovered from X-Payment)
     // ctx.gates.predicate.granted === true
     // ctx.gates.x402.paid === true
     return { result: "access granted and payment received" }
@@ -366,18 +364,23 @@ const handler = createToolHandler({
 })
 ```
 
-### Middleware ordering
+### How `paidPredicateGate` works
 
-Gates run in array order (see `src/lib/handler/index.ts`). Put `predicateGate` **first**:
+The combined gate issues a single 402 with the **real payment amount** (not zero). The caller's `X-Payment` signature simultaneously:
+- Proves identity (the recovered `from` address)
+- Authorizes the USDC transfer (via the facilitator)
 
-1. **Predicate gate** runs first — returns 402 with zero-value `PaymentRequirements`. The client signs a zero-value `X-Payment` and retries. Once verified, the predicate gate establishes `ctx.callerAddress`. Returns `403` if the predicate denies access.
-2. **x402 gate** runs second — returns 402 with real payment `PaymentRequirements`. The client signs a real `X-Payment` and retries. Returns `402` if no payment is provided.
+The gate runs these checks in order:
+1. Verify the EIP-712 signature and recover the caller's address
+2. Check the onchain predicate (`tryHasAccess`) — returns 403 if denied
+3. Verify the payment with the facilitator — returns 402 if invalid
+4. After the handler succeeds: settle the payment via the facilitator
 
-The client handles multiple 402 challenges in a retry loop — `paidAuthenticatedFetch` does this automatically.
+This ordering ensures **no funds move** if the predicate denies access.
 
 ### Client requirements
 
-`paidAuthenticatedFetch` handles the multi-402 flow automatically: it sends a bare request, then on each 402 reads `PaymentRequirements`, signs an `X-Payment`, and retries. No separate `Authorization` header is needed.
+`paidAuthenticatedFetch` handles the 402 challenge automatically. Since `paidPredicateGate` issues only one 402, the client signs once and the call completes:
 
 ```typescript
 import { paidAuthenticatedFetch } from "@opensea/tool-sdk"
@@ -387,6 +390,18 @@ const response = await paidAuthenticatedFetch(toolUrl, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "hello" }),
-  maxAmount: "100000",  // safety cap for the x402 payment
+  maxAmount: "100000",  // safety cap: 0.10 USDC
+  allowedRecipients: ["0xYourPayoutAddress"],
 })
+```
+
+### Legacy: separate gates (3 requests)
+
+For backward compatibility, you can still chain `predicateGate` + x402 gate as separate middleware. The client handles both 402s in a retry loop. However, `paidPredicateGate` is preferred for new tools.
+
+```typescript
+gates: [
+  predicateGate({ toolId: 1n, operatorAddress: "0x..." }),
+  payaiX402Gate({ recipient: "0x...", amountUsdc: "0.01" }),
+]
 ```

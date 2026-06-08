@@ -528,11 +528,11 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   --body '{"query": "hello"}'
 ```
 
-### Example F: NFT-gated + paid tool (both gates)
+### Example F: NFT-gated + paid tool (combined gate, single round trip)
 
 ```bash
-# Server: add both predicateGate and paywall.gate (see references/predicate-gating.md)
-# Call via CLI:
+# Server: use paidPredicateGate (see references/predicate-gating.md)
+# Single 402: identity proof + payment in one X-Payment signature
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay --auth \
   https://my-tool.vercel.app/api \

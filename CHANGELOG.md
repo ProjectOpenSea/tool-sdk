@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.16.0
+
+### Minor Changes
+
+- Add `paidPredicateGate`, a combined gate that resolves identity verification (predicate) and x402 payment in a single 402 round trip.
+
+  Tools using `paidPredicateGate` need only 2 requests (a 402 advertising the real payment amount, then a 200) instead of 3 (predicate 402, then x402 402, then 200). The caller's `X-Payment` signature for the payment amount simultaneously proves identity, via the recovered `from` address, and authorizes the transfer. The onchain predicate is checked before the facilitator settles payment: if access is denied, the gate returns a 403 and no funds move.
+
+  New exports: `paidPredicateGate` and `PaidPredicateGateConfig`.
+
 ## 0.15.0
 
 ### Minor Changes

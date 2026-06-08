@@ -169,23 +169,44 @@ const [requirements, logic] = await client.readContract({
 
 ## Combined gates (predicate + x402)
 
-Tools can require both identity verification and x402 payment. The server runs gates sequentially: predicate first (identity via zero-value `X-Payment`), then x402 (real payment via `X-Payment`). The client handles multiple 402 challenges in a retry loop.
+Tools that require both identity verification (predicate) and x402 payment should use `paidPredicateGate` — a single gate that resolves both in **one 402 round trip** instead of two.
 
-### Server side
+### Flow (2 requests instead of 3)
+
+```
+Agent                        Tool Server                   ToolRegistry + Facilitator
+  |--- POST /api ------------->|                                |
+  |    (no auth headers)       |                                |
+  |                            |  (no X-Payment → 402)          |
+  |<-- 402 + PaymentReqs ------|                                |
+  |    {payTo: operator,       |                                |
+  |     maxAmountRequired: "$"}|                                |
+  |                            |                                |
+  |--- POST /api ------------->|                                |
+  |    X-Payment(to=op, val=$) |                                |
+  |                            |  (verify X-Payment signature)  |
+  |                            |  (recover signer = from)       |
+  |                            |--- tryHasAccess(toolId, from)->|
+  |                            |<-- granted=true ---------------|
+  |                            |--- /verify (facilitator) ----->|
+  |                            |<-- isValid=true ---------------|
+  |                            |  (execute handler)             |
+  |<-- 200 + result -----------|                                |
+  |                            |--- /settle (facilitator) ----->|  (post-response)
+```
+
+The caller's real-value `X-Payment` signature simultaneously proves identity (`from` = caller) AND authorizes payment. The predicate is checked BEFORE the facilitator settles — if the caller doesn't meet the access requirement, a 403 is returned and no funds move.
+
+### Server side: `paidPredicateGate`
 
 ```typescript
 import {
   createToolHandler,
-  defineToolPaywall,
-  predicateGate,
+  paidPredicateGate,
   defineManifest,
 } from "@opensea/tool-sdk"
+import { mainnet } from "viem/chains"
 import { z } from "zod/v4"
-
-const paywall = defineToolPaywall({
-  recipient: "0xYOUR_WALLET",
-  amountUsdc: "0.05",
-})
 
 export const toolHandler = createToolHandler({
   manifest: defineManifest({
@@ -195,7 +216,7 @@ export const toolHandler = createToolHandler({
     creatorAddress: "0xYOUR_WALLET",
     inputs: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     outputs: { type: "object", properties: { result: { type: "string" } } },
-    pricing: paywall.pricing,
+    pricing: { model: "pay_per_call", amount: "0.05", currency: "USDC" },
     access: {
       logic: "OR",
       requirements: [{
@@ -208,8 +229,15 @@ export const toolHandler = createToolHandler({
   inputSchema: z.object({ query: z.string() }),
   outputSchema: z.object({ result: z.string() }),
   gates: [
-    predicateGate({ toolId: 1n }),  // checked first
-    paywall.gate,                   // checked second
+    paidPredicateGate({
+      toolId: 1n,
+      operatorAddress: "0xYOUR_WALLET",
+      amountUsdc: "0.05",
+      chain: mainnet,       // chain where the registry lives
+      rpcUrl: "https://ethereum-rpc.publicnode.com",
+      // network: "base",   // payment network (default: base)
+      // facilitator: "payai",  // or "cdp"
+    }),
   ],
   handler: async (input) => ({ result: input.query }),
 })
@@ -217,7 +245,7 @@ export const toolHandler = createToolHandler({
 
 ### Client side: `paidAuthenticatedFetch`
 
-`paidAuthenticatedFetch` handles multiple 402 challenges automatically: it sends a bare request, then on each 402 it reads the `PaymentRequirements`, signs an `X-Payment`, and retries. For a combined predicate + x402 tool, the first 402 is the predicate's zero-value challenge and the second is the x402 real payment.
+`paidAuthenticatedFetch` handles the 402 challenge automatically. For a `paidPredicateGate` tool, only one 402 is issued (with the real amount), so the client signs once and the call completes.
 
 ```typescript
 import { paidAuthenticatedFetch, createWalletFromEnv, walletAdapterToClient } from "@opensea/tool-sdk"
@@ -227,20 +255,32 @@ const adapter = createWalletFromEnv()
 const client = await walletAdapterToClient(adapter, base)
 
 const res = await paidAuthenticatedFetch("https://my-tool.example.com/api", {
-  account: client.account,   // for X-Payment signing (identity + payment)
-  signer: adapter,           // for x402 payment signing (can differ from account)
+  account: client.account,
+  signer: adapter,
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "hello" }),
   maxAmount: "100000",       // safety cap: 0.10 USDC
+  allowedRecipients: ["0xYOUR_WALLET"],
 })
 ```
 
-### Via CLI (auto-detect both gates)
+### Via CLI (auto-detect)
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk smoke \
   --endpoint https://my-tool.example.com/api \
   --expect 200
+```
+
+### Legacy: separate gates (3 requests)
+
+For backward compatibility, tools can still chain `predicateGate` + `paywall.gate` as separate gates. The client handles both 402 challenges in a retry loop. However, `paidPredicateGate` is preferred for new tools since it eliminates one round trip.
+
+```typescript
+gates: [
+  predicateGate({ toolId: 1n, operatorAddress: "0x..." }),
+  paywall.gate,
+]
 ```

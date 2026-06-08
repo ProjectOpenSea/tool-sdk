@@ -59,8 +59,14 @@ export type {
   VerifiableConfig,
 } from "./lib/manifest/verifiability.js"
 export { defineVerifiability } from "./lib/manifest/verifiability.js"
-export type { PredicateGateConfig } from "./lib/middleware/predicate-gate.js"
-export { predicateGate } from "./lib/middleware/predicate-gate.js"
+export type {
+  PaidPredicateGateConfig,
+  PredicateGateConfig,
+} from "./lib/middleware/predicate-gate.js"
+export {
+  paidPredicateGate,
+  predicateGate,
+} from "./lib/middleware/predicate-gate.js"
 export type { WellKnownHandlerOptions } from "./lib/middleware/well-known.js"
 export { createWellKnownHandler } from "./lib/middleware/well-known.js"
 export type { X402GateConfig } from "./lib/middleware/x402.js"
