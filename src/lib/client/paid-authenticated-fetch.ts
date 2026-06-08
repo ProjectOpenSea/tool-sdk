@@ -1,17 +1,10 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
-import { createWalletClient, http } from "viem"
 import {
   USDC_BASE_ADDRESS,
   USDC_BASE_SEPOLIA_ADDRESS,
 } from "../middleware/x402-facilitators.js"
 import type { X402Network } from "../middleware/x402-facilitators.js"
-import { signZeroValueAuthorization } from "../usage/eip3009-auth.js"
-import {
-  EIP3009_CHAIN_MAP,
-  ZERO_ADDRESS,
-  createEip3009AuthHeader,
-} from "./eip3009-auth.js"
 import {
   type PaymentRequirements,
   signX402Payment,
@@ -22,15 +15,9 @@ export interface PaidAuthenticatedFetchOptions extends RequestInit {
   signer?: WalletAdapter | Account
   /** @deprecated Ignored — EIP-3009 does not use expiration minutes. */
   expirationMinutes?: number
-  chainId?: number
   maxAmount?: string
   allowedRecipients?: string[]
   allowedAssets?: string[]
-  /**
-   * Tool operator address used as the `to` field in the zero-value
-   * EIP-3009 authorization. Falls back to `0x0` when omitted.
-   */
-  to?: `0x${string}`
 }
 
 // Keep in sync with REJECTED_ADDRESSES in x402-payment.ts
@@ -47,16 +34,9 @@ const NETWORK_USDC: Record<X402Network, string> = {
 
 
 /**
- * Combined EIP-3009-authenticated + x402-paid fetch for tools that use both a
- * predicate gate and a paywall.
- *
- * 1. Signs a zero-value EIP-3009 `TransferWithAuthorization` proving wallet
- *    ownership (replaces the deprecated SIWE signing step)
- * 2. Makes the initial POST with `Authorization: EIP-3009 <token>`
- * 3. If the response is 402 with x402 payment requirements, signs the payment
- *    (like `paidFetch`)
- * 4. Retries the request with both `Authorization` and `X-Payment` headers
- * 5. Returns the final response
+ * Combined predicate-gate + x402-paid fetch. Handles multiple 402
+ * challenges (predicate gate's zero-value challenge, then x402's real
+ * payment challenge) via a retry loop.
  *
  * `body` must be a string, `ArrayBuffer`, or other re-readable type.
  * `ReadableStream` bodies are not supported (the body is consumed twice).
@@ -69,11 +49,9 @@ export async function paidAuthenticatedFetch(
     account,
     signer,
     expirationMinutes: _expirationMinutes,
-    chainId = 8453,
     maxAmount,
     allowedRecipients,
     allowedAssets,
-    to,
     ...fetchOptions
   } = options
 
@@ -89,74 +67,50 @@ export async function paidAuthenticatedFetch(
     )
   }
 
-  const chain = EIP3009_CHAIN_MAP[chainId]
-  if (!chain) {
-    throw new Error(
-      `Unsupported chainId ${chainId} for EIP-3009 auth. Supported: ${Object.keys(EIP3009_CHAIN_MAP).join(", ")}`,
-    )
-  }
-
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(),
-  })
-
-  const authorization = await signZeroValueAuthorization({
-    walletClient,
-    from: account.address,
-    to: to ?? ZERO_ADDRESS,
-    chainId,
-  })
-
-  const authHeader = createEip3009AuthHeader(authorization)
-
-  const headers = {
-    ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),
-    Authorization: authHeader,
-  }
-
-  const initialRes = await fetch(url, { ...fetchOptions, headers })
-
-  if (initialRes.status !== 402) {
-    return initialRes
-  }
-
-  let body: { accepts?: PaymentRequirements[] }
-  try {
-    body = await initialRes.json()
-  } catch {
-    throw new Error("x402: server returned 402 but body is not valid JSON")
-  }
-
-  const requirements = body.accepts?.[0]
-  if (!requirements) {
-    throw new Error(
-      "x402: server returned 402 but body.accepts is missing or empty",
-    )
-  }
-
-  validatePaymentSafety(requirements, {
-    maxAmount,
-    allowedRecipients,
-    allowedAssets,
-  })
+  const baseHeaders = Object.fromEntries(
+    new Headers(fetchOptions.headers).entries(),
+  )
 
   const paymentSigner = signer ?? account
-  const xPayment = await signX402Payment({
-    signer: paymentSigner,
-    paymentRequirements: requirements,
-  })
+  const MAX_402_RETRIES = 2
+  let res = await fetch(url, { ...fetchOptions, headers: baseHeaders })
 
-  const paidRes = await fetch(url, {
-    ...fetchOptions,
-    headers: {
-      ...headers,
-      "X-Payment": xPayment,
-    },
-  })
+  for (let i = 0; i < MAX_402_RETRIES && res.status === 402; i++) {
+    let body: { accepts?: PaymentRequirements[] }
+    try {
+      body = await res.json()
+    } catch {
+      throw new Error("x402: server returned 402 but body is not valid JSON")
+    }
 
-  return paidRes
+    const requirements = body.accepts?.[0]
+    if (!requirements) {
+      throw new Error(
+        `x402: server returned 402 (attempt ${i + 1}/${MAX_402_RETRIES}) but body.accepts is missing or empty`,
+      )
+    }
+
+    validatePaymentSafety(requirements, {
+      maxAmount,
+      allowedRecipients,
+      allowedAssets,
+    })
+
+    const xPayment = await signX402Payment({
+      signer: paymentSigner,
+      paymentRequirements: requirements,
+    })
+
+    res = await fetch(url, {
+      ...fetchOptions,
+      headers: {
+        ...baseHeaders,
+        "X-Payment": xPayment,
+      },
+    })
+  }
+
+  return res
 }
 
 function validatePaymentSafety(

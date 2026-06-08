@@ -1,5 +1,5 @@
 {
-  "name": "nft-appraisal-tool",
+  "name": "token-nft-overlap-tool",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,24 +9,23 @@
     "deploy:vercel": "npx vercel deploy --prod",
     "dev:cf": "npx wrangler dev",
     "deploy:cf": "npx wrangler deploy",
-    "tail:cf": "npx wrangler tail",
     "build": "tsc --noEmit",
     "type-check": "tsc --noEmit",
     "export-manifest": "tsx scripts/export-manifest.ts",
-    "validate": "pnpm run export-manifest && tool-sdk validate ./manifest.json && (test ! -f ./manifest-holder.json || tool-sdk validate ./manifest-holder.json)",
-    "hash": "pnpm run export-manifest && tool-sdk hash ./manifest.json && (test ! -f ./manifest-holder.json || tool-sdk hash ./manifest-holder.json)"
+    "validate": "pnpm run export-manifest && tool-sdk validate ./manifest.json",
+    "hash": "pnpm run export-manifest && tool-sdk hash ./manifest.json",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.2.0",
     "@opensea/tool-sdk": "^0.14.2",
-    "ai": "^4.3.0",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/node": "22.7.5",
     "tsx": "4.19.2",
     "typescript": "6.0.2",
-    "viem": "2.31.3"
+    "viem": "2.31.3",
+    "vitest": "2.1.9"
   },
   "engines": {
     "node": ">=20"

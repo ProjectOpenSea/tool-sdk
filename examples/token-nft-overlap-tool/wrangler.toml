@@ -1,0 +1,12 @@
+name = "token-nft-overlap"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+[vars]
+TOOL_ENDPOINT = "https://token-nft-overlap.workers.dev"
+CREATOR_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+# Secrets (set via `wrangler secret put NAME`):
+#   OPENSEA_API_KEY    — server-side only
+#   HOLDER_TOOL_ID     — decimal tool ID from ToolRegistered event
+#   ETH_RPC_URL        — optional Ethereum RPC override

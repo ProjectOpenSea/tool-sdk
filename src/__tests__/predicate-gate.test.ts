@@ -510,14 +510,15 @@ describe("predicateGate", () => {
     expect(body.error).toMatch(/value=0/i)
   })
 
-  it("EIP-3009: returns 401 when operatorAddress mismatches 'to'", async () => {
+  it("EIP-3009: returns 402 with PaymentRequirements when operatorAddress mismatches 'to'", async () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
+    const operator =
+      "0x1111111111111111111111111111111111111111" as `0x${string}`
     const gate = predicateGate({
       toolId: TEST_TOOL_ID,
-      operatorAddress:
-        "0x1111111111111111111111111111111111111111" as `0x${string}`,
+      operatorAddress: operator,
     })
     const ctx: Partial<ToolContext> = { gates: {} }
 
@@ -527,6 +528,248 @@ describe("predicateGate", () => {
       }),
       ctx,
     )
+
+    expect(response?.status).toBe(402)
+    const body = await response?.json()
+    expect(body.accepts).toHaveLength(1)
+    expect(body.accepts[0].payTo).toBe(operator)
+    expect(body.accepts[0].maxAmountRequired).toBe("0")
+  })
+
+  it("returns 402 with PaymentRequirements when operatorAddress is configured (no auth)", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const request = new Request("https://example.com/api", { method: "POST" })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(402)
+    const body = await response?.json()
+    expect(body.x402Version).toBe(1)
+    expect(body.accepts).toHaveLength(1)
+    expect(body.accepts[0].payTo).toBe(operator)
+    expect(body.accepts[0].maxAmountRequired).toBe("0")
+    expect(body.accepts[0].scheme).toBe("exact")
+    expect(body.accepts[0].network).toBe("base")
+  })
+
+  it("returns 402 with base-sepolia network when chain is baseSepolia", async () => {
+    const { baseSepolia } = await import("viem/chains")
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+      chain: baseSepolia,
+    })
+    const request = new Request("https://example.com/api", { method: "POST" })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(402)
+    const body = await response?.json()
+    expect(body.accepts[0].network).toBe("base-sepolia")
+    expect(body.accepts[0].asset).toBe(
+      "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+    )
+  })
+
+  it("returns 402 with PaymentRequirements on EIP-3009 to-mismatch", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x1111111111111111111111111111111111111111" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeEip3009Request({
+        to: "0x2222222222222222222222222222222222222222",
+      }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(402)
+    const body = await response?.json()
+    expect(body.accepts).toHaveLength(1)
+    expect(body.accepts[0].payTo).toBe(operator)
+    expect(body.accepts[0].maxAmountRequired).toBe("0")
+  })
+
+  it("returns 401 without accepts when operatorAddress is not configured (no auth)", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const request = new Request("https://example.com/api", { method: "POST" })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.accepts).toBeUndefined()
+  })
+
+  // -------------------------------------------------------------------------
+  // X-Payment auth path (unified x402 flow)
+  // -------------------------------------------------------------------------
+
+  function makeXPaymentHeader(overrides: Record<string, unknown> = {}): string {
+    const authorization = {
+      from: TEST_CALLER,
+      to: "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8",
+      value: "0",
+      validAfter: "0",
+      validBefore: String(Math.floor(Date.now() / 1000) + 300),
+      nonce:
+        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      ...overrides,
+    }
+    const payload = {
+      x402Version: 1,
+      scheme: "exact",
+      network: "base",
+      payload: {
+        signature: "0xabcd",
+        authorization,
+      },
+    }
+    return Buffer.from(JSON.stringify(payload)).toString("base64")
+  }
+
+  it("X-Payment: succeeds and sets callerAddress", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.gates?.predicate).toEqual({ granted: true })
+    expect(ctx.callerAuthorization).toMatchObject({
+      from: TEST_CALLER,
+      value: "0",
+      signature: "0xabcd",
+      chainId: 8453,
+    })
+  })
+
+  it("X-Payment: takes precedence over Authorization header", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        Authorization: "EIP-3009 stale-token",
+      },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+  })
+
+  it("X-Payment: returns 400 for unsupported x402Version", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const badVersionPayload = Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        scheme: "exact",
+        network: "base",
+        payload: {
+          signature: "0xabcd",
+          authorization: {
+            from: TEST_CALLER,
+            to: operator,
+            value: "0",
+            validAfter: "0",
+            validBefore: String(Math.floor(Date.now() / 1000) + 300),
+            nonce:
+              "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          },
+        },
+      }),
+    ).toString("base64")
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": badVersionPayload },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(400)
+    const body = await response?.json()
+    expect(body.error).toMatch(/unsupported x402 version/i)
+  })
+
+  it("X-Payment: returns 401 when to-mismatch with operatorAddress", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress:
+        "0x1111111111111111111111111111111111111111" as `0x${string}`,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader({
+          to: "0x2222222222222222222222222222222222222222",
+        }),
+      },
+    })
+
+    const response = await gate.check(request, ctx)
 
     expect(response?.status).toBe(401)
     const body = await response?.json()

@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe("paidAuthenticatedFetch", () => {
-  it("sends EIP-3009 auth header on initial request", async () => {
+  it("sends initial request without Authorization header", async () => {
     let capturedInit: RequestInit | undefined
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       capturedInit = init
@@ -54,9 +54,8 @@ describe("paidAuthenticatedFetch", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const headers = new Headers(capturedInit?.headers)
-    const authHeader = headers.get("Authorization")
-    expect(authHeader).toBeTruthy()
-    expect(authHeader).toMatch(/^EIP-3009 /)
+    expect(headers.get("Authorization")).toBeNull()
+    expect(headers.get("X-Payment")).toBeNull()
   })
 
   it("returns non-402 responses directly without payment attempt", async () => {
@@ -80,7 +79,7 @@ describe("paidAuthenticatedFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it("handles 402 by signing payment and retrying with both headers", async () => {
+  it("handles 402 by signing payment and retrying with X-Payment only", async () => {
     const accepts = [baseRequirements]
     let callCount = 0
     const capturedInits: RequestInit[] = []
@@ -112,11 +111,11 @@ describe("paidAuthenticatedFetch", () => {
     expect(res.status).toBe(200)
 
     const firstHeaders = new Headers(capturedInits[0].headers)
-    expect(firstHeaders.get("Authorization")).toMatch(/^EIP-3009 /)
+    expect(firstHeaders.get("Authorization")).toBeNull()
     expect(firstHeaders.get("X-Payment")).toBeNull()
 
     const secondHeaders = new Headers(capturedInits[1].headers)
-    expect(secondHeaders.get("Authorization")).toMatch(/^EIP-3009 /)
+    expect(secondHeaders.get("Authorization")).toBeNull()
     expect(secondHeaders.get("X-Payment")).toBeTruthy()
   })
 
@@ -162,6 +161,83 @@ describe("paidAuthenticatedFetch", () => {
 
     expect(res.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns final 402 when MAX_402_RETRIES exhausted", async () => {
+    const accepts = [baseRequirements]
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ accepts }), { status: 402 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    const res = await paidAuthenticatedFetch(
+      "https://my-tool.vercel.app/api/invoke",
+      { account, method: "POST", body: "{}" },
+    )
+
+    // 1 initial + 2 retries = 3 total
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(res.status).toBe(402)
+  })
+
+  it("handles stacked 402s (predicate gate then x402 paywall)", async () => {
+    let callCount = 0
+    const capturedInits: RequestInit[] = []
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedInits.push(init ?? {})
+      callCount++
+      if (callCount === 1) {
+        // Predicate gate: zero-value 402
+        return new Response(
+          JSON.stringify({
+            accepts: [
+              {
+                ...baseRequirements,
+                maxAmountRequired: "0",
+                payTo: "0x1234567890123456789012345678901234567890",
+              },
+            ],
+          }),
+          { status: 402 },
+        )
+      }
+      if (callCount === 2) {
+        // x402 paywall: real-value 402
+        return new Response(JSON.stringify({ accepts: [baseRequirements] }), {
+          status: 402,
+        })
+      }
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    const res = await paidAuthenticatedFetch(
+      "https://my-tool.vercel.app/api/invoke",
+      { account, method: "POST", body: "{}" },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(res.status).toBe(200)
+
+    // First call: no auth
+    const h0 = new Headers(capturedInits[0].headers)
+    expect(h0.get("X-Payment")).toBeNull()
+
+    // Second call: X-Payment for predicate gate
+    const h1 = new Headers(capturedInits[1].headers)
+    expect(h1.get("X-Payment")).toBeTruthy()
+
+    // Third call: X-Payment for x402 paywall
+    const h2 = new Headers(capturedInits[2].headers)
+    expect(h2.get("X-Payment")).toBeTruthy()
   })
 
   it("throws when maxAmount is exceeded", async () => {
@@ -331,7 +407,7 @@ describe("paidAuthenticatedFetch", () => {
     ).rejects.toThrow("does not match expected USDC address")
   })
 
-  it("preserves existing headers alongside Authorization and X-Payment", async () => {
+  it("preserves existing headers alongside X-Payment", async () => {
     const accepts = [baseRequirements]
     let callCount = 0
     let secondCallInit: RequestInit | undefined
@@ -358,7 +434,7 @@ describe("paidAuthenticatedFetch", () => {
     const headers = new Headers(secondCallInit?.headers)
     expect(headers.get("Content-Type")).toBe("application/json")
     expect(headers.get("X-Custom")).toBe("value")
-    expect(headers.get("Authorization")).toMatch(/^EIP-3009 /)
+    expect(headers.get("Authorization")).toBeNull()
     expect(headers.get("X-Payment")).toBeTruthy()
   })
 })

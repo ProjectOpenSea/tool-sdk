@@ -1,5 +1,6 @@
 import {
   createToolHandler,
+  type Eip3009UsageReporterConfig,
   type GateMiddleware,
   type ManifestDefinition,
   ToolHandlerError,
@@ -27,6 +28,13 @@ export interface BuildToolHandlerOptions {
    * doesn't need to.
    */
   gates: GateMiddleware[]
+  /**
+   * Optional usage-reporting config. When set, the SDK reports each
+   * successful invocation to OpenSea at the very end of the lifecycle
+   * (fire-and-forget). For these paid tiers it reports the x402 payer plus
+   * the settlement tx hash. Omitted in local/dev where no API key is set.
+   */
+  usageReporting?: Eip3009UsageReporterConfig
 }
 
 /**
@@ -40,6 +48,7 @@ export function buildToolHandler(opts: BuildToolHandlerOptions) {
     inputSchema: InputSchema,
     outputSchema: AppraisalSchema,
     gates: opts.gates,
+    usageReporting: opts.usageReporting,
     handler: async input => {
       try {
         return await runAppraisal({

@@ -1,32 +1,20 @@
-import type { Account, WalletClient } from "viem"
-import { createWalletClient, http } from "viem"
-import { base, baseSepolia } from "viem/chains"
+import type { Account } from "viem"
 import {
   type SignZeroValueAuthorizationParams,
   type ZeroValueAuthorization,
-  signZeroValueAuthorization,
 } from "../usage/eip3009-auth.js"
+import {
+  type PaymentRequirements,
+  signX402Payment,
+} from "./x402-payment.js"
 
 export type { SignZeroValueAuthorizationParams, ZeroValueAuthorization }
 
 export interface Eip3009AuthenticatedFetchOptions extends RequestInit {
   account: Account
-  /**
-   * Tool operator address used as the `to` field in the zero-value
-   * authorization. Provides domain binding so signatures are scoped to a
-   * specific tool operator. Falls back to `0x0` when omitted.
-   */
-  to?: `0x${string}`
-  chainId?: number
+  /** Restrict which `payTo` addresses the client will sign for. */
+  allowedRecipients?: string[]
 }
-
-export const EIP3009_CHAIN_MAP: Record<number, (typeof base | typeof baseSepolia)> = {
-  8453: base,
-  84532: baseSepolia,
-}
-
-export const ZERO_ADDRESS =
-  "0x0000000000000000000000000000000000000000" as `0x${string}`
 
 /**
  * Encode a `ZeroValueAuthorization` as an `Authorization: EIP-3009 <token>`
@@ -45,48 +33,76 @@ export function createEip3009AuthHeader(
 }
 
 /**
- * EIP-3009-authenticated fetch wrapper — the predicate-gate counterpart of
- * `paidFetch`. Signs a zero-value `TransferWithAuthorization` proving the
- * caller controls `account.address`, then sends the request with an
- * `Authorization: EIP-3009 <token>` header.
- *
- * This replaces the deprecated `authenticatedFetch` (SIWE-based). Unlike
- * SIWE, EIP-3009 verification is pure `ecrecover` on EIP-712 typed data —
- * no RPC call needed on the server side.
+ * Fetch wrapper for predicate-gated tools. Sends the request; on 402,
+ * signs an `X-Payment` header (zero-value EIP-3009 `TransferWithAuthorization`)
+ * using the advertised `payTo` and retries once.
  */
 export async function eip3009AuthenticatedFetch(
   url: string,
   options: Eip3009AuthenticatedFetchOptions,
 ): Promise<Response> {
-  const { account, to, chainId = 8453, ...fetchOptions } = options
+  const { account, allowedRecipients, ...fetchOptions } = options
 
-  const chain = EIP3009_CHAIN_MAP[chainId]
-  if (!chain) {
-    throw new Error(
-      `Unsupported chainId ${chainId} for EIP-3009 auth. Supported: ${Object.keys(EIP3009_CHAIN_MAP).join(", ")}`,
-    )
+  const baseHeaders = Object.fromEntries(
+    new Headers(fetchOptions.headers).entries(),
+  )
+
+  const res = await fetch(url, {
+    ...fetchOptions,
+    headers: baseHeaders,
+  })
+
+  if (res.status === 402) {
+    const requirements = await extractPaymentRequirements(res)
+    if (requirements) {
+      if (allowedRecipients) {
+        const allowed = new Set(
+          allowedRecipients.map((a) => a.toLowerCase()),
+        )
+        if (!allowed.has(requirements.payTo.toLowerCase())) {
+          throw new Error(
+            `eip3009: payTo address ${requirements.payTo} is not in allowedRecipients`,
+          )
+        }
+      }
+      const xPayment = await signX402Payment({
+        signer: account,
+        paymentRequirements: requirements,
+      })
+      return fetch(url, {
+        ...fetchOptions,
+        headers: {
+          ...baseHeaders,
+          "X-Payment": xPayment,
+        },
+      })
+    }
   }
 
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(),
-  })
+  return res
+}
 
-  const authorization = await signZeroValueAuthorization({
-    walletClient,
-    from: account.address,
-    to: to ?? ZERO_ADDRESS,
-    chainId,
-  })
-
-  const authHeader = createEip3009AuthHeader(authorization)
-
-  return fetch(url, {
-    ...fetchOptions,
-    headers: {
-      ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),
-      Authorization: authHeader,
-    },
-  })
+/**
+ * Read PaymentRequirements from a 402 response body, if present.
+ * Returns `null` when the body is unparseable or has no valid accepts.
+ */
+async function extractPaymentRequirements(
+  res: Response,
+): Promise<PaymentRequirements | null> {
+  try {
+    const body = (await res.clone().json()) as {
+      accepts?: PaymentRequirements[]
+    }
+    const reqs = body.accepts?.[0]
+    if (
+      reqs?.payTo &&
+      reqs.payTo !== "0x0000000000000000000000000000000000000000" &&
+      reqs.scheme === "exact"
+    ) {
+      return reqs
+    }
+  } catch {
+    // non-JSON body — nothing to extract
+  }
+  return null
 }

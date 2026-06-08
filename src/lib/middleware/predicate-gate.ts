@@ -21,6 +21,11 @@ const NETWORK_USDC: Record<number, `0x${string}`> = {
   84532: USDC_BASE_SEPOLIA_ADDRESS as `0x${string}`,
 }
 
+const X402_NETWORK_CHAIN_IDS: Record<string, number> = {
+  base: 8453,
+  "base-sepolia": 84532,
+}
+
 const TRANSFER_WITH_AUTHORIZATION_TYPES = {
   TransferWithAuthorization: [
     { name: "from", type: "address" },
@@ -149,23 +154,14 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       request: Request,
       ctx: Partial<ToolContext>,
     ): Promise<Response | null> {
+      const paymentHeader = request.headers.get("X-Payment")
       const authHeader = request.headers.get("Authorization")
-
-      if (!authHeader) {
-        return Response.json(
-          {
-            error: "Predicate gate: authorization required",
-            hint: "Include Authorization: EIP-3009 <base64url(json)> or Authorization: SIWE <base64url(message)>.<signature>",
-          },
-          { status: 401 },
-        )
-      }
 
       let recoveredAddress: `0x${string}` | null = null
       let callerAuthorization: ZeroValueAuthorization | undefined
 
-      if (authHeader.startsWith("EIP-3009 ")) {
-        const result = await verifyEip3009Auth(authHeader, config, chain)
+      if (paymentHeader) {
+        const result = await verifyXPaymentAuth(paymentHeader, config)
         if (result.error) {
           return Response.json(
             { error: result.error },
@@ -174,7 +170,20 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         }
         recoveredAddress = result.address!
         callerAuthorization = result.authorization
-      } else if (authHeader.startsWith("SIWE ")) {
+      } else if (authHeader?.startsWith("EIP-3009 ")) {
+        const result = await verifyEip3009Auth(authHeader, config, chain)
+        if (result.error) {
+          if (config.operatorAddress && result.toMismatch) {
+            return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
+          }
+          return Response.json(
+            { error: result.error },
+            { status: result.status },
+          )
+        }
+        recoveredAddress = result.address!
+        callerAuthorization = result.authorization
+      } else if (authHeader?.startsWith("SIWE ")) {
         const result = await verifySiweAuth(
           authHeader,
           request,
@@ -187,6 +196,8 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
           )
         }
         recoveredAddress = result.address!
+      } else if (config.operatorAddress) {
+        return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
       } else {
         return Response.json(
           {
@@ -329,6 +340,8 @@ interface AuthResult {
   authorization?: ZeroValueAuthorization
   error?: string
   status: number
+  /** Set when EIP-3009 `to` field does not match the configured operator. */
+  toMismatch?: boolean
 }
 
 async function verifyEip3009Auth(
@@ -386,6 +399,7 @@ async function verifyEip3009Auth(
     return {
       error: `Predicate gate: EIP-3009 'to' address mismatch (expected ${config.operatorAddress})`,
       status: 401,
+      toMismatch: true,
     }
   }
 
@@ -458,6 +472,194 @@ async function verifyEip3009Auth(
   }
 
   return { address: recoveredAddress, authorization, status: 200 }
+}
+
+// ---------------------------------------------------------------------------
+// X-Payment verification (unified x402 flow for free + paid tools)
+// ---------------------------------------------------------------------------
+
+async function verifyXPaymentAuth(
+  paymentHeader: string,
+  config: PredicateGateConfig,
+): Promise<AuthResult> {
+  let decoded: string
+  try {
+    decoded = Buffer.from(paymentHeader, "base64").toString("utf-8")
+  } catch {
+    return {
+      error: "Predicate gate: invalid X-Payment header (bad base64)",
+      status: 401,
+    }
+  }
+
+  let paymentPayload: {
+    x402Version?: number
+    network?: string
+    payload?: {
+      signature?: string
+      authorization?: Record<string, string>
+    }
+  }
+  try {
+    paymentPayload = JSON.parse(decoded)
+  } catch {
+    return {
+      error: "Predicate gate: invalid X-Payment header (bad JSON)",
+      status: 401,
+    }
+  }
+
+  if (paymentPayload.x402Version !== undefined && paymentPayload.x402Version !== 1) {
+    return {
+      error: `Predicate gate: unsupported x402 version ${paymentPayload.x402Version}`,
+      status: 400,
+    }
+  }
+
+  const auth = paymentPayload.payload?.authorization
+  const signature = paymentPayload.payload?.signature
+
+  if (!auth?.from || !auth?.to || !signature || !auth?.nonce) {
+    return {
+      error:
+        "Predicate gate: X-Payment missing required authorization fields",
+      status: 401,
+    }
+  }
+
+  if (
+    config.operatorAddress &&
+    auth.to.toLowerCase() !== config.operatorAddress.toLowerCase()
+  ) {
+    return {
+      error: `Predicate gate: X-Payment 'to' address mismatch (expected ${config.operatorAddress})`,
+      status: 401,
+    }
+  }
+
+  const network = paymentPayload.network ?? "base"
+  const chainId = X402_NETWORK_CHAIN_IDS[network]
+  if (chainId === undefined) {
+    return {
+      error: `Predicate gate: unsupported network '${network}' in X-Payment`,
+      status: 401,
+    }
+  }
+
+  const tokenAddress = NETWORK_USDC[chainId]
+  if (!tokenAddress) {
+    return {
+      error: `Predicate gate: no USDC address for chainId ${chainId}`,
+      status: 401,
+    }
+  }
+
+  if (auth.validBefore !== undefined) {
+    const validBefore = BigInt(auth.validBefore)
+    const nowSec = BigInt(Math.floor(Date.now() / 1000))
+    if (nowSec >= validBefore) {
+      return {
+        error: "Predicate gate: X-Payment authorization expired",
+        status: 401,
+      }
+    }
+  }
+
+  if (auth.validAfter !== undefined && auth.validAfter !== "0") {
+    const validAfter = BigInt(auth.validAfter)
+    const nowSec = BigInt(Math.floor(Date.now() / 1000))
+    if (nowSec < validAfter) {
+      return {
+        error: "Predicate gate: X-Payment authorization not yet valid",
+        status: 401,
+      }
+    }
+  }
+
+  let recoveredAddress: `0x${string}`
+  try {
+    recoveredAddress = await recoverTypedDataAddress({
+      domain: {
+        name: "USD Coin",
+        version: "2",
+        chainId,
+        verifyingContract: tokenAddress,
+      },
+      types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+      primaryType: "TransferWithAuthorization",
+      message: {
+        from: auth.from as `0x${string}`,
+        to: auth.to as `0x${string}`,
+        value: BigInt(auth.value ?? "0"),
+        validAfter: BigInt(auth.validAfter ?? "0"),
+        validBefore: BigInt(auth.validBefore ?? "0"),
+        nonce: auth.nonce as `0x${string}`,
+      },
+      signature: signature as `0x${string}`,
+    })
+  } catch {
+    return {
+      error: "Predicate gate: invalid X-Payment signature",
+      status: 401,
+    }
+  }
+
+  if (recoveredAddress.toLowerCase() !== auth.from.toLowerCase()) {
+    return {
+      error:
+        "Predicate gate: X-Payment signer does not match 'from' address",
+      status: 401,
+    }
+  }
+
+  const authorization: ZeroValueAuthorization | undefined =
+    auth.value === "0"
+      ? {
+          signature: signature as `0x${string}`,
+          from: auth.from as `0x${string}`,
+          to: auth.to as `0x${string}`,
+          value: "0",
+          validAfter: auth.validAfter ?? "0",
+          validBefore: auth.validBefore ?? "0",
+          nonce: auth.nonce as `0x${string}`,
+          chainId,
+        }
+      : undefined
+
+  return { address: recoveredAddress, authorization, status: 200 }
+}
+
+const CHAIN_ID_TO_NETWORK: Record<number, string> = {
+  8453: "base",
+  84532: "base-sepolia",
+}
+
+function buildPredicateChallengeResponse(
+  operatorAddress: `0x${string}`,
+  chainId: number,
+): Response {
+  const network = CHAIN_ID_TO_NETWORK[chainId] ?? "base"
+  const asset = NETWORK_USDC[chainId] ?? USDC_BASE_ADDRESS
+  return Response.json(
+    {
+      x402Version: 1,
+      error: "Predicate gate: X-PAYMENT header is required",
+      accepts: [
+        {
+          scheme: "exact",
+          network,
+          maxAmountRequired: "0",
+          payTo: operatorAddress,
+          asset,
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
+    },
+    {
+      status: 402,
+      headers: { "X-Accept-Payment": "x402" },
+    },
+  )
 }
 
 // ---------------------------------------------------------------------------

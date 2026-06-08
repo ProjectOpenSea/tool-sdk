@@ -135,7 +135,7 @@ describe("smoke command", () => {
     logSpy.mockRestore()
   })
 
-  it("sends EIP-3009 Authorization header with the request", async () => {
+  it("sends initial request without Authorization header", async () => {
     let capturedInit: RequestInit | undefined
     vi.stubGlobal(
       "fetch",
@@ -161,9 +161,8 @@ describe("smoke command", () => {
     ])
 
     const headers = new Headers(capturedInit?.headers)
-    const authHeader = headers.get("Authorization")
-    expect(authHeader).toBeTruthy()
-    expect(authHeader).toMatch(/^EIP-3009 /)
+    expect(headers.get("Authorization")).toBeNull()
+    expect(headers.get("X-Payment")).toBeNull()
   })
 
   it("pretty-prints JSON response body", async () => {
@@ -324,13 +323,11 @@ describe("smoke command", () => {
   })
 
   it("defaults to chain base (chainId 8453)", async () => {
-    let capturedInit: RequestInit | undefined
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        capturedInit = init
-        return new Response(JSON.stringify({ ok: true }), { status: 200 })
-      }),
+      vi.fn(
+        async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      ),
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
@@ -350,13 +347,6 @@ describe("smoke command", () => {
 
     const output = logSpy.mock.calls.map(c => c[0]).join("\n")
     expect(output).toContain("Base")
-
-    const headers = new Headers(capturedInit?.headers)
-    const authHeader = headers.get("Authorization")!
-    const token = authHeader.slice("EIP-3009 ".length)
-    const json = Buffer.from(token, "base64url").toString("utf-8")
-    const payload = JSON.parse(json)
-    expect(payload.chainId).toBe(8453)
 
     logSpy.mockRestore()
   })

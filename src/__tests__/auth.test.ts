@@ -14,14 +14,36 @@ afterEach(() => {
 })
 
 describe("auth command", () => {
-  it("sends Authorization: EIP-3009 header with base64url JSON payload", async () => {
+  it("sends X-Payment on 402 challenge with base64 JSON payload", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []
+    let callCount = 0
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const headers = Object.fromEntries(
         Object.entries(init?.headers ?? {}),
       ) as Record<string, string>
       calls.push({ url: url as string, headers })
+      callCount++
+
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            x402Version: 1,
+            error: "X-PAYMENT header is required",
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "0",
+                payTo: "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8",
+                asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                extra: { name: "USD Coin", version: "2" },
+              },
+            ],
+          }),
+          { status: 402 },
+        )
+      }
 
       return new Response(JSON.stringify({ result: "ok" }), { status: 200 })
     })
@@ -42,29 +64,32 @@ describe("auth command", () => {
       '{"query":"test"}',
     ])
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    const authHeader = calls[0].headers.Authorization
-    expect(authHeader).toBeDefined()
-    expect(authHeader).toMatch(/^EIP-3009 /)
-
-    const token = authHeader.slice("EIP-3009 ".length)
-
-    // Token should be valid base64url-decodable JSON
-    const json = Buffer.from(token, "base64url").toString("utf-8")
-    const payload = JSON.parse(json)
-    expect(payload).toHaveProperty("from")
-    expect(payload).toHaveProperty("to")
-    expect(payload).toHaveProperty("signature")
-    expect(payload).toHaveProperty("chainId")
-    expect(payload.value).toBe("0")
-
+    // First call: no auth headers
+    expect(calls[0].headers.Authorization).toBeUndefined()
+    expect(calls[0].headers["X-Payment"]).toBeUndefined()
     expect(calls[0].headers["content-type"]).toBe("application/json")
+
+    // Second call: X-Payment only
+    expect(calls[1].headers.Authorization).toBeUndefined()
+    expect(calls[1].headers["X-Payment"]).toBeDefined()
+
+    // X-Payment should be valid base64-decodable JSON
+    const xPayment = calls[1].headers["X-Payment"]
+    const json = Buffer.from(xPayment, "base64").toString("utf-8")
+    const payload = JSON.parse(json)
+    expect(payload.x402Version).toBe(1)
+    expect(payload.scheme).toBe("exact")
+    expect(payload.payload.authorization.to).toBe(
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8",
+    )
 
     logSpy.mockRestore()
   })
 
-  it("sends EIP-3009 header when using --wallet-provider flag", async () => {
+  it("sends X-Payment when using --wallet-provider flag", async () => {
+    let callCount = 0
     const calls: { url: string; headers: Record<string, string> }[] = []
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -72,6 +97,26 @@ describe("auth command", () => {
         Object.entries(init?.headers ?? {}),
       ) as Record<string, string>
       calls.push({ url: url as string, headers })
+      callCount++
+
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "0",
+                payTo: "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8",
+                asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                extra: { name: "USD Coin", version: "2" },
+              },
+            ],
+          }),
+          { status: 402 },
+        )
+      }
 
       return new Response(JSON.stringify({ result: "ok" }), { status: 200 })
     })
@@ -94,11 +139,10 @@ describe("auth command", () => {
       "{}",
     ])
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    const authHeader = calls[0].headers.Authorization
-    expect(authHeader).toBeDefined()
-    expect(authHeader).toMatch(/^EIP-3009 /)
+    expect(calls[0].headers.Authorization).toBeUndefined()
+    expect(calls[1].headers["X-Payment"]).toBeDefined()
 
     logSpy.mockRestore()
   })

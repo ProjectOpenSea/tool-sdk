@@ -8,6 +8,7 @@ import { buildToolHandler } from "../src/handler.js"
 import { buildHolderManifest } from "../src/manifest.js"
 import { setOpenseaApiKey } from "../src/opensea.js"
 import { buildHolderGates, buildHolderPaywall } from "../src/paywall.js"
+import { buildUsageReporting } from "../src/usage.js"
 
 const creator = process.env.CREATOR_ADDRESS as `0x${string}` | undefined
 const recipient = process.env.RECIPIENT_ADDRESS as `0x${string}` | undefined
@@ -40,7 +41,17 @@ const manifest = buildHolderManifest({
   endpoint: `${baseEndpoint}/api/holder`,
   pricing: paywall.pricing,
 })
-const vercelHandler = toVercelHandler(buildToolHandler({ manifest, gates }))
+const vercelHandler = toVercelHandler(
+  buildToolHandler({
+    manifest,
+    gates,
+    // Holder tier is tool id 2 on the Base ToolRegistry (HOLDER_TOOL_ID).
+    usageReporting: buildUsageReporting({
+      apiKey: openseaKey,
+      toolOnchainId: Number(holderToolId),
+    }),
+  }),
+)
 
 export default function (req: VercelRequest, res: VercelResponse) {
   return vercelHandler(req, res)

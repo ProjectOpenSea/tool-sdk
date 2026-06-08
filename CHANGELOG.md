@@ -1,5 +1,22 @@
 # @opensea/tool-sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- Unified 402 flow for free and paid predicate-gated tools.
+
+  `predicateGate` now speaks the x402-style 402 challenge for both free and paid tools. When no auth is provided and `operatorAddress` is configured, it returns a 402 with `PaymentRequirements` (`payTo`=operator, `maxAmountRequired`=0) instead of a 401. The gate accepts an `X-Payment` header as the auth source (taking precedence over `Authorization`), recovers the signer from the EIP-712 `TransferWithAuthorization` payload, and extracts caller identity from the `from` field. `PaymentRequirements` are chain-aware: the network name and USDC asset address are derived from the configured chain. `x402Version` and the `exact` scheme are validated.
+
+  **Breaking changes:**
+
+  - `eip3009AuthenticatedFetch` and `paidAuthenticatedFetch` no longer take `chainId` or `to` params. On a 402 they sign `X-Payment` with the advertised `payTo` and retry; the redundant `Authorization: EIP-3009` header has been removed.
+  - `EIP3009_CHAIN_MAP` and `ZERO_ADDRESS` exports were removed.
+
+  **New features:**
+
+  - `eip3009AuthenticatedFetch` gains an `allowedRecipients` guard that prevents signing `X-Payment` for arbitrary `payTo` addresses returned by a malicious 402 response, mirroring `paidAuthenticatedFetch`'s `validatePaymentSafety`.
+
 ## 0.14.2
 
 ### Patch Changes

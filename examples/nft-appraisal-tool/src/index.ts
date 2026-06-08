@@ -8,6 +8,7 @@ import {
   buildHolderPaywall,
   buildPublicPaywall,
 } from "./paywall.js"
+import { buildUsageReporting } from "./usage.js"
 
 export interface Env {
   OPENSEA_API_KEY: string
@@ -64,6 +65,11 @@ function initHandlers(env: Env) {
   const publicHandler = buildToolHandler({
     manifest: publicManifest,
     gates: [publicPaywall.gate],
+    // Public tier is tool id 1 on the Base ToolRegistry (see README).
+    usageReporting: buildUsageReporting({
+      apiKey: env.OPENSEA_API_KEY,
+      toolOnchainId: 1,
+    }),
   })
   const holderHandler = env.HOLDER_TOOL_ID
     ? buildToolHandler({
@@ -71,6 +77,10 @@ function initHandlers(env: Env) {
         gates: buildHolderGates(holderPaywall, {
           toolId: BigInt(env.HOLDER_TOOL_ID),
           rpcUrl: env.BASE_RPC_URL,
+        }),
+        usageReporting: buildUsageReporting({
+          apiKey: env.OPENSEA_API_KEY,
+          toolOnchainId: Number(env.HOLDER_TOOL_ID),
         }),
       })
     : undefined

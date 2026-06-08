@@ -212,7 +212,6 @@ export const smokeCommand = new Command("smoke")
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: inputBody,
-          chainId: chain.id,
           signal: AbortSignal.timeout(30_000),
         })
       } catch (err) {
@@ -287,9 +286,7 @@ export const smokeCommand = new Command("smoke")
         paymentRequirements: requirements,
       })
 
-      console.log(
-        pc.cyan("Replaying request with EIP-3009 auth + X-Payment headers..."),
-      )
+      console.log(pc.cyan("Replaying request with X-Payment header..."))
 
       let paidRes: globalThis.Response
       try {
@@ -301,7 +298,6 @@ export const smokeCommand = new Command("smoke")
             "X-Payment": xPayment,
           },
           body: inputBody,
-          chainId: chain.id,
           signal: AbortSignal.timeout(30_000),
         })
       } catch (err) {
@@ -329,7 +325,6 @@ export const smokeCommand = new Command("smoke")
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: inputBody,
-          chainId: chain.id,
           signal: AbortSignal.timeout(30_000),
         })
       } catch (err) {

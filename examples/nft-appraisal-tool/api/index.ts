@@ -8,6 +8,7 @@ import { buildToolHandler } from "../src/handler.js"
 import { buildPublicManifest } from "../src/manifest.js"
 import { setOpenseaApiKey } from "../src/opensea.js"
 import { buildPublicPaywall } from "../src/paywall.js"
+import { buildUsageReporting } from "../src/usage.js"
 
 // Vercel populates process.env before this module loads, so initialization
 // happens once at module load. The factory architecture (buildPublicPaywall
@@ -37,7 +38,15 @@ const manifest = buildPublicManifest({
   pricing: paywall.pricing,
 })
 const vercelHandler = toVercelHandler(
-  buildToolHandler({ manifest, gates: [paywall.gate] }),
+  buildToolHandler({
+    manifest,
+    gates: [paywall.gate],
+    // Public tier is tool id 1 on the Base ToolRegistry (see README).
+    usageReporting: buildUsageReporting({
+      apiKey: openseaKey,
+      toolOnchainId: 1,
+    }),
+  }),
 )
 
 export default function (req: VercelRequest, res: VercelResponse) {

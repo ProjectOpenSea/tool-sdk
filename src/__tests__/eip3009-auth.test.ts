@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from "vitest"
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { signZeroValueAuthorization } from "../lib/usage/eip3009-auth.js"
+
+vi.mock("viem", async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return { ...actual }
+})
 
 function mockWalletClient(
   overrides: { address?: `0x${string}`; signature?: `0x${string}` } = {},
@@ -152,5 +158,124 @@ describe("signZeroValueAuthorization", () => {
     })
 
     expect(result1.nonce).not.toBe(result2.nonce)
+  })
+})
+
+describe("eip3009AuthenticatedFetch", () => {
+  const account = privateKeyToAccount(generatePrivateKey())
+  const OPERATOR = "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as const
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("retries with X-Payment from 402 challenge", async () => {
+    let callCount = 0
+    const capturedInits: RequestInit[] = []
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedInits.push(init ?? {})
+      callCount++
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            x402Version: 1,
+            error: "X-PAYMENT header is required",
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "0",
+                payTo: OPERATOR,
+                asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                extra: { name: "USD Coin", version: "2" },
+              },
+            ],
+          }),
+          { status: 402 },
+        )
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { eip3009AuthenticatedFetch } = await import(
+      "../lib/client/eip3009-auth.js"
+    )
+
+    const res = await eip3009AuthenticatedFetch(
+      "https://tool.example.com/api",
+      { account, method: "POST", body: "{}" },
+    )
+
+    expect(res.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    // First call has no auth headers
+    const firstHeaders = new Headers(capturedInits[0].headers)
+    expect(firstHeaders.get("Authorization")).toBeNull()
+    expect(firstHeaders.get("X-Payment")).toBeNull()
+
+    // Second call has X-Payment only
+    const secondHeaders = new Headers(capturedInits[1].headers)
+    expect(secondHeaders.get("Authorization")).toBeNull()
+    expect(secondHeaders.get("X-Payment")).toBeTruthy()
+  })
+
+  it("throws when payTo is not in allowedRecipients", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network: "base",
+                maxAmountRequired: "0",
+                payTo: "0xDeAdBeEfDeAdBeEfDeAdBeEfDeAdBeEfDeAdBeEf",
+                asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                extra: { name: "USD Coin", version: "2" },
+              },
+            ],
+          }),
+          { status: 402 },
+        ),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { eip3009AuthenticatedFetch } = await import(
+      "../lib/client/eip3009-auth.js"
+    )
+
+    await expect(
+      eip3009AuthenticatedFetch("https://tool.example.com/api", {
+        account,
+        method: "POST",
+        body: "{}",
+        allowedRecipients: [OPERATOR],
+      }),
+    ).rejects.toThrow(/not in allowedRecipients/)
+  })
+
+  it("returns 402 as-is when no accepts in challenge body", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "payment required" }), {
+          status: 402,
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { eip3009AuthenticatedFetch } = await import(
+      "../lib/client/eip3009-auth.js"
+    )
+
+    const res = await eip3009AuthenticatedFetch(
+      "https://tool.example.com/api",
+      { account },
+    )
+
+    expect(res.status).toBe(402)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

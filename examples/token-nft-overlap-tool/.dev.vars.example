@@ -1,0 +1,7 @@
+# Copy to .dev.vars for `wrangler dev`. Same format as .env files.
+
+OPENSEA_API_KEY=
+CREATOR_ADDRESS=
+HOLDER_TOOL_ID=
+TOOL_ENDPOINT=http://localhost:8787
+# ETH_RPC_URL=

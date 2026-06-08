@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token + NFT Holder Overlap Tool</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 760px; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.05rem; margin-top: 2rem; }
+    .tagline { color: #666; margin-top: 0; }
+    code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; }
+    a { color: #0070f3; }
+    table { border-collapse: collapse; margin: 1rem 0; }
+    th, td { padding: 0.5rem 0.9rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.9em; }
+    th { color: #888; font-weight: 600; }
+    .meta { color: #888; font-size: 0.85rem; margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1rem; }
+    .notice { background: #fffbe6; border: 1px solid #f5d76e; border-radius: 6px; padding: 0.75rem 1rem; margin: 1.5rem 0; font-size: 0.9rem; }
+    .notice strong { color: #8a6d3b; }
+  </style>
+</head>
+<body>
+  <h1>Token + NFT Holder Overlap</h1>
+  <p class="tagline">A free, predicate-gated ERC-8257 agent tool. Finds wallets holding both an ERC-20 token and NFTs from a collection.</p>
+
+  <p class="notice"><strong>Reference implementation.</strong> This deploy is a worked example shipped alongside <a href="https://github.com/ProjectOpenSea/tool-sdk"><code>@opensea/tool-sdk</code></a>. Fork the code to run your own tool; this endpoint is illustrative, not a production service, and may change or go offline without notice.</p>
+
+  <h2>Access</h2>
+  <table>
+    <thead><tr><th>Tier</th><th>Endpoint</th><th>Price</th><th>Gating</th></tr></thead>
+    <tbody>
+      <tr><td>Holder-only</td><td><code>/api</code></td><td>Free</td><td>EIP-3009 auth + ERC-721 ownership of <a href="https://opensea.io/assets/ethereum/0xd9b78a2f1dafc8bb9c60961790d2beefebee56f4">tiny dinos (eth)</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Manifest</h2>
+  <pre>GET /.well-known/ai-tool/token-nft-overlap.json</pre>
+
+  <h2>Calling the tool</h2>
+  <p>POST to <code>/api</code> with a JSON body:</p>
+  <pre>{
+  "tokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "collectionSlug": "boredapeyachtclub",
+  "chain": "ethereum",
+  "maxPages": 5
+}</pre>
+  <p>Without valid EIP-3009 auth proving NFT ownership, the response is <code>HTTP 403</code>. With valid auth, the response is a structured overlap report ranked by token USD value.</p>
+
+  <p class="meta">
+    Powered by <a href="https://github.com/ProjectOpenSea/tool-sdk">@opensea/tool-sdk</a> + the <a href="https://docs.opensea.io/reference/api-overview">OpenSea v2 REST API</a>. No LLM required.
+  </p>
+</body>
+</html>

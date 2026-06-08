@@ -128,8 +128,8 @@ describe("pay --auth eip3009", () => {
       ) as Record<string, string>
       calls.push({ url: url as string, headers })
 
-      // First call has Authorization (EIP-3009) but no X-Payment → return 402
-      if (headers.Authorization && !headers["X-Payment"]) {
+      // First call has no auth headers → return 402
+      if (!headers["X-Payment"]) {
         return new Response(
           JSON.stringify({
             x402Version: 1,
@@ -140,8 +140,8 @@ describe("pay --auth eip3009", () => {
         )
       }
 
-      // Second call has both Authorization and X-Payment → success
-      if (headers.Authorization && headers["X-Payment"]) {
+      // Second call has X-Payment → success
+      if (headers["X-Payment"]) {
         return new Response(JSON.stringify({ result: "authenticated-paid" }), {
           status: 200,
         })
@@ -170,12 +170,12 @@ describe("pay --auth eip3009", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    // First call: EIP-3009 auth, no payment
-    expect(calls[0].headers.Authorization).toMatch(/^EIP-3009 /)
+    // First call: no auth headers
+    expect(calls[0].headers.Authorization).toBeUndefined()
     expect(calls[0].headers["X-Payment"]).toBeUndefined()
 
-    // Second call: EIP-3009 auth + payment
-    expect(calls[1].headers.Authorization).toMatch(/^EIP-3009 /)
+    // Second call: X-Payment only
+    expect(calls[1].headers.Authorization).toBeUndefined()
     expect(calls[1].headers["X-Payment"]).toBeDefined()
 
     logSpy.mockRestore()
@@ -184,19 +184,12 @@ describe("pay --auth eip3009", () => {
   it("returns directly when --auth siwe response is not 402", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        const headers = Object.fromEntries(
-          Object.entries(init?.headers ?? {}),
-        ) as Record<string, string>
-
-        if (headers.Authorization) {
-          return new Response(JSON.stringify({ result: "auth-only" }), {
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ result: "auth-only" }), {
             status: 200,
-          })
-        }
-
-        return new Response("Unexpected", { status: 500 })
-      }),
+          }),
+      ),
     )
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
@@ -274,8 +267,8 @@ describe("pay --auth eip3009", () => {
       "{}",
     ])
 
-    // Should have used EIP-3009 auth (paidAuthenticatedFetch adds Authorization header)
-    expect(calls[0].headers.Authorization).toMatch(/^EIP-3009 /)
+    // Should have used paidAuthenticatedFetch (no Authorization, identity via X-Payment on 402)
+    expect(calls[0].headers.Authorization).toBeUndefined()
 
     logSpy.mockRestore()
   })

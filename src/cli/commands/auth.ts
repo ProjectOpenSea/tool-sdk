@@ -149,7 +149,6 @@ export const authCommand = new Command("auth")
 
     const fetchOptions: Eip3009AuthenticatedFetchOptions = {
       account,
-      chainId: chain.id,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: inputBody,

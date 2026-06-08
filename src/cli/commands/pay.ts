@@ -13,7 +13,6 @@ import {
   type WalletAdapter,
   type WalletProvider,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
 import { loadManifest } from "./load-manifest.js"
 import { readInput } from "./read-input.js"
 
@@ -126,7 +125,7 @@ export const payCommand = new Command("pay")
     }
 
     if (useAuth) {
-      await runPaidAuthenticated(url, inputBody, adapter, options)
+      await runPaidAuthenticated(url, inputBody, adapter)
     } else {
       await runPaymentOnly(url, inputBody, adapter)
     }
@@ -136,9 +135,7 @@ async function runPaidAuthenticated(
   url: string,
   inputBody: string,
   adapter: WalletAdapter,
-  options: PayOptions,
 ): Promise<void> {
-  const chain = getChain(options.chain ?? "base")
   const walletAddress = getAddress(await adapter.getAddress()) as Address
   const { signMessage, signTypedData } = adapter
   if (!signTypedData) {
@@ -184,7 +181,6 @@ async function runPaidAuthenticated(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: inputBody,
-      chainId: chain.id,
       signal: AbortSignal.timeout(30_000),
     })
   } catch (err) {
