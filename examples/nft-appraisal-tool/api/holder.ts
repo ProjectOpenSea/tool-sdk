@@ -32,9 +32,10 @@ setAnthropicConfig({
 const baseEndpoint =
   process.env.TOOL_ENDPOINT ?? "https://nft-appraisal-tool.vercel.app"
 const paywall = buildHolderPaywall({ recipient })
-const gates = buildHolderGates(paywall, {
+const gates = buildHolderGates({
   toolId: BigInt(holderToolId),
   rpcUrl: process.env.BASE_RPC_URL,
+  recipient,
 })
 const manifest = buildHolderManifest({
   creator,

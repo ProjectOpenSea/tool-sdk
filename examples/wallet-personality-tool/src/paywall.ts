@@ -29,11 +29,18 @@ export function buildPublicPaywall({
 export function buildSubscriberGates({
   toolId,
   rpcUrl,
+  operatorAddress,
 }: {
   /** On-chain ToolRegistry tool ID (from the `ToolRegistered` event). */
   toolId: bigint
   /** Optional Base RPC override; defaults to viem's public RPC. */
   rpcUrl?: string
+  /**
+   * Tool operator address (the manifest `creatorAddress`). The gate
+   * advertises it as the `payTo` in its zero-value x402 402 challenge so
+   * the caller knows whom to bind the identity authorization to.
+   */
+  operatorAddress: `0x${string}`
 }): GateMiddleware[] {
-  return [predicateGate({ toolId, rpcUrl })]
+  return [predicateGate({ toolId, rpcUrl, operatorAddress })]
 }

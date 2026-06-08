@@ -516,6 +516,10 @@ const { toolId, txHash } = await client.registerTool({
 })
 ```
 
+## Invocation Flow
+
+For a visual walkthrough of the full 402 challenge-response lifecycle (identity verification, access check, payment settlement, and usage reporting), see [docs/tool-invocation-flow.md](docs/tool-invocation-flow.md).
+
 ## Gating
 
 ### Predicate Gate (recommended)

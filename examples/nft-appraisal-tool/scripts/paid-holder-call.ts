@@ -82,7 +82,6 @@ console.log("\n--- paidAuthenticatedFetch (EIP-3009 + x402) ---")
 const startedAt = Date.now()
 const res = await paidAuthenticatedFetch(toolUrl, {
   account,
-  chainId: 8453,
   // Reject if the server asks for more than 0.01 USDC (the holder rate).
   // Prevents a compromised server from inflating the price.
   maxAmount: "10000",

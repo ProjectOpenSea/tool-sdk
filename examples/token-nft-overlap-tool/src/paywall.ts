@@ -8,8 +8,8 @@ import { mainnet } from "viem/chains"
  * The tool is registered on Ethereum mainnet and the gating collection lives
  * there, so the access check must consult the mainnet ToolRegistry. The SDK's
  * predicateGate otherwise defaults to Base, so we pin chain + RPC to mainnet.
- * The EIP-3009 identity signature itself still rides on Base USDC (the caller
- * signs with `--chain base`); only the onchain access check runs on mainnet.
+ * The EIP-3009 identity signature itself still rides on Base USDC (the gate's
+ * 402 advertises network=base); only the onchain access check runs on mainnet.
  */
 export function buildGates({
   toolId,

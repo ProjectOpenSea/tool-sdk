@@ -74,9 +74,10 @@ function initHandlers(env: Env) {
   const holderHandler = env.HOLDER_TOOL_ID
     ? buildToolHandler({
         manifest: holderManifest,
-        gates: buildHolderGates(holderPaywall, {
+        gates: buildHolderGates({
           toolId: BigInt(env.HOLDER_TOOL_ID),
           rpcUrl: env.BASE_RPC_URL,
+          recipient,
         }),
         usageReporting: buildUsageReporting({
           apiKey: env.OPENSEA_API_KEY,

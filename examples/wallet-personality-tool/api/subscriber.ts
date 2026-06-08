@@ -32,6 +32,7 @@ const minTier = rawMinTier ? Number(rawMinTier) : 0
 const gates = buildSubscriberGates({
   toolId: BigInt(subscriberToolId),
   rpcUrl: process.env.BASE_RPC_URL,
+  operatorAddress: creator,
 })
 const manifest = buildSubscriberManifest({
   creator,

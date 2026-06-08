@@ -1,8 +1,13 @@
 import {
   defineToolPaywall,
   type GateMiddleware,
-  predicateGate,
+  paidPredicateGate,
 } from "@opensea/tool-sdk"
+
+/** Holder-tier price. Shared by the manifest pricing and the gate so they
+ * can never drift. */
+const HOLDER_AMOUNT_USDC = "0.01"
+const FACILITATOR = "payai" as const
 
 /**
  * Single source of truth for the public x402 paywall config. Returns both
@@ -42,28 +47,40 @@ export function buildHolderPaywall({
 }) {
   return defineToolPaywall({
     recipient,
-    amountUsdc: "0.01",
-    facilitator: "payai",
+    amountUsdc: HOLDER_AMOUNT_USDC,
+    facilitator: FACILITATOR,
   })
 }
 
 /**
- * Compose the holder gate chain: `predicateGate` first (so non-holders
- * get a clean 403 before being asked to pay), then the x402 paywall gate.
- * `predicateGate` verifies EIP-3009 auth and asks the onchain `ToolRegistry`
- * whether the caller satisfies the tool's registered access predicate.
+ * Holder gate: a single `paidPredicateGate` that resolves the onchain
+ * CHONK-ownership predicate and the $0.01 x402 payment in one 402 round trip
+ * (2 requests instead of 3). The predicate is checked before the facilitator
+ * settles, so non-holders get a 403 and no funds move.
+ *
+ * `operatorAddress` here is the payment recipient: `paidPredicateGate` uses it
+ * as both the 402 `payTo` and the identity binding (the caller's `X-Payment`
+ * `to` must match it), so it must equal the manifest pricing's `recipient`.
  */
-export function buildHolderGates(
-  paywall: ReturnType<typeof buildHolderPaywall>,
-  {
-    toolId,
-    rpcUrl,
-  }: {
-    /** On-chain ToolRegistry tool ID (from the `ToolRegistered` event). */
-    toolId: bigint
-    /** Optional Base RPC override; defaults to viem's public RPC. */
-    rpcUrl?: string
-  },
-): GateMiddleware[] {
-  return [predicateGate({ toolId, rpcUrl }), paywall.gate]
+export function buildHolderGates({
+  toolId,
+  rpcUrl,
+  recipient,
+}: {
+  /** On-chain ToolRegistry tool ID (from the `ToolRegistered` event). */
+  toolId: bigint
+  /** Optional Base RPC override; defaults to viem's public RPC. */
+  rpcUrl?: string
+  /** Payment recipient; also the identity binding and 402 `payTo`. */
+  recipient: `0x${string}`
+}): GateMiddleware[] {
+  return [
+    paidPredicateGate({
+      toolId,
+      rpcUrl,
+      operatorAddress: recipient,
+      amountUsdc: HOLDER_AMOUNT_USDC,
+      facilitator: FACILITATOR,
+    }),
+  ]
 }
