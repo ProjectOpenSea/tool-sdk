@@ -522,7 +522,7 @@ async function verifyXPaymentAuth(
   const auth = paymentPayload.payload?.authorization
   const signature = paymentPayload.payload?.signature
 
-  if (!auth?.from || !auth?.to || !signature || !auth?.nonce) {
+  if (!auth?.from || !auth?.to || !signature || !auth?.nonce || !auth?.validBefore) {
     return {
       error:
         "Predicate gate: X-Payment missing required authorization fields",
