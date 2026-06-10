@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.16.1
+
+### Patch Changes
+
+- 8812960: Require `validBefore` in predicate-gate authorizations. `verifyXPaymentAuth` previously left `validBefore` optional: a caller could sign a `TransferWithAuthorization` with `validBefore=0` and omit the field, so the expiry check was skipped and the gate accepted an unbounded, non-expiring proof. The field is now required in both the X-Payment and EIP-3009 auth paths, with the now-dead `validBefore !== undefined` guards and the `?? "0"` recovery fallback removed. Thanks @Nexory (ProjectOpenSea/tool-sdk#10).
+
 ## 0.16.0
 
 ### Minor Changes

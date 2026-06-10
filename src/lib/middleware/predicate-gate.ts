@@ -378,11 +378,12 @@ async function verifyEip3009Auth(
     !authorization.from ||
     !authorization.to ||
     !authorization.signature ||
-    !authorization.nonce
+    !authorization.nonce ||
+    !authorization.validBefore
   ) {
     return {
       error:
-        "Predicate gate: EIP-3009 token missing required fields (from, to, signature, nonce)",
+        "Predicate gate: EIP-3009 token missing required fields (from, to, signature, nonce, validBefore)",
       status: 401,
     }
   }
@@ -406,8 +407,8 @@ async function verifyEip3009Auth(
     }
   }
 
-  // Check expiry (validBefore)
-  if (authorization.validBefore !== undefined) {
+  // Check expiry (validBefore is required above, so it is always present here)
+  {
     const validBefore = BigInt(authorization.validBefore)
     const nowSec = BigInt(Math.floor(Date.now() / 1000))
     if (nowSec >= validBefore) {
@@ -522,7 +523,7 @@ async function verifyXPaymentAuth(
   const auth = paymentPayload.payload?.authorization
   const signature = paymentPayload.payload?.signature
 
-  if (!auth?.from || !auth?.to || !signature || !auth?.nonce) {
+  if (!auth?.from || !auth?.to || !signature || !auth?.nonce || !auth?.validBefore) {
     return {
       error:
         "Predicate gate: X-Payment missing required authorization fields",
@@ -557,7 +558,8 @@ async function verifyXPaymentAuth(
     }
   }
 
-  if (auth.validBefore !== undefined) {
+  // validBefore is required above, so it is always present here
+  {
     const validBefore = BigInt(auth.validBefore)
     const nowSec = BigInt(Math.floor(Date.now() / 1000))
     if (nowSec >= validBefore) {
@@ -595,7 +597,7 @@ async function verifyXPaymentAuth(
         to: auth.to as `0x${string}`,
         value: BigInt(auth.value ?? "0"),
         validAfter: BigInt(auth.validAfter ?? "0"),
-        validBefore: BigInt(auth.validBefore ?? "0"),
+        validBefore: BigInt(auth.validBefore),
         nonce: auth.nonce as `0x${string}`,
       },
       signature: signature as `0x${string}`,

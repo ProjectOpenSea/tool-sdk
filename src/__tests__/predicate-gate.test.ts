@@ -496,6 +496,39 @@ describe("predicateGate", () => {
     expect(body.error).toMatch(/missing required fields/i)
   })
 
+  it("EIP-3009: returns 401 when validBefore is missing", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    // Omitting validBefore must be rejected at the required-field guard with a
+    // clear error, matching the X-Payment path. Without the guard the request
+    // is only incidentally rejected (BigInt(undefined) throws during recovery,
+    // surfacing as "invalid signature"); a future `?? "0"` fallback would let
+    // an unbounded proof through, so the field must be explicitly required.
+    const token = makeEip3009Token()
+    const payload = JSON.parse(
+      atob(token.replace(/-/g, "+").replace(/_/g, "/")),
+    )
+    delete payload.validBefore
+    const badToken = btoa(JSON.stringify(payload))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "")
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { Authorization: `EIP-3009 ${badToken}` },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/missing required fields/i)
+  })
+
   it("EIP-3009: returns 401 when value !== '0'", async () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
@@ -681,6 +714,54 @@ describe("predicateGate", () => {
       signature: "0xabcd",
       chainId: 8453,
     })
+  })
+
+  it("X-Payment: rejects an authorization that omits validBefore", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const operator =
+      "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: operator,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    // Authorization with NO validBefore. The signer (recovery mock -> TEST_CALLER)
+    // matches `from`, so the expiry check is the only bound on this token. When
+    // validBefore is absent that check is skipped, so an unbounded (non-expiring)
+    // proof is accepted. The sibling EIP-3009 path (verifyEip3009Auth) requires
+    // validBefore, so the two auth paths must agree: reject when it is missing.
+    const header = Buffer.from(
+      JSON.stringify({
+        x402Version: 1,
+        scheme: "exact",
+        network: "base",
+        payload: {
+          signature: "0xabcd",
+          authorization: {
+            from: TEST_CALLER,
+            to: operator,
+            value: "0",
+            validAfter: "0",
+            // validBefore intentionally omitted
+            nonce:
+              "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+          },
+        },
+      }),
+    ).toString("base64")
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": header },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/missing required authorization fields/i)
   })
 
   it("X-Payment: takes precedence over Authorization header", async () => {
