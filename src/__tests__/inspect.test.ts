@@ -109,6 +109,37 @@ describe("inspect command", () => {
     logSpy.mockRestore()
   })
 
+  it("refuses to fetch a metadata URI that points to a private address", async () => {
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      metadataURI:
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+      manifestHash: MANIFEST_HASH,
+      accessPredicate: "0x0000000000000000000000000000000000000000",
+    })
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit")
+    }) as never)
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await expect(
+      inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"]),
+    ).rejects.toThrow()
+
+    // The link-local metadata address must never be fetched.
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    logSpy.mockRestore()
+    errSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+
   it("reports MISMATCH when computed hash differs from onchain hash", async () => {
     mockGetToolConfig.mockResolvedValueOnce({
       creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",

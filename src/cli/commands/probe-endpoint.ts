@@ -7,7 +7,7 @@ export interface ProbeResult {
 }
 
 const PRIVATE_HOSTNAME_RE =
-  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|\[?::1\]?|\[?fe80:)/i
+  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|\[?::1\]?|\[?fe80:)/i
 
 export function isPrivateHostname(hostname: string): boolean {
   return PRIVATE_HOSTNAME_RE.test(hostname)
