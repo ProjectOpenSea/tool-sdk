@@ -112,11 +112,12 @@ export const updateMetadataCommand = new Command("update-metadata")
       ? createWalletForProvider(options.walletProvider as WalletProvider)
       : createWalletFromEnv()
     const address = (await wallet.getAddress()).toLowerCase()
+    const rpcUrl = options.rpcUrl ?? wallet.getRpcUrl?.()
 
     console.log(pc.cyan(`\nWallet: ${address} (${wallet.name})`))
     console.log(pc.cyan("Verifying ownership..."))
 
-    const readOnlyRegistry = new ToolRegistryClient({ chain })
+    const readOnlyRegistry = new ToolRegistryClient({ chain, rpcUrl })
     let config: Awaited<ReturnType<ToolRegistryClient["getToolConfig"]>>
     try {
       config = await readOnlyRegistry.getToolConfig(toolId)
@@ -146,12 +147,8 @@ export const updateMetadataCommand = new Command("update-metadata")
       }
     }
 
-    const walletClient = await walletAdapterToClient(
-      wallet,
-      chain,
-      options.rpcUrl ?? wallet.getRpcUrl?.(),
-    )
-    const registry = new ToolRegistryClient({ chain, walletClient })
+    const walletClient = await walletAdapterToClient(wallet, chain, rpcUrl)
+    const registry = new ToolRegistryClient({ chain, rpcUrl, walletClient })
 
     try {
       const txHash = await registry.updateToolMetadata(

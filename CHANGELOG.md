@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.17.1
+
+### Patch Changes
+
+- Thread `--rpc-url` through to registry reads in CLI commands. Previously the flag only applied to writes; read paths (status, get, list) fell back to the default RPC endpoint.
+
 ## 0.17.0
 
 ### Minor Changes

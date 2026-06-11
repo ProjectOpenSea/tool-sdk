@@ -23,8 +23,13 @@ const mockGetToolConfig = vi.fn(async () => ({
   accessPredicate: "0x0000000000000000000000000000000000000000",
 }))
 
+const registryCtorConfigs: Record<string, unknown>[] = []
+
 vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
+    constructor(config: Record<string, unknown>) {
+      registryCtorConfigs.push(config)
+    }
     updateToolMetadata = mockUpdateToolMetadata
     getToolConfig = mockGetToolConfig
   },
@@ -49,6 +54,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   mockUpdateToolMetadata.mockClear()
   mockGetToolConfig.mockClear()
+  registryCtorConfigs.length = 0
   delete process.env.PRIVATE_KEY
   delete process.env.RPC_URL
 })
@@ -116,6 +122,35 @@ describe("update-metadata command", () => {
       "https://example.com/manifest.json",
       expect.objectContaining({ name: "test-tool" }),
     )
+
+    logSpy.mockRestore()
+  })
+
+  it("threads --rpc-url through to both registry clients", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { updateMetadataCommand } = await import(
+      "../cli/commands/update-metadata.js"
+    )
+
+    await updateMetadataCommand.parseAsync([
+      "node",
+      "update-metadata",
+      "--tool-id",
+      "42",
+      "--metadata",
+      "https://example.com/manifest.json",
+      "--rpc-url",
+      "http://localhost:9999",
+      "--yes",
+    ])
+
+    // Both the ownership-check (read-only) client and the transaction
+    // client must use the explicit RPC, never viem's chain default.
+    expect(registryCtorConfigs).toHaveLength(2)
+    for (const config of registryCtorConfigs) {
+      expect(config.rpcUrl).toBe("http://localhost:9999")
+    }
 
     logSpy.mockRestore()
   })

@@ -25,6 +25,7 @@ interface InspectOptions {
   toolId: string
   network: string
   checkAccess?: string
+  rpcUrl?: string
 }
 
 export const inspectCommand = new Command("inspect")
@@ -41,6 +42,7 @@ export const inspectCommand = new Command("inspect")
     "--check-access <address>",
     "Check whether an address has access to the tool",
   )
+  .option("--rpc-url <url>", "RPC endpoint for onchain reads")
   .action(async (options: InspectOptions) => {
     if (!options.toolId) {
       console.error(pc.red("Error: --tool-id is required"))
@@ -56,7 +58,7 @@ export const inspectCommand = new Command("inspect")
     }
 
     const chain = getChain(options.network)
-    const client = new ToolRegistryClient({ chain })
+    const client = new ToolRegistryClient({ chain, rpcUrl: options.rpcUrl })
 
     console.log(pc.cyan("Reading onchain tool config...\n"))
 
@@ -78,7 +80,7 @@ export const inspectCommand = new Command("inspect")
     if (config.accessPredicate !== zeroAddress) {
       const publicClient = createPublicClient({
         chain,
-        transport: http(),
+        transport: http(options.rpcUrl),
       })
 
       let predicateName: string | undefined

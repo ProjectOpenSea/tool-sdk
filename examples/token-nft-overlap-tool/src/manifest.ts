@@ -24,6 +24,7 @@ export function buildManifest(opts: BuildManifestOptions) {
       "Finds wallets that hold both a specified ERC-20 token and NFTs from a collection. " +
       "Returns the overlap set with holdings data for each wallet. Free for holders.",
     endpoint: opts.endpoint,
+    image: "https://token-nft-overlap-tool.vercel.app/token-nft-overlap.png",
     inputs: {
       type: "object",
       properties: {

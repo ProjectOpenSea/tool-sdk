@@ -422,6 +422,7 @@ export const registerCommand = new Command("register")
 
     const registry = new ToolRegistryClient({
       chain,
+      rpcUrl: options.rpcUrl ?? wallet.getRpcUrl?.(),
       walletClient,
     })
 

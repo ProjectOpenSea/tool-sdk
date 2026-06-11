@@ -23,8 +23,13 @@ const mockGetToolConfig = vi.fn(async () => ({
 
 const mockTryHasAccess = vi.fn(async () => ({ ok: true, granted: true }))
 
+const registryCtorConfigs: Record<string, unknown>[] = []
+
 vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
+    constructor(config: Record<string, unknown>) {
+      registryCtorConfigs.push(config)
+    }
     getToolConfig = mockGetToolConfig
     tryHasAccess = mockTryHasAccess
   },
@@ -47,6 +52,7 @@ afterEach(() => {
   mockGetToolConfig.mockClear()
   mockTryHasAccess.mockClear()
   mockReadContract.mockReset()
+  registryCtorConfigs.length = 0
 })
 
 describe("inspect command", () => {
@@ -71,6 +77,34 @@ describe("inspect command", () => {
     expect(output).toContain("Manifest Hash:")
     expect(output).toContain("PASS")
     expect(output).toContain("MATCH")
+
+    logSpy.mockRestore()
+  })
+
+  it("threads --rpc-url through to the registry client", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+      ),
+    )
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    await inspectCommand.parseAsync([
+      "node",
+      "inspect",
+      "--tool-id",
+      "1",
+      "--rpc-url",
+      "http://localhost:9999",
+    ])
+
+    expect(registryCtorConfigs).toHaveLength(1)
+    expect(registryCtorConfigs[0].rpcUrl).toBe("http://localhost:9999")
 
     logSpy.mockRestore()
   })

@@ -29,6 +29,25 @@ class ExitError extends Error {
   }
 }
 
+const registryCtorConfigs: Record<string, unknown>[] = []
+const mockRegisterTool = vi.fn(async () => ({
+  toolId: 7n,
+  txHash: "0xtxhash",
+}))
+
+vi.mock("../lib/onchain/registry.js", () => ({
+  ToolRegistryClient: class {
+    constructor(config: Record<string, unknown>) {
+      registryCtorConfigs.push(config)
+    }
+    registerTool = mockRegisterTool
+  },
+}))
+
+vi.mock("@opensea/wallet-adapters/viem", () => ({
+  walletAdapterToViemClient: vi.fn(async () => ({})),
+}))
+
 function mockFetch(manifest: object) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
     new Response(JSON.stringify(manifest), {
@@ -58,6 +77,8 @@ describe("register creatorAddress validation", () => {
     exitSpy.mockRestore()
     errorSpy.mockRestore()
     logSpy.mockRestore()
+    registryCtorConfigs.length = 0
+    mockRegisterTool.mockClear()
     if (originalPrivateKey !== undefined) {
       process.env.PRIVATE_KEY = originalPrivateKey
     } else {
@@ -197,6 +218,8 @@ describe("register --access-predicate + --predicate-config (F4d)", () => {
     exitSpy.mockRestore()
     errorSpy.mockRestore()
     logSpy.mockRestore()
+    registryCtorConfigs.length = 0
+    mockRegisterTool.mockClear()
     if (originalPrivateKey !== undefined) {
       process.env.PRIVATE_KEY = originalPrivateKey
     } else {
@@ -329,6 +352,32 @@ describe("register --access-predicate + --predicate-config (F4d)", () => {
       "Predicate config TX would be sent after registration",
     )
     expect(output).toContain("--dry-run: no transaction sent")
+
+    fetchSpy.mockRestore()
+  })
+
+  it("threads --rpc-url through to the registry client", async () => {
+    process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+    const fetchSpy = mockFetch(validManifest)
+
+    const { registerCommand } = await import("../cli/commands/register.js")
+
+    await registerCommand.parseAsync([
+      "node",
+      "register",
+      "--metadata",
+      "https://test.example.com/.well-known/ai-tools/test-tool.json",
+      "--rpc-url",
+      "http://localhost:9999",
+      "--yes",
+    ])
+
+    expect(mockRegisterTool).toHaveBeenCalled()
+    // The registry client waits for the tx receipt on its internal public
+    // client, so it must use the explicit RPC, never viem's chain default.
+    expect(registryCtorConfigs).toHaveLength(1)
+    expect(registryCtorConfigs[0].rpcUrl).toBe("http://localhost:9999")
 
     fetchSpy.mockRestore()
   })
