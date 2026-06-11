@@ -30,7 +30,7 @@ Use `opensea-tool-sdk` when you need to:
 - Scaffold an AI-callable tool endpoint (HTTPS, JSON Schema, `.well-known` manifest) for Vercel, Cloudflare, or Express
 - Register a tool onchain on the Base ToolRegistry so other agents can discover it
 - Gate access via x402 pay-per-call (USDC) or predicates (ERC-721/ERC-1155 ownership, subscriptions, trait gating, ERC-20 balance, composites)
-- Call a gated tool: EIP-3009 auth (`eip3009AuthenticatedFetch`), 402 payments (`paidFetch`), or both (`paidAuthenticatedFetch`)
+- Call a gated or paid tool: 402 payments (`paidFetch`), predicate-gated auth (`eip3009AuthenticatedFetch`), or both (`paidAuthenticatedFetch`)
 - Search and discover registered tools via the OpenSea REST API
 
 ## When NOT to use this skill (`scope_out`, handoff)
@@ -360,7 +360,7 @@ const account = await createBankrAccount("your-bankr-api-key")
 | `verify` | Verify a manifest against its onchain hash |
 | `deploy` | Deploy a tool to Vercel |
 | `auth` | Call a predicate-gated tool (EIP-3009) |
-| `pay` | Call an x402-paid tool (USDC), with optional `--auth` for predicate-gated endpoints |
+| `pay` | Call an x402-paid or gated tool (probes for 402, signs X-Payment, retries) |
 | `smoke` | Auto-detect gate type and call |
 | `dry-run-gate` | Simulate an x402 gate check locally |
 | `dry-run-predicate-gate` | Simulate a predicate gate check locally |
@@ -534,7 +534,7 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 # Server: use paidPredicateGate (see references/predicate-gating.md)
 # Single 402: identity proof + payment in one X-Payment signature
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
-  npx @opensea/tool-sdk pay --auth \
+  npx @opensea/tool-sdk pay \
   https://my-tool.vercel.app/api \
   --body '{"query": "hello"}'
 ```

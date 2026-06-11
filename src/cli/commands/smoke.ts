@@ -372,7 +372,7 @@ function printPaywallSuccess(text: string): void {
   }
   console.log(
     pc.green(
-      "\nAuth OK — paywall fired (expected for paywalled tools). Pair with `pay --auth eip3009` for full E2E.",
+      "\nAuth OK — paywall fired (expected for paywalled tools). Pair with `pay` for full E2E.",
     ),
   )
 }

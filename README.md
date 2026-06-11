@@ -155,24 +155,16 @@ npx @opensea/tool-sdk deploy --host vercel --non-interactive -y
 
 ### `pay <url>`
 
-Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements, signs an EIP-3009 `transferWithAuthorization`, and replays the request with the `X-Payment` header. Optionally includes EIP-3009 authentication for predicate-gated endpoints.
+Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements (402 challenge), signs an EIP-3009 `TransferWithAuthorization` as the `X-Payment` header, and replays the request. Works for both paid and gated tools — the 402 challenge determines the payment amount (real USDC for paid, zero-value for identity-only gating).
 
 ```bash
 npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
   --body '{"query":"hello"}'
-
-# Combined payment + EIP-3009 auth (for predicate-gated paid tools):
-PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
-  npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
-  --auth eip3009 --body '{"query":"hello"}'
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
-| `--auth <type>` | Authentication type (`eip3009`). Auto-enabled when manifest declares an access block |
-| `--manifest <path>` | Path to tool manifest (JSON or TS). If it declares an access block, EIP-3009 auth is auto-enabled |
-| `--chain <name>` | Chain for EIP-3009 signature (default: `base`) |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
 
 ### `auth <url>`

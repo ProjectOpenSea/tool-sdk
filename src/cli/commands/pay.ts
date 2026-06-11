@@ -1,11 +1,7 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { type Address, getAddress } from "viem"
-import { createExternalSignerAccount } from "../../lib/client/external-signer.js"
-import { paidAuthenticatedFetch } from "../../lib/client/paid-authenticated-fetch.js"
 import type { PaymentRequirements } from "../../lib/client/x402-payment.js"
 import { signX402Payment } from "../../lib/client/x402-payment.js"
-import { ToolManifestSchema } from "../../lib/manifest/schema.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -13,79 +9,24 @@ import {
   type WalletAdapter,
   type WalletProvider,
 } from "../../lib/wallet/index.js"
-import { loadManifest } from "./load-manifest.js"
 import { readInput } from "./read-input.js"
 
 interface PayOptions {
   body?: string
-  auth?: string
-  manifest?: string
-  chain?: string
   walletProvider?: string
 }
 
 export const payCommand = new Command("pay")
   .description(
-    "Make a paid call to a tool endpoint via x402 (optionally with EIP-3009 authentication)",
+    "Make a paid call to a tool endpoint via x402. Probes for a 402 challenge, signs X-Payment, and retries.",
   )
   .argument("<url>", "Tool endpoint URL")
   .option("--body <json>", "JSON body (inline string or @path/to/file.json)")
-  .option(
-    "--auth <type>",
-    "Authentication type (eip3009). Auto-enabled when manifest declares an access block",
-  )
-  .option(
-    "--manifest <path>",
-    "Path to tool manifest (JSON or TS). If it declares an access block, EIP-3009 auth is auto-enabled",
-  )
-  .option(
-    "--chain <name>",
-    "Chain for EIP-3009 signature (default: base)",
-    "base",
-  )
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
   )
   .action(async (url: string, options: PayOptions) => {
-    let useAuth = options.auth === "eip3009" || options.auth === "siwe"
-
-    if (options.auth && options.auth !== "eip3009" && options.auth !== "siwe") {
-      console.error(
-        pc.red(
-          `Error: Unsupported --auth type "${options.auth}". Supported: "eip3009" (recommended), "siwe" (deprecated).`,
-        ),
-      )
-      process.exit(1)
-    }
-
-    if (options.auth === "siwe") {
-      console.warn(
-        pc.yellow(
-          "Warning: --auth siwe is deprecated. Using EIP-3009 authentication instead.",
-        ),
-      )
-    }
-
-    if (options.manifest && !useAuth) {
-      const raw = await loadManifest(options.manifest)
-      const parsed = ToolManifestSchema.safeParse(raw)
-      if (!parsed.success) {
-        console.warn(
-          pc.yellow(
-            "Warning: --manifest did not match ToolManifestSchema — auth auto-detection skipped",
-          ),
-        )
-      } else if (parsed.data.access) {
-        useAuth = true
-        console.log(
-          pc.cyan(
-            "Manifest declares an access block — auto-enabling EIP-3009 authentication",
-          ),
-        )
-      }
-    }
-
     let adapter: WalletAdapter
     try {
       adapter = options.walletProvider
@@ -124,79 +65,8 @@ export const payCommand = new Command("pay")
       process.exit(1)
     }
 
-    if (useAuth) {
-      await runPaidAuthenticated(url, inputBody, adapter)
-    } else {
-      await runPaymentOnly(url, inputBody, adapter)
-    }
+    await runPaymentOnly(url, inputBody, adapter)
   })
-
-async function runPaidAuthenticated(
-  url: string,
-  inputBody: string,
-  adapter: WalletAdapter,
-): Promise<void> {
-  const walletAddress = getAddress(await adapter.getAddress()) as Address
-  const { signMessage, signTypedData } = adapter
-  if (!signTypedData) {
-    console.error(
-      pc.red(
-        "Error: Selected wallet provider does not support typed data signing (required for EIP-3009 auth)",
-      ),
-    )
-    process.exit(1)
-  }
-
-  const account = createExternalSignerAccount({
-    address: walletAddress,
-    signMessage: signMessage
-      ? async (message: string) => {
-          const sig = await signMessage.call(adapter, { message })
-          return sig as `0x${string}`
-        }
-      : async () => {
-          throw new Error("Wallet does not support message signing")
-        },
-    signTypedData: signTypedData
-      ? async (typedData: unknown) => {
-          const td = typedData as {
-            domain: Record<string, unknown>
-            types: Record<string, Array<{ name: string; type: string }>>
-            primaryType: string
-            message: Record<string, unknown>
-          }
-          const sig = await signTypedData.call(adapter, td)
-          return sig as `0x${string}`
-        }
-      : undefined,
-  })
-
-  console.log(pc.cyan("Sending EIP-3009-authenticated + paid request..."))
-
-  let res: globalThis.Response
-  try {
-    res = await paidAuthenticatedFetch(url, {
-      account,
-      signer: adapter,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: inputBody,
-      signal: AbortSignal.timeout(30_000),
-    })
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      console.error(pc.red("Error: Request timed out after 30s"))
-    } else {
-      console.error(pc.red("Error: paidAuthenticatedFetch failed"))
-      console.error(pc.dim(err instanceof Error ? err.message : String(err)))
-    }
-    process.exit(1)
-  }
-
-  console.log(pc.cyan(`\nResponse (${res.status}):`))
-  const responseText = await res.text()
-  console.log(responseText)
-}
 
 async function runPaymentOnly(
   url: string,

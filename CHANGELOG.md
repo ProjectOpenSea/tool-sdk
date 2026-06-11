@@ -1,5 +1,15 @@
 # @opensea/tool-sdk
 
+## 0.17.0
+
+### Minor Changes
+
+- Sync the manifest schema with the canonical ERC-8257 spec: `featuredImage` is now an optional field in the manifest Zod schema, so manifests declaring it pass validation.
+
+### Patch Changes
+
+- Remove the broken `--auth eip3009` path from the `pay` CLI command (along with its `--manifest` and `--chain` options). The flag bypassed the unified x402 flow (probe → 402 → sign X-Payment → retry) and caused 500 errors. `pay` now always uses the probe-then-sign path. Example READMEs and skill docs updated to match.
+
 ## 0.16.1
 
 ### Patch Changes

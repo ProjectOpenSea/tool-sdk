@@ -263,6 +263,7 @@ export const ToolManifestSchema = z.object({
       "endpoint must use https",
     ),
   image: z.string().url().optional(),
+  featuredImage: z.string().url().optional(),
   tags: z.array(z.string()).optional(),
   inputs: jsonSchemaField("inputs"),
   outputs: jsonSchemaField("outputs"),

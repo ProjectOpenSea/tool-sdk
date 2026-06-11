@@ -97,18 +97,17 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
     --body '{"chain":"ethereum","contractAddress":"0x79fcdef22feed20eddacbb2587640e45491b757f","tokenId":"4707"}'
 ```
 
-### Holder tier ($0.01, requires holding a CHONK) — `tool-sdk pay --auth eip3009`
+### Holder tier ($0.01, requires holding a CHONK) — `tool-sdk pay`
 
-The same `pay` command does EIP-3009 auth + x402 in one shot when you pass
-`--auth eip3009` (or point `--manifest` at a manifest that declares an
-`access` block — the SDK auto-enables EIP-3009 auth in that case). Wallet must
-hold a CHONK on Base or the onchain `predicateGate` returns `403`
-before payment.
+The `pay` command probes the endpoint, receives a 402 challenge that
+includes both payment and identity-gating requirements, signs the EIP-3009
+`transferWithAuthorization` as the `X-Payment` header, and retries.
+Wallet must hold a CHONK on Base or the onchain `predicateGate` returns
+`403` before payment.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay https://nft-appraisal-tool.vercel.app/api/holder \
-    --auth eip3009 \
     --body '{"chain":"ethereum","contractAddress":"0x79fcdef22feed20eddacbb2587640e45491b757f","tokenId":"4707"}'
 ```
 

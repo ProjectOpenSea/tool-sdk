@@ -77,18 +77,17 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
     --body '{"targetAddress":"0x..."}'
 ```
 
-### Subscriber tier (free, requires holding the subscription NFT): `tool-sdk pay --auth eip3009`
+### Subscriber tier (free, requires holding the subscription NFT): `tool-sdk pay`
 
-The same `pay` command does EIP-3009 auth when you pass `--auth eip3009`
-(or point `--manifest` at a manifest that declares an `access` block, in
-which case the SDK auto-enables EIP-3009 auth). Wallet must hold an active
-subscription on Base or the onchain `predicateGate` returns `403` before
-the handler runs.
+The `pay` command probes the endpoint, receives a 402 challenge that
+includes identity-gating requirements, signs the EIP-3009
+`transferWithAuthorization` as the `X-Payment` header, and retries.
+Wallet must hold an active subscription on Base or the onchain
+`predicateGate` returns `403` before the handler runs.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
   npx @opensea/tool-sdk pay https://wallet-personality-tool.vercel.app/api/subscriber \
-    --auth eip3009 \
     --body '{}'
 ```
 
