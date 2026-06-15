@@ -96,6 +96,7 @@ export function buildHolderManifest(opts: BuildManifestOptions) {
     description: `${APPRAISAL_DESCRIPTION} Discounted tier for CHONK holders on Base.`,
     endpoint: opts.endpoint,
     image: "https://nft-appraisal-tool.vercel.app/chonk.png",
+    featuredImage: "https://nft-appraisal-tool.vercel.app/featured.png",
     inputs: APPRAISAL_INPUTS,
     outputs: appraisalJsonSchema,
     creatorAddress: opts.creator,

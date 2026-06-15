@@ -25,6 +25,7 @@ export function buildManifest(opts: BuildManifestOptions) {
       "Returns the overlap set with holdings data for each wallet. Free for holders.",
     endpoint: opts.endpoint,
     image: "https://token-nft-overlap-tool.vercel.app/token-nft-overlap.png",
+    featuredImage: "https://token-nft-overlap-tool.vercel.app/featured.png",
     inputs: {
       type: "object",
       properties: {
