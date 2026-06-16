@@ -1,7 +1,10 @@
 import { Command } from "commander"
 import pc from "picocolors"
 import type { PaymentRequirements } from "../../lib/client/x402-payment.js"
-import { signX402Payment } from "../../lib/client/x402-payment.js"
+import {
+  signX402Payment,
+  validatePaymentRequirements,
+} from "../../lib/client/x402-payment.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -14,6 +17,7 @@ import { readInput } from "./read-input.js"
 interface PayOptions {
   body?: string
   walletProvider?: string
+  maxAmount?: string
 }
 
 export const payCommand = new Command("pay")
@@ -25,6 +29,10 @@ export const payCommand = new Command("pay")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
+  )
+  .option(
+    "--max-amount <atomic>",
+    "Maximum payment amount in atomic units the CLI will sign; the server's 402 requirements are rejected if they exceed it",
   )
   .action(async (url: string, options: PayOptions) => {
     let adapter: WalletAdapter
@@ -65,13 +73,14 @@ export const payCommand = new Command("pay")
       process.exit(1)
     }
 
-    await runPaymentOnly(url, inputBody, adapter)
+    await runPaymentOnly(url, inputBody, adapter, options.maxAmount)
   })
 
 async function runPaymentOnly(
   url: string,
   inputBody: string,
   adapter: WalletAdapter,
+  maxAmount?: string,
 ): Promise<void> {
   console.log(pc.cyan("Probing endpoint for payment requirements..."))
 
@@ -124,6 +133,17 @@ async function runPaymentOnly(
   console.log(`  Amount: ${requirements.maxAmountRequired}`)
   console.log(`  Pay To: ${requirements.payTo}`)
   console.log(`  Asset: ${requirements.asset}`)
+
+  try {
+    validatePaymentRequirements(requirements, { maxAmount })
+  } catch (err) {
+    console.error(
+      pc.red(
+        `Refusing to sign: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    )
+    process.exit(1)
+  }
 
   console.log(pc.cyan("\nSigning EIP-3009 transferWithAuthorization..."))
 

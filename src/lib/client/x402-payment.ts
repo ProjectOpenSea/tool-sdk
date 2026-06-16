@@ -233,7 +233,7 @@ export async function paidFetch(
   return paidRes
 }
 
-function validatePaymentRequirements(
+export function validatePaymentRequirements(
   reqs: PaymentRequirements,
   opts: {
     maxAmount?: string
