@@ -41,7 +41,7 @@ Supports Vercel, Cloudflare Workers, and Express templates.
 
 ### `validate [path]`
 
-Validate a tool manifest JSON file against the ERC-8257 schema.
+Validate a tool manifest JSON file against the ERC-8257 schema. The schema is open: namespaced extension fields are allowed and preserved. The command warns about any bare (un-namespaced) extension fields, which should use a reverse-DNS prefix per ERC-8257.
 
 ```bash
 npx @opensea/tool-sdk validate ./manifest.json
@@ -54,6 +54,8 @@ Compute the JCS keccak256 hash of a tool manifest (RFC 8785 canonicalization).
 ```bash
 npx @opensea/tool-sdk hash ./manifest.json
 ```
+
+The hash is taken over the full manifest as served, per ERC-8257 §2: every field is included (including namespaced extension fields), and no fields are stripped or defaulted before hashing. Verifiers reproduce it by JCS-canonicalizing the manifest and hashing that, so the SDK and any other RFC 8785 implementation agree. The command prints any bare-extension warning to stderr, so the hash itself stays on stdout and piping is unaffected.
 
 ### `export [path]`
 
@@ -447,6 +449,21 @@ if (result.success) {
 }
 ```
 
+The schema is open: namespaced extension fields are preserved, and no defaults are injected, so the validated manifest still matches what gets served and hashed.
+
+### `findBareExtensionKeys(data)`
+
+Returns the top-level fields in `data` that are neither defined by the ERC-8257 schema nor namespaced as extensions (for example `paymentHint`). These fields are committed by the manifest hash since the manifest is hashed as served, but ERC-8257 requires extension fields to be namespaced (reverse-DNS, e.g. `io.opensea.paymentHint`, or the legacy `x-` prefix) so they cannot collide with future normative fields. Returns an empty array when `data` is not a JSON object.
+
+```typescript
+import { findBareExtensionKeys } from "@opensea/tool-sdk"
+
+const bare = findBareExtensionKeys(jsonData)
+if (bare.length > 0) {
+  console.warn(`Namespace these extension fields: ${bare.join(", ")}`)
+}
+```
+
 ### `createToolHandler(config)`
 
 Creates a Web Request/Response handler for your tool.
@@ -480,7 +497,7 @@ const wellKnown = createWellKnownHandler(manifest)
 
 ### `computeManifestHash(manifest)`
 
-Computes the JCS keccak256 hash of a manifest (RFC 8785 canonicalization + keccak256).
+Computes the JCS keccak256 hash of a manifest (RFC 8785 canonicalization + keccak256). Per ERC-8257 §2 the manifest is hashed as served: pass the raw served or authored object (for example the fetched response body), with every field intact and no defaults injected. Do not pass a schema-stripped copy, or an independently computed hash will not match.
 
 ```typescript
 import { computeManifestHash } from "@opensea/tool-sdk"

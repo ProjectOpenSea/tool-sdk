@@ -507,7 +507,9 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
     }
 
     const { computeManifestHash } = await import("../../lib/onchain/hash.js")
-    const hash = computeManifestHash(manifest)
+    // Hash the manifest as served (ERC-8257 §2): the full fetched document,
+    // not the schema-stripped copy.
+    const hash = computeManifestHash(data as object)
 
     console.log(pc.green("\n  Deployment verified successfully!"))
     console.log(`  Name: ${manifest.name}`)

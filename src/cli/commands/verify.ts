@@ -64,7 +64,9 @@ export const verifyCommand = new Command("verify")
       process.exit(1)
     }
 
-    const hash = computeManifestHash(manifest)
+    // Hash the manifest as served (ERC-8257 §2): the full fetched document,
+    // not the schema-stripped copy.
+    const hash = computeManifestHash(data as object)
 
     console.log(pc.green("Manifest verified successfully"))
     console.log(`  Name: ${manifest.name}`)

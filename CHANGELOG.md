@@ -1,5 +1,20 @@
 # @opensea/tool-sdk
 
+## 0.18.0
+
+### Minor Changes
+
+- ef12e56: Hash the manifest as served, per ERC-8257 §2. The manifest hash is now computed over the full JSON document (including any namespaced extension fields) with no schema stripping and no injected defaults, so it agrees with any RFC 8785 implementation and with the OpenSea backend. Previously the CLI validated first, which stripped unknown fields and injected a default `type`, producing a hash that could differ from the served bytes.
+
+  What changed:
+
+  - `computeManifestHash` now accepts the raw served or authored object and hashes it as-is. Callers must pass the full document, not a schema-stripped copy.
+  - The manifest schema is now open: namespaced extension fields (reverse-DNS, e.g. `io.opensea.paymentHint`, or the legacy `x-` prefix) are preserved through validation. The `type` field is no longer defaulted, so it is hashed only when present.
+  - `validate`, `hash`, and `register` warn about bare un-namespaced extension fields, which risk colliding with future normative fields.
+  - New `findBareExtensionKeys(data)` export reports top-level fields that are neither defined by the schema nor namespaced. This replaces the unreleased `findUnknownManifestKeys`.
+
+  Tools whose served manifest contains extra fields or omits `type` will now produce a different (correct) hash than prior `tool-sdk` versions. Re-register or update such tools so their onchain hash matches the served document.
+
 ## 0.17.1
 
 ### Patch Changes

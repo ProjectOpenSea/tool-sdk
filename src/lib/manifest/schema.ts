@@ -246,12 +246,14 @@ export const VerifiabilitySchema = z
     }
   })
 
-export const ToolManifestSchema = z.object({
-  type: z
-    .string()
-    .default(
-      "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
-    ),
+// Top-level uses looseObject so namespaced extension fields (ERC-8257
+// "Unknown Fields and Extensions") survive validation and are preserved in
+// the bytes that get served and hashed. The manifest hash is keccak256 over
+// the JCS form of the manifest as served, so validation MUST NOT strip
+// unknown fields or inject defaults before hashing (hence no `.default()`
+// on `type`; see ERC-8257 §2 Canonical Manifest Bytes).
+export const ToolManifestSchema = z.looseObject({
+  type: z.string().optional(),
   name: z.string().min(1).max(128),
   description: z.string().min(1).max(500),
   version: z.string().optional(),

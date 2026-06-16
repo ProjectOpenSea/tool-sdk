@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { ManifestDefinition } from "../lib/manifest/index.js"
 import {
   defineManifest,
+  findBareExtensionKeys,
   resolveManifest,
   validateManifest,
 } from "../lib/manifest/index.js"
@@ -1130,6 +1131,101 @@ describe("validateManifest — JSON Schema structure", () => {
     expect(
       messages.some(m => m.includes("exceeds maximum nesting depth")),
     ).toBe(true)
+  })
+})
+
+describe("validateManifest — extension fields", () => {
+  it("preserves namespaced extension fields (open schema)", () => {
+    const result = validateManifest({
+      ...validManifest,
+      "io.opensea.paymentHint": { tier: "gold" },
+    })
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect(
+      (result.data as Record<string, unknown>)["io.opensea.paymentHint"],
+    ).toEqual({ tier: "gold" })
+  })
+
+  it("does not inject a type default (hashed as served)", () => {
+    const { type, ...noType } = validManifest
+    const result = validateManifest(noType)
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error("expected success")
+    expect("type" in result.data).toBe(false)
+  })
+})
+
+describe("findBareExtensionKeys", () => {
+  it("returns no keys for a clean valid manifest", () => {
+    expect(findBareExtensionKeys(validManifest)).toEqual([])
+  })
+
+  it("does not flag a missing type field", () => {
+    const { type, ...noType } = validManifest
+    expect(findBareExtensionKeys(noType)).toEqual([])
+  })
+
+  it("flags a single bare (un-namespaced) extension key", () => {
+    expect(
+      findBareExtensionKeys({ ...validManifest, paymentHint: "gold" }),
+    ).toEqual(["paymentHint"])
+  })
+
+  it("flags multiple bare extension keys", () => {
+    const keys = findBareExtensionKeys({
+      ...validManifest,
+      foo: 1,
+      bar: { nested: true },
+    })
+    expect(keys.sort()).toEqual(["bar", "foo"])
+  })
+
+  it("does not flag reverse-DNS namespaced extension keys", () => {
+    expect(
+      findBareExtensionKeys({
+        ...validManifest,
+        "io.opensea.paymentHint": { tier: "gold" },
+      }),
+    ).toEqual([])
+  })
+
+  it("does not flag legacy x- prefixed extension keys", () => {
+    expect(
+      findBareExtensionKeys({
+        ...validManifest,
+        "x-opensea-paymentHint": "gold",
+      }),
+    ).toEqual([])
+  })
+
+  it("only reports the bare keys when bare and namespaced are mixed", () => {
+    const keys = findBareExtensionKeys({
+      ...validManifest,
+      "io.opensea.ok": 1,
+      bareKey: 2,
+    })
+    expect(keys).toEqual(["bareKey"])
+  })
+
+  it("does not treat nested non-spec keys as bare top-level extensions", () => {
+    // Nested keys inside spec objects are stripped by validation, not
+    // extension fields; only top-level names are linted.
+    expect(
+      findBareExtensionKeys({
+        ...validManifest,
+        verifiability: {
+          tier: "self-attested",
+          execution: "standard",
+        },
+      }),
+    ).toEqual([])
+  })
+
+  it("returns no keys when data is not a JSON object", () => {
+    expect(findBareExtensionKeys(null)).toEqual([])
+    expect(findBareExtensionKeys("nope")).toEqual([])
+    expect(findBareExtensionKeys([1, 2, 3])).toEqual([])
   })
 })
 

@@ -93,7 +93,9 @@ export const updateMetadataCommand = new Command("update-metadata")
     }
 
     const manifest = result.data
-    const hash = computeManifestHash(manifest)
+    // Hash the manifest as served (ERC-8257 §2): the full fetched document,
+    // not the schema-stripped copy.
+    const hash = computeManifestHash(data as object)
     const chain = getChain(options.network)
 
     console.log(pc.cyan("\nUpdate summary:"))
@@ -154,7 +156,8 @@ export const updateMetadataCommand = new Command("update-metadata")
       const txHash = await registry.updateToolMetadata(
         toolId,
         options.metadata,
-        manifest,
+        // Hash the served document as-is (ERC-8257 §2), not the stripped copy.
+        data as object,
       )
       console.log(pc.green("\nMetadata updated!"))
       console.log(`  TX Hash: ${txHash}`)

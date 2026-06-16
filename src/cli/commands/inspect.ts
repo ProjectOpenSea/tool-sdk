@@ -306,7 +306,10 @@ export const inspectCommand = new Command("inspect")
       )
     }
 
-    const computedHash = computeManifestHash(manifest)
+    // Cross-check against the onchain hash, which commits the manifest as
+    // served (ERC-8257 §2). Hash the full fetched document, not the stripped
+    // copy.
+    const computedHash = computeManifestHash(data as object)
     console.log(pc.cyan("\nHash cross-check:"))
     console.log(`  Onchain:   ${config.manifestHash}`)
     console.log(`  Computed:  ${computedHash}`)

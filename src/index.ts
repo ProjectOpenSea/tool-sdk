@@ -32,6 +32,7 @@ export { createToolHandler } from "./lib/handler/index.js"
 export type { EnvResolver, ManifestDefinition } from "./lib/manifest/index.js"
 export {
   defineManifest,
+  findBareExtensionKeys,
   resolveManifest,
   validateManifest,
 } from "./lib/manifest/index.js"

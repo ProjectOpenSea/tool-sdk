@@ -12,7 +12,6 @@ import {
   zeroAddress,
 } from "viem"
 import { base } from "viem/chains"
-import type { ToolManifest } from "../manifest/types.js"
 import { computeManifestHash } from "./hash.js"
 import { IToolRegistryABI, ToolRegisteredEvent } from "./abis.js"
 import { TOOL_REGISTRY, deploymentAddress } from "./chains.js"
@@ -134,7 +133,9 @@ export class ToolRegistryClient {
 
   async registerTool(params: {
     metadataURI: string
-    manifest: ToolManifest
+    // The manifest as served at `metadataURI`. Hashed as-is (JCS + keccak256)
+    // per ERC-8257 §2; pass the raw served document, not a stripped copy.
+    manifest: object
     accessPredicate?: Address
   }): Promise<{ toolId: bigint; txHash: Hash }> {
     if (!this.walletClient) {
@@ -180,7 +181,8 @@ export class ToolRegistryClient {
   async updateToolMetadata(
     toolId: bigint,
     newURI: string,
-    manifest: ToolManifest,
+    // The manifest as served at `newURI`. Hashed as-is per ERC-8257 §2.
+    manifest: object,
   ): Promise<Hash> {
     if (!this.walletClient) {
       throw new Error(

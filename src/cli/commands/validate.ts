@@ -2,6 +2,7 @@ import { Command } from "commander"
 import pc from "picocolors"
 import { validateManifest } from "../../lib/manifest/index.js"
 import { loadManifest } from "./load-manifest.js"
+import { warnBareExtensionKeys } from "./warn-bare-extensions.js"
 
 export const validateCommand = new Command("validate")
   .description("Validate a tool manifest JSON or TypeScript file")
@@ -15,6 +16,7 @@ export const validateCommand = new Command("validate")
       console.log(`  Name: ${result.data.name}`)
       console.log(`  Endpoint: ${result.data.endpoint}`)
       console.log(`  Creator: ${result.data.creatorAddress}`)
+      warnBareExtensionKeys(data)
     } else {
       console.error(pc.red("Manifest validation failed:"))
       for (const issue of result.error.issues) {

@@ -65,3 +65,34 @@ export function validateManifest(data: unknown): ValidateResult {
   }
   return { success: false, error: result.error }
 }
+
+/** Top-level field names defined by the ERC-8257 manifest schema. */
+const SPEC_TOP_LEVEL_FIELDS = new Set(Object.keys(ToolManifestSchema.shape))
+
+/**
+ * ERC-8257 requires extension fields to be namespaced: the RECOMMENDED form
+ * is a reverse-DNS prefix (e.g. `io.opensea.paymentHint`), and the legacy
+ * `x-` prefix is tolerated for backwards-compatibility.
+ */
+function isNamespacedExtensionKey(key: string): boolean {
+  return key.includes(".") || /^x-/i.test(key)
+}
+
+/**
+ * Returns top-level fields that are neither defined by the ERC-8257 schema nor
+ * namespaced as extensions. These are committed by the manifest hash (the
+ * manifest is hashed as served), but per ERC-8257 they SHOULD NOT occupy bare
+ * top-level names, since that risks colliding with future normative fields.
+ * Use this to warn authors to namespace their extension keys (reverse-DNS, or
+ * the legacy `x-` prefix).
+ *
+ * Returns an empty array when `data` is not a JSON object.
+ */
+export function findBareExtensionKeys(data: unknown): string[] {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return []
+  }
+  return Object.keys(data).filter(
+    key => !SPEC_TOP_LEVEL_FIELDS.has(key) && !isNamespacedExtensionKey(key),
+  )
+}

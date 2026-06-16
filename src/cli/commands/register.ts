@@ -35,6 +35,7 @@ import {
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain } from "./get-chain.js"
+import { warnBareExtensionKeys } from "./warn-bare-extensions.js"
 
 interface RegisterOptions {
   metadata: string
@@ -205,8 +206,12 @@ export const registerCommand = new Command("register")
       process.exit(1)
     }
 
+    warnBareExtensionKeys(data)
+
     const manifest = result.data
-    const hash = computeManifestHash(manifest)
+    // Hash the manifest as served (ERC-8257 §2): the full fetched document,
+    // not the schema-stripped copy.
+    const hash = computeManifestHash(data as object)
     const chain = getChain(options.network)
 
     const registryAddr = deploymentAddress(TOOL_REGISTRY, chain.id)
@@ -430,7 +435,8 @@ export const registerCommand = new Command("register")
     try {
       regResult = await registry.registerTool({
         metadataURI: options.metadata,
-        manifest,
+        // Hash the served document as-is (ERC-8257 §2), not the stripped copy.
+        manifest: data as object,
         accessPredicate,
       })
     } catch (err) {
