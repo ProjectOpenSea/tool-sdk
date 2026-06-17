@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@opensea/tool-sdk':
-        specifier: ^0.20.0
-        version: 0.20.0(typescript@6.0.2)
+        specifier: ^0.21.0
+        version: 0.21.0(typescript@6.0.2)
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -347,8 +347,8 @@ packages:
     resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
     engines: {node: '>= 20.19.0'}
 
-  '@opensea/tool-sdk@0.20.0':
-    resolution: {integrity: sha512-wWdxwaHALCW/cErnIPQ5Mqw/Y8r3QIqCA1fnpIoXQ8nzgOj9xPeZBx+ymuheRPX+/vcDzuGe3AJt2dx+9sMwMw==}
+  '@opensea/tool-sdk@0.21.0':
+    resolution: {integrity: sha512-i5jWyYYUsaordVAX/eutENqAIUu+P/Haf55gJFm60azgAtlqDP8Z7ohtEk4Ajyb0S1uYT6woDxIXcQlL2LZ9PA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -976,7 +976,7 @@ snapshots:
 
   '@noble/hashes@2.0.1': {}
 
-  '@opensea/tool-sdk@0.20.0(typescript@6.0.2)':
+  '@opensea/tool-sdk@0.21.0(typescript@6.0.2)':
     dependencies:
       '@clack/prompts': 0.10.1
       '@opensea/wallet-adapters': 0.3.1(viem@2.31.3(typescript@6.0.2)(zod@4.3.6))

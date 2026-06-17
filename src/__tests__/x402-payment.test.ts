@@ -6,7 +6,6 @@ import {
   paidFetch,
   signX402Payment,
   X402PaymentError,
-  x402PaymentHeaderName,
 } from "../lib/client/x402-payment.js"
 
 const signer = privateKeyToAccount(generatePrivateKey())
@@ -151,11 +150,6 @@ describe("signX402Payment", () => {
     expect(parsed.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
     // The signed authorization value comes from paymentRequirements.
     expect(parsed.payload.authorization.value).toBe("10000")
-  })
-
-  it("maps version to the correct payment header name", () => {
-    expect(x402PaymentHeaderName(1)).toBe("X-PAYMENT")
-    expect(x402PaymentHeaderName(2)).toBe("PAYMENT-SIGNATURE")
   })
 
   it("throws when WalletAdapter lacks signTypedData", async () => {

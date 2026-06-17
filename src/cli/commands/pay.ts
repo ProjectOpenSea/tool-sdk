@@ -5,11 +5,14 @@ import {
   resolveNetwork,
 } from "../../lib/client/x402-challenge.js"
 import {
+  createX402Client,
   extractSettlementTxHash,
-  signX402Payment,
   validatePaymentRequirements,
-  x402PaymentHeaderName,
 } from "../../lib/client/x402-payment.js"
+import {
+  ExactEip3009Scheme,
+  toX402PaymentRequired,
+} from "../../lib/client/x402-scheme.js"
 import { reportCallerX402Usage } from "../../lib/usage/caller-reporter.js"
 import {
   createWalletForProvider,
@@ -278,15 +281,21 @@ async function runPaymentOnly(
 
   console.log(pc.cyan("\nSigning EIP-3009 transferWithAuthorization..."))
 
-  const xPayment = await signX402Payment({
-    signer: adapter,
-    paymentRequirements: requirements,
+  const scheme = new ExactEip3009Scheme(adapter)
+  const client = createX402Client(scheme, requirements.network, x402Version)
+  const { x402HTTPClient } = await import("@x402/core/client")
+  const httpClient = new x402HTTPClient(client)
+
+  const paymentRequired = toX402PaymentRequired({
+    requirements,
     x402Version,
-    accepted: raw,
+    raw,
     resource,
   })
+  const paymentPayload = await client.createPaymentPayload(paymentRequired)
+  const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload)
 
-  const headerName = x402PaymentHeaderName(x402Version)
+  const headerName = Object.keys(paymentHeaders)[0]
   console.log(pc.cyan(`Replaying request with ${headerName} header...`))
 
   let paidRes: globalThis.Response
@@ -295,7 +304,7 @@ async function runPaymentOnly(
       ...init,
       headers: {
         ...(init.headers as Record<string, string>),
-        [headerName]: xPayment,
+        ...paymentHeaders,
       },
       signal: AbortSignal.timeout(30_000),
     })

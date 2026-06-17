@@ -54,6 +54,10 @@ const vercelHandler = toVercelHandler(
   }),
 )
 
+// The LLM appraisal + OpenSea data fetch can run well past Vercel's 10s Hobby
+// default; allow up to the Hobby maximum so slow calls don't 502.
+export const maxDuration = 60
+
 export default function (req: VercelRequest, res: VercelResponse) {
   return vercelHandler(req, res)
 }

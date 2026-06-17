@@ -1,15 +1,16 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
+import { x402HTTPClient } from "@x402/core/client"
 import type { Account } from "viem"
 import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
 import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
+  createX402Client,
   extractSettlementTxHash,
   type PaymentRequirements,
   rejectServerErrorAfterPayment,
-  signX402Payment,
-  x402PaymentHeaderName,
 } from "./x402-payment.js"
+import { ExactEip3009Scheme, toX402PaymentRequired } from "./x402-scheme.js"
 
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
   account: Account
@@ -94,19 +95,25 @@ export async function paidAuthenticatedFetch(
       allowedAssets,
     })
 
-    const xPayment = await signX402Payment({
-      signer: paymentSigner,
-      paymentRequirements: requirements,
+    const scheme = new ExactEip3009Scheme(paymentSigner)
+    const client = createX402Client(scheme, requirements.network, x402Version)
+    const httpClient = new x402HTTPClient(client)
+
+    const paymentRequired = toX402PaymentRequired({
+      requirements,
       x402Version,
-      accepted: raw,
+      raw,
       resource,
     })
+    const paymentPayload = await client.createPaymentPayload(paymentRequired)
+    const paymentHeaders =
+      httpClient.encodePaymentSignatureHeader(paymentPayload)
 
     res = await fetch(url, {
       ...fetchOptions,
       headers: {
         ...baseHeaders,
-        [x402PaymentHeaderName(x402Version)]: xPayment,
+        ...paymentHeaders,
       },
     })
 

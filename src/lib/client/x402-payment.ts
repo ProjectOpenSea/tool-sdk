@@ -1,6 +1,6 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
+import { x402Client, x402HTTPClient } from "@x402/core/client"
 import type { Account } from "viem"
-import { toHex } from "viem"
 import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
 import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import {
@@ -8,6 +8,11 @@ import {
   type RawRequirements,
   resolveNetwork,
 } from "./x402-challenge.js"
+import {
+  ExactEip3009Scheme,
+  signEip3009Authorization,
+  toX402PaymentRequired,
+} from "./x402-scheme.js"
 
 const REJECTED_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000000",
@@ -62,15 +67,6 @@ export function rejectServerErrorAfterPayment(res: Response): void {
 }
 
 /**
- * The HTTP header that carries the signed payment for a given x402 version.
- * v2 uses `PAYMENT-SIGNATURE`; v1 uses `X-PAYMENT`. Sending the wrong header
- * makes a v2 server silently ignore the payment and re-issue its 402.
- */
-export function x402PaymentHeaderName(x402Version: number): string {
-  return x402Version >= 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"
-}
-
-/**
  * The settlement-response headers a server may return, in priority order.
  * v2 uses `PAYMENT-RESPONSE`; v1 used `X-PAYMENT-RESPONSE`.
  */
@@ -95,8 +91,8 @@ export interface PaymentRequirements {
 
 /**
  * Sign an EIP-3009 `TransferWithAuthorization` for a USDC x402 payment.
- * Returns a base64-encoded JSON payment payload. Encode it into the header
- * named by {@link x402PaymentHeaderName} for the matching version.
+ * Returns a base64-encoded JSON payment payload. Encode it into
+ * `PAYMENT-SIGNATURE` (v2) or `X-PAYMENT` (v1).
  *
  * The payload envelope differs by version:
  *  - **v1** — `{ x402Version, scheme, network, payload }`
@@ -124,92 +120,13 @@ export async function signX402Payment(params: {
 }): Promise<string> {
   const { signer, paymentRequirements: reqs } = params
 
-  const resolved = resolveNetwork(reqs.network)
-  if (resolved === undefined) {
-    throw new Error(`Unsupported network: ${reqs.network}`)
-  }
-  const { chainId } = resolved
-
-  const isAdapter = "capabilities" in signer
-  const address = isAdapter
-    ? await (signer as WalletAdapter).getAddress()
-    : (signer as Account).address
-
-  const nonceBytes = new Uint8Array(32)
-  crypto.getRandomValues(nonceBytes)
-  const nonce = toHex(nonceBytes)
-
-  const validAfter = "0"
-  const validBefore = String(Math.floor(Date.now() / 1000) + 600)
-
-  const authorization = {
-    from: address as `0x${string}`,
-    to: reqs.payTo as `0x${string}`,
-    value: reqs.maxAmountRequired,
-    validAfter,
-    validBefore,
-    nonce,
-  } as const
-
-  const domain = {
-    name: reqs.extra?.name ?? "USD Coin",
-    version: reqs.extra?.version ?? "2",
-    chainId,
-    verifyingContract: reqs.asset as `0x${string}`,
-  }
-  const types = {
-    TransferWithAuthorization: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-      { name: "validAfter", type: "uint256" },
-      { name: "validBefore", type: "uint256" },
-      { name: "nonce", type: "bytes32" },
-    ],
-  }
-
-  let signature: string
-  if (isAdapter) {
-    const adapter = signer as WalletAdapter
-    if (!adapter.capabilities.signTypedData || !adapter.signTypedData) {
-      throw new Error(
-        `Wallet provider "${adapter.name}" does not support signTypedData`,
-      )
-    }
-    signature = await adapter.signTypedData({
-      domain,
-      types,
-      primaryType: "TransferWithAuthorization",
-      message: {
-        from: authorization.from,
-        to: authorization.to,
-        value: authorization.value,
-        validAfter: authorization.validAfter,
-        validBefore: authorization.validBefore,
-        nonce: authorization.nonce,
-      },
-    })
-  } else {
-    const account = signer as Account
-    if (!account.signTypedData) {
-      throw new Error(
-        "account.signTypedData is required — use a Local Account (e.g. privateKeyToAccount)",
-      )
-    }
-    signature = await account.signTypedData({
-      domain,
-      types,
-      primaryType: "TransferWithAuthorization" as const,
-      message: {
-        from: authorization.from,
-        to: authorization.to,
-        value: BigInt(authorization.value),
-        validAfter: BigInt(authorization.validAfter),
-        validBefore: BigInt(authorization.validBefore),
-        nonce: authorization.nonce,
-      },
-    })
-  }
+  const { signature, authorization } = await signEip3009Authorization(signer, {
+    network: reqs.network,
+    payTo: reqs.payTo,
+    asset: reqs.asset,
+    maxAmountRequired: reqs.maxAmountRequired,
+    extra: reqs.extra as Record<string, unknown> | undefined,
+  })
 
   const x402Version = params.x402Version ?? 1
   const payload = { signature, authorization }
@@ -236,8 +153,6 @@ export async function signX402Payment(params: {
   const paymentPayload = {
     x402Version,
     scheme: reqs.scheme,
-    // Echo the network exactly as advertised (short name or CAIP-2) so the
-    // facilitator can match the payment to the challenge it issued.
     network: reqs.network,
     payload,
   }
@@ -325,19 +240,24 @@ export async function paidFetch(
     allowedAssets,
   })
 
-  const xPayment = await signX402Payment({
-    signer,
-    paymentRequirements: requirements,
+  const scheme = new ExactEip3009Scheme(signer)
+  const client = createX402Client(scheme, requirements.network, x402Version)
+  const httpClient = new x402HTTPClient(client)
+
+  const paymentRequired = toX402PaymentRequired({
+    requirements,
     x402Version,
-    accepted: raw,
+    raw,
     resource,
   })
+  const paymentPayload = await client.createPaymentPayload(paymentRequired)
+  const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload)
 
   const paidRes = await fetch(url, {
     ...fetchOptions,
     headers: {
       ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),
-      [x402PaymentHeaderName(x402Version)]: xPayment,
+      ...paymentHeaders,
     },
   })
 
@@ -480,4 +400,22 @@ export function validatePaymentRequirements(
       )
     }
   }
+}
+
+/**
+ * Create an x402Client with an {@link ExactEip3009Scheme} registered for the
+ * given network and protocol version.
+ */
+export function createX402Client(
+  scheme: ExactEip3009Scheme,
+  network: string,
+  x402Version: number,
+): x402Client {
+  const client = new x402Client()
+  if (x402Version >= 2) {
+    client.register(network as `${string}:${string}`, scheme)
+  } else {
+    client.registerV1(network, scheme)
+  }
+  return client
 }

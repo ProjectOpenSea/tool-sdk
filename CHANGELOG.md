@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.22.0
+
+### Minor Changes
+
+- c80dc52: Migrate `paidFetch`, `paidAuthenticatedFetch`, and the `pay` CLI to use `@x402/core` client infrastructure (`x402Client`, `x402HTTPClient`, `SchemeNetworkClient`) for payment payload creation and header encoding. Adds `ExactEip3009Scheme` adapter wrapping tool-sdk's existing EIP-3009 signing into the standard x402 scheme interface. No public API changes.
+
 ## 0.21.0
 
 ### Minor Changes
