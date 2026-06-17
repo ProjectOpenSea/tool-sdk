@@ -1,5 +1,19 @@
 # @opensea/tool-sdk
 
+## 0.19.0
+
+### Minor Changes
+
+- b4f5114: Support x402 v2 and GET endpoints in `pay`. Bazaar-discovered x402 tools are frequently GET endpoints that speak x402 v2, where the SDK previously could not transact at all: `pay` only issued POST, only read the v1 body `accepts` challenge, and signed the v1 `X-PAYMENT` envelope.
+
+  What changed:
+
+  - New `x402-challenge.ts`: `resolveNetwork()` accepts `base`, `eip155:8453`, and `8453`; `parseX402Challenge()` reads the `PAYMENT-REQUIRED` header or the body and normalizes the v2 `amount` field to `maxAmountRequired`.
+  - `signX402Payment` emits the version-correct envelope (v1 `{scheme,network,payload}` vs v2 `{payload,resource,accepted}`) and echoes the challenge's `x402Version`. New `x402PaymentHeaderName()` (`X-PAYMENT` for v1, `PAYMENT-SIGNATURE` for v2) and `X402_SETTLEMENT_HEADERS` exports.
+  - `paidFetch` routes through the shared parser and the version-correct header.
+  - `pay` command: `--method` flag (defaults to POST) with auto-fallback to GET on 404/405, query-string encoding for bodyless verbs, version-correct payment header, on-chain settlement readout, `RPC_URL` defaulting to a public Base endpoint, and clearer wallet-config errors.
+  - `smoke` and `paid-authenticated-fetch` resolve networks so CAIP-2 networks still get USDC validation.
+
 ## 0.18.0
 
 ### Minor Changes

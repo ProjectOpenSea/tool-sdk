@@ -2,29 +2,42 @@ import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
 import { toHex } from "viem"
 import {
-  USDC_BASE_ADDRESS,
-  USDC_BASE_SEPOLIA_ADDRESS,
-} from "../middleware/x402-facilitators.js"
-import type { X402Network } from "../middleware/x402-facilitators.js"
-
-const NETWORK_CHAIN_IDS: Record<X402Network, number> = {
-  base: 8453,
-  "base-sepolia": 84532,
-}
-
-const NETWORK_USDC: Record<X402Network, string> = {
-  base: USDC_BASE_ADDRESS,
-  "base-sepolia": USDC_BASE_SEPOLIA_ADDRESS,
-}
+  parseX402Challenge,
+  type RawRequirements,
+  resolveNetwork,
+} from "./x402-challenge.js"
 
 const REJECTED_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000000",
   "0x000000000000000000000000000000000000dead",
 ])
 
+/**
+ * The HTTP header that carries the signed payment for a given x402 version.
+ * v2 uses `PAYMENT-SIGNATURE`; v1 uses `X-PAYMENT`. Sending the wrong header
+ * makes a v2 server silently ignore the payment and re-issue its 402.
+ */
+export function x402PaymentHeaderName(x402Version: number): string {
+  return x402Version >= 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"
+}
+
+/**
+ * The settlement-response headers a server may return, in priority order.
+ * v2 uses `PAYMENT-RESPONSE`; v1 used `X-PAYMENT-RESPONSE`.
+ */
+export const X402_SETTLEMENT_HEADERS = [
+  "PAYMENT-RESPONSE",
+  "X-PAYMENT-RESPONSE",
+] as const
+
 export interface PaymentRequirements {
   scheme: string
-  network: X402Network
+  /**
+   * Network identifier. Accepts both the short names this SDK's middleware
+   * emits (`base`, `base-sepolia`) and the CAIP-2 forms the broader x402
+   * ecosystem uses (`eip155:8453`). Resolved via {@link resolveNetwork}.
+   */
+  network: string
   maxAmountRequired: string
   payTo: string
   asset: string
@@ -33,19 +46,40 @@ export interface PaymentRequirements {
 
 /**
  * Sign an EIP-3009 `TransferWithAuthorization` for a USDC x402 payment.
- * Returns a base64-encoded JSON payment payload suitable for the `X-Payment`
- * header.
+ * Returns a base64-encoded JSON payment payload. Encode it into the header
+ * named by {@link x402PaymentHeaderName} for the matching version.
+ *
+ * The payload envelope differs by version:
+ *  - **v1** — `{ x402Version, scheme, network, payload }`
+ *  - **v2** — `{ x402Version, payload, resource, accepted }`, where `accepted`
+ *    echoes the server's `accepts[0]` verbatim. Pass `accepted`/`resource`
+ *    from the parsed challenge so the facilitator can match the payment.
  */
 export async function signX402Payment(params: {
   signer: WalletAdapter | Account
   paymentRequirements: PaymentRequirements
+  /**
+   * x402 protocol version to echo in the payment payload. Defaults to 1.
+   * Pass the version advertised in the server's 402 challenge so the payload
+   * matches what the facilitator expects.
+   */
+  x402Version?: number
+  /**
+   * The server's verbatim `accepts[0]` requirement, echoed in the v2 payload's
+   * `accepted` field. Defaults to a requirement reconstructed from
+   * `paymentRequirements` (v2 only).
+   */
+  accepted?: RawRequirements
+  /** The server's `resource` descriptor, echoed in the v2 payload. */
+  resource?: unknown
 }): Promise<string> {
   const { signer, paymentRequirements: reqs } = params
 
-  const chainId = NETWORK_CHAIN_IDS[reqs.network]
-  if (chainId === undefined) {
+  const resolved = resolveNetwork(reqs.network)
+  if (resolved === undefined) {
     throw new Error(`Unsupported network: ${reqs.network}`)
   }
+  const { chainId } = resolved
 
   const isAdapter = "capabilities" in signer
   const address = isAdapter
@@ -128,11 +162,35 @@ export async function signX402Payment(params: {
     })
   }
 
+  const x402Version = params.x402Version ?? 1
+  const payload = { signature, authorization }
+
+  if (x402Version >= 2) {
+    const accepted: RawRequirements = params.accepted ?? {
+      scheme: reqs.scheme,
+      network: reqs.network,
+      amount: reqs.maxAmountRequired,
+      payTo: reqs.payTo,
+      asset: reqs.asset,
+      extra: reqs.extra,
+    }
+    return btoa(
+      JSON.stringify({
+        x402Version,
+        payload,
+        resource: params.resource,
+        accepted,
+      }),
+    )
+  }
+
   const paymentPayload = {
-    x402Version: 1,
+    x402Version,
     scheme: reqs.scheme,
+    // Echo the network exactly as advertised (short name or CAIP-2) so the
+    // facilitator can match the payment to the challenge it issued.
     network: reqs.network,
-    payload: { signature, authorization },
+    payload,
   }
 
   return btoa(JSON.stringify(paymentPayload))
@@ -200,19 +258,11 @@ export async function paidFetch(
     return probeRes
   }
 
-  let body: { accepts?: PaymentRequirements[] }
-  try {
-    body = await probeRes.json()
-  } catch {
-    throw new Error("x402: server returned 402 but body is not valid JSON")
+  const parsed = await parseX402Challenge(probeRes)
+  if (!parsed.ok) {
+    throw new Error(parsed.reason)
   }
-
-  const requirements = body.accepts?.[0]
-  if (!requirements) {
-    throw new Error(
-      "x402: server returned 402 but body.accepts is missing or empty",
-    )
-  }
+  const { requirements, x402Version, raw, resource } = parsed
 
   validatePaymentRequirements(requirements, {
     maxAmount,
@@ -220,20 +270,33 @@ export async function paidFetch(
     allowedAssets,
   })
 
-  const xPayment = await signX402Payment({ signer, paymentRequirements: requirements })
+  const xPayment = await signX402Payment({
+    signer,
+    paymentRequirements: requirements,
+    x402Version,
+    accepted: raw,
+    resource,
+  })
 
   const paidRes = await fetch(url, {
     ...fetchOptions,
     headers: {
       ...Object.fromEntries(new Headers(fetchOptions.headers).entries()),
-      "X-Payment": xPayment,
+      [x402PaymentHeaderName(x402Version)]: xPayment,
     },
   })
 
   return paidRes
 }
 
-function validatePaymentRequirements(
+/**
+ * Validate a server's payment requirements before signing: reject burn/zero
+ * recipients, enforce optional recipient/asset allowlists, cap the amount via
+ * `maxAmount`, and (by default) require the asset to be the known USDC contract
+ * for the network. Throws on any violation. Exported so the `pay` CLI applies
+ * the same guardrails as `paidFetch`.
+ */
+export function validatePaymentRequirements(
   reqs: PaymentRequirements,
   opts: {
     maxAmount?: string
@@ -275,7 +338,7 @@ function validatePaymentRequirements(
       )
     }
   } else {
-    const expectedUsdc = NETWORK_USDC[reqs.network]
+    const expectedUsdc = resolveNetwork(reqs.network)?.usdc
     if (expectedUsdc && assetLower !== expectedUsdc.toLowerCase()) {
       throw new Error(
         `x402: asset ${reqs.asset} does not match expected USDC address for ${reqs.network} (${expectedUsdc})`,

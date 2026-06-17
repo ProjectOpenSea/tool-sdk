@@ -5,6 +5,7 @@ import {
   type PaymentRequirements,
   paidFetch,
   signX402Payment,
+  x402PaymentHeaderName,
 } from "../lib/client/x402-payment.js"
 
 const signer = privateKeyToAccount(generatePrivateKey())
@@ -120,6 +121,40 @@ describe("signX402Payment", () => {
       "0xAbCdEf1234567890abcdef1234567890AbCdEf12",
     )
     expect(parsed.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it("builds a v2 envelope with accepted/resource and no top-level scheme", async () => {
+    const accepted = {
+      scheme: "exact",
+      network: "eip155:8453",
+      amount: "10000",
+      payTo: baseRequirements.payTo,
+      asset: baseRequirements.asset,
+      maxTimeoutSeconds: 300,
+      extra: { name: "USD Coin", version: "2" },
+    }
+    const result = await signX402Payment({
+      signer,
+      paymentRequirements: { ...baseRequirements, network: "eip155:8453" },
+      x402Version: 2,
+      accepted,
+      resource: { url: "https://x.example/api", mimeType: "application/json" },
+    })
+    const parsed = JSON.parse(atob(result))
+
+    expect(parsed.x402Version).toBe(2)
+    expect(parsed.scheme).toBeUndefined()
+    expect(parsed.network).toBeUndefined()
+    expect(parsed.accepted).toEqual(accepted)
+    expect(parsed.resource.url).toBe("https://x.example/api")
+    expect(parsed.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+    // The signed authorization value comes from paymentRequirements.
+    expect(parsed.payload.authorization.value).toBe("10000")
+  })
+
+  it("maps version to the correct payment header name", () => {
+    expect(x402PaymentHeaderName(1)).toBe("X-PAYMENT")
+    expect(x402PaymentHeaderName(2)).toBe("PAYMENT-SIGNATURE")
   })
 
   it("throws when WalletAdapter lacks signTypedData", async () => {

@@ -119,6 +119,61 @@ describe("paidAuthenticatedFetch", () => {
     expect(secondHeaders.get("X-Payment")).toBeTruthy()
   })
 
+  it("handles a v2 header challenge with PAYMENT-SIGNATURE", async () => {
+    const challenge = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:8453",
+          amount: "6000",
+          payTo: baseRequirements.payTo,
+          asset: baseRequirements.asset,
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
+    }
+    const header = Buffer.from(JSON.stringify(challenge)).toString("base64")
+    const capturedInits: RequestInit[] = []
+    let callCount = 0
+
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedInits.push(init ?? {})
+      callCount++
+      if (callCount === 1) {
+        return new Response("{}", {
+          status: 402,
+          headers: { "payment-required": header },
+        })
+      }
+      return new Response(JSON.stringify({ result: "paid" }), { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    const res = await paidAuthenticatedFetch(
+      "https://my-tool.vercel.app/api/invoke",
+      { account, method: "POST", body: JSON.stringify({ query: "test" }) },
+    )
+
+    expect(res.status).toBe(200)
+    const retryHeaders = new Headers(capturedInits[1].headers)
+    // v2 reads PAYMENT-SIGNATURE, not X-PAYMENT.
+    expect(retryHeaders.get("PAYMENT-SIGNATURE")).toBeTruthy()
+    expect(retryHeaders.get("X-Payment")).toBeNull()
+    const payload = JSON.parse(
+      Buffer.from(
+        retryHeaders.get("PAYMENT-SIGNATURE") as string,
+        "base64",
+      ).toString("utf-8"),
+    )
+    expect(payload.x402Version).toBe(2)
+    expect(payload.accepted.amount).toBe("6000")
+  })
+
   it("uses signer option for payment signing when provided", async () => {
     const accepts = [baseRequirements]
     let callCount = 0

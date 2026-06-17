@@ -121,15 +121,14 @@ describe("PrivateKeyAdapter", () => {
     )
   })
 
-  it("should throw if RPC_URL is missing in fromEnv", async () => {
+  it("should succeed without RPC_URL in fromEnv (signing-only mode)", async () => {
     process.env.PRIVATE_KEY =
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     delete process.env.RPC_URL
 
     const { PrivateKeyAdapter } = await import("@opensea/wallet-adapters")
-    expect(() => PrivateKeyAdapter.fromEnv()).toThrow(
-      "RPC_URL environment variable is required",
-    )
+    const adapter = PrivateKeyAdapter.fromEnv()
+    expect(adapter.getRpcUrl()).toBeUndefined()
   })
 })
 

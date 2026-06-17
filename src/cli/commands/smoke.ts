@@ -3,13 +3,9 @@ import pc from "picocolors"
 import { type Address, getAddress } from "viem"
 import { eip3009AuthenticatedFetch } from "../../lib/client/eip3009-auth.js"
 import { createExternalSignerAccount } from "../../lib/client/external-signer.js"
+import { resolveNetwork } from "../../lib/client/x402-challenge.js"
 import type { PaymentRequirements } from "../../lib/client/x402-payment.js"
 import { signX402Payment } from "../../lib/client/x402-payment.js"
-import {
-  USDC_BASE_ADDRESS,
-  USDC_BASE_SEPOLIA_ADDRESS,
-  type X402Network,
-} from "../../lib/middleware/x402-facilitators.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -20,11 +16,6 @@ import {
 import { getChain } from "./get-chain.js"
 import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
 import { readInput } from "./read-input.js"
-
-const NETWORK_USDC: Record<X402Network, string> = {
-  base: USDC_BASE_ADDRESS,
-  "base-sepolia": USDC_BASE_SEPOLIA_ADDRESS,
-}
 
 // 1 USDC (6 decimals)
 const DEFAULT_MAX_AMOUNT = "1000000"
@@ -256,7 +247,7 @@ export const smokeCommand = new Command("smoke")
       console.log(`  Pay To:  ${requirements.payTo}`)
       console.log(`  Asset:   ${requirements.asset}`)
 
-      const expectedUsdc = NETWORK_USDC[requirements.network]
+      const expectedUsdc = resolveNetwork(requirements.network)?.usdc
       if (
         expectedUsdc &&
         requirements.asset.toLowerCase() !== expectedUsdc.toLowerCase()

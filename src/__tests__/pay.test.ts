@@ -26,11 +26,12 @@ describe("pay command", () => {
 
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const headers = Object.fromEntries(
-        Object.entries(init?.headers ?? {}),
+        new Headers(init?.headers).entries(),
       ) as Record<string, string>
       calls.push({ url: url as string, headers })
 
-      if (!headers["X-Payment"]) {
+      // v1 servers read the X-PAYMENT header (case-insensitive).
+      if (!headers["x-payment"]) {
         return new Response(
           JSON.stringify({
             x402Version: 1,
@@ -65,15 +66,15 @@ describe("pay command", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
-    // First call: probe (no X-Payment)
-    expect(calls[0].headers["X-Payment"]).toBeUndefined()
+    // First call: probe (no payment header)
+    expect(calls[0].headers["x-payment"]).toBeUndefined()
 
-    // Second call: paid request (with X-Payment)
-    expect(calls[1].headers["X-Payment"]).toBeDefined()
+    // Second call: paid request (with X-PAYMENT for v1)
+    expect(calls[1].headers["x-payment"]).toBeDefined()
 
-    // Verify the X-Payment header is valid base64 JSON
+    // Verify the X-PAYMENT header is valid base64 JSON
     const paymentPayload = JSON.parse(
-      Buffer.from(calls[1].headers["X-Payment"], "base64").toString("utf-8"),
+      Buffer.from(calls[1].headers["x-payment"], "base64").toString("utf-8"),
     )
     expect(paymentPayload.x402Version).toBe(1)
     expect(paymentPayload.scheme).toBe("exact")
@@ -81,6 +82,126 @@ describe("pay command", () => {
     expect(paymentPayload.payload.authorization.to).toBe(
       PAYMENT_REQUIREMENTS.payTo,
     )
+
+    logSpy.mockRestore()
+  })
+
+  it("falls back to GET when an unspecified-method POST probe 404s", async () => {
+    const calls: { method?: string }[] = []
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const headers = Object.fromEntries(
+        new Headers(init?.headers).entries(),
+      ) as Record<string, string>
+      calls.push({ method: init?.method })
+
+      if (init?.method === "POST") {
+        return new Response("Cannot POST /x", { status: 404 })
+      }
+      if (!headers["x-payment"]) {
+        return new Response(
+          JSON.stringify({ x402Version: 1, accepts: [PAYMENT_REQUIREMENTS] }),
+          { status: 402 },
+        )
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { payCommand } = await import("../cli/commands/pay.js")
+
+    await payCommand.parseAsync([
+      "node",
+      "pay",
+      "https://x402.example.com/x",
+      "--body",
+      "{}",
+    ])
+
+    expect(calls[0].method).toBe("POST")
+    expect(calls[1].method).toBe("GET")
+    expect(calls[2].method).toBe("GET")
+    logSpy.mockRestore()
+  })
+
+  it("calls a GET endpoint with query params and a v2 header challenge", async () => {
+    const calls: {
+      url: string
+      method?: string
+      headers: Record<string, string>
+    }[] = []
+
+    const challenge = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:8453",
+          amount: "6000",
+          payTo: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
+    }
+    const header = Buffer.from(JSON.stringify(challenge)).toString("base64")
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const headers = Object.fromEntries(
+        new Headers(init?.headers).entries(),
+      ) as Record<string, string>
+      calls.push({ url: url as string, method: init?.method, headers })
+
+      // A v2 server reads PAYMENT-SIGNATURE, not X-PAYMENT.
+      if (!headers["payment-signature"]) {
+        return new Response("{}", {
+          status: 402,
+          headers: { "payment-required": header },
+        })
+      }
+      return new Response(JSON.stringify({ data: [{ id: "1" }] }), {
+        status: 200,
+      })
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { payCommand } = await import("../cli/commands/pay.js")
+
+    await payCommand.parseAsync([
+      "node",
+      "pay",
+      "https://x402.example.com/tweets/search",
+      "--method",
+      "GET",
+      "--body",
+      '{"words":"tiny dinos","from":"codincowboy"}',
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // Params go in the query string, not a body.
+    expect(calls[0].method).toBe("GET")
+    expect(calls[0].url).toContain("words=tiny+dinos")
+    expect(calls[0].url).toContain("from=codincowboy")
+    // Retry carries the v2 PAYMENT-SIGNATURE header with the v2 envelope.
+    expect(calls[1].headers["payment-signature"]).toBeDefined()
+    expect(calls[1].headers["x-payment"]).toBeUndefined()
+    const payload = JSON.parse(
+      Buffer.from(calls[1].headers["payment-signature"], "base64").toString(
+        "utf-8",
+      ),
+    )
+    expect(payload.x402Version).toBe(2)
+    // v2 envelope: no top-level scheme/network; requirement echoed in `accepted`.
+    expect(payload.accepted.network).toBe("eip155:8453")
+    expect(payload.accepted.amount).toBe("6000")
+    expect(payload.payload.authorization.value).toBe("6000")
 
     logSpy.mockRestore()
   })
@@ -112,5 +233,77 @@ describe("pay command", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
 
     logSpy.mockRestore()
+  })
+
+  it("does NOT fall back to GET when --method is set explicitly", async () => {
+    // An explicit --method means the user asked for that verb; a 404/405 is a
+    // real failure to surface, not a cue to silently retry as GET.
+    const calls: { method?: string }[] = []
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      calls.push({ method: init?.method })
+      return new Response("Cannot POST /x", { status: 404 })
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { payCommand } = await import("../cli/commands/pay.js")
+
+    await payCommand.parseAsync([
+      "node",
+      "pay",
+      "https://x402.example.com/x",
+      "--method",
+      "POST",
+      "--body",
+      "{}",
+    ])
+
+    // Single call, no GET retry — the 404 is reported as-is.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(calls[0].method).toBe("POST")
+    logSpy.mockRestore()
+  })
+
+  it("refuses to sign when the challenge exceeds the default max amount", async () => {
+    // 20 USDC, above the 10 USDC default cap.
+    const overCap = { ...PAYMENT_REQUIREMENTS, maxAmountRequired: "20000000" }
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ x402Version: 1, accepts: [overCap] }), {
+          status: 402,
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit")
+    }) as never)
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { payCommand } = await import("../cli/commands/pay.js")
+
+    await expect(
+      payCommand.parseAsync([
+        "node",
+        "pay",
+        "https://tool.example.com/api",
+        "--body",
+        "{}",
+      ]),
+    ).rejects.toThrow("process.exit")
+
+    // No second (paid) fetch happened — we bailed before signing.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const errOutput = errSpy.mock.calls.flat().join(" ")
+    expect(errOutput).toContain("maxAmount")
+
+    logSpy.mockRestore()
+    errSpy.mockRestore()
+    exitSpy.mockRestore()
   })
 })

@@ -1,13 +1,10 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
-import {
-  USDC_BASE_ADDRESS,
-  USDC_BASE_SEPOLIA_ADDRESS,
-} from "../middleware/x402-facilitators.js"
-import type { X402Network } from "../middleware/x402-facilitators.js"
+import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
   type PaymentRequirements,
   signX402Payment,
+  x402PaymentHeaderName,
 } from "./x402-payment.js"
 
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
@@ -26,11 +23,6 @@ const REJECTED_ADDRESSES = new Set([
   "0x000000000000000000000000000000000000dead",
 ])
 
-// Keep in sync with NETWORK_USDC in x402-payment.ts
-const NETWORK_USDC: Record<X402Network, string> = {
-  base: USDC_BASE_ADDRESS,
-  "base-sepolia": USDC_BASE_SEPOLIA_ADDRESS,
-}
 
 
 /**
@@ -76,19 +68,15 @@ export async function paidAuthenticatedFetch(
   let res = await fetch(url, { ...fetchOptions, headers: baseHeaders })
 
   for (let i = 0; i < MAX_402_RETRIES && res.status === 402; i++) {
-    let body: { accepts?: PaymentRequirements[] }
-    try {
-      body = await res.json()
-    } catch {
-      throw new Error("x402: server returned 402 but body is not valid JSON")
-    }
-
-    const requirements = body.accepts?.[0]
-    if (!requirements) {
+    // Handles both x402 wire formats: v1 (challenge in body) and v2 (challenge
+    // in the PAYMENT-REQUIRED header, signed payload in PAYMENT-SIGNATURE).
+    const parsed = await parseX402Challenge(res)
+    if (!parsed.ok) {
       throw new Error(
-        `x402: server returned 402 (attempt ${i + 1}/${MAX_402_RETRIES}) but body.accepts is missing or empty`,
+        `${parsed.reason} (attempt ${i + 1}/${MAX_402_RETRIES})`,
       )
     }
+    const { requirements, x402Version, raw, resource } = parsed
 
     validatePaymentSafety(requirements, {
       maxAmount,
@@ -99,13 +87,16 @@ export async function paidAuthenticatedFetch(
     const xPayment = await signX402Payment({
       signer: paymentSigner,
       paymentRequirements: requirements,
+      x402Version,
+      accepted: raw,
+      resource,
     })
 
     res = await fetch(url, {
       ...fetchOptions,
       headers: {
         ...baseHeaders,
-        "X-Payment": xPayment,
+        [x402PaymentHeaderName(x402Version)]: xPayment,
       },
     })
   }
@@ -155,7 +146,7 @@ function validatePaymentSafety(
       )
     }
   } else {
-    const expectedUsdc = NETWORK_USDC[reqs.network]
+    const expectedUsdc = resolveNetwork(reqs.network)?.usdc
     if (expectedUsdc && assetLower !== expectedUsdc.toLowerCase()) {
       throw new Error(
         `x402: asset ${reqs.asset} does not match expected USDC address for ${reqs.network} (${expectedUsdc})`,
