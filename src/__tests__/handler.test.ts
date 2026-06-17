@@ -5,6 +5,7 @@ import { extractSettlementTxHash } from "../lib/client/x402-payment.js"
 import { createToolHandler } from "../lib/handler/index.js"
 import type { ManifestDefinition } from "../lib/manifest/index.js"
 import type { Eip3009UsageReporterConfig } from "../lib/usage/eip3009-reporter.js"
+import { createEip3009UsageReporter } from "../lib/usage/eip3009-reporter.js"
 import type { GateMiddleware, InvocationEvent } from "../types.js"
 
 vi.mock("../lib/usage/eip3009-reporter.js", () => ({
@@ -282,6 +283,54 @@ describe("createToolHandler", () => {
     const response = await handler(request)
     expect(response.status).toBe(200)
     expect(extractSettlementTxHash(response)).toBeUndefined()
+  })
+
+  it("returns the response via waitUntil without awaiting the report", async () => {
+    // A report that stays pending until we release it, so we can prove the
+    // handler returns the response before the report settles.
+    let releaseReport: () => void = () => {}
+    const reportSettled = vi.fn()
+    const pendingReport = new Promise<void>(resolve => {
+      releaseReport = () => {
+        reportSettled()
+        resolve()
+      }
+    })
+    vi.mocked(createEip3009UsageReporter).mockReturnValueOnce(
+      vi.fn().mockReturnValue(pendingReport),
+    )
+
+    const registered: Promise<unknown>[] = []
+    const waitUntil = vi.fn((p: Promise<unknown>) => {
+      registered.push(p)
+    })
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      usageReporting: {} as Eip3009UsageReporterConfig,
+      waitUntil,
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "test" }),
+    })
+
+    const response = await handler(request)
+
+    expect(response.status).toBe(200)
+    // The report was handed to waitUntil, not awaited: the response resolved
+    // while the report is still pending.
+    expect(waitUntil).toHaveBeenCalledOnce()
+    expect(registered[0]).toBeInstanceOf(Promise)
+    expect(reportSettled).not.toHaveBeenCalled()
+
+    // Releasing it completes the backgrounded report.
+    releaseReport()
+    await registered[0]
+    expect(reportSettled).toHaveBeenCalledOnce()
   })
 
   it("does not call settle() when a gate short-circuits with a response", async () => {

@@ -11,6 +11,44 @@ import type { Eip3009UsageReporterConfig } from "../usage/eip3009-reporter.js"
 import { createEip3009UsageReporter } from "../usage/eip3009-reporter.js"
 import { ToolHandlerError } from "./error.js"
 
+type WaitUntil = (promise: Promise<unknown>) => void
+
+/**
+ * Best-effort detection of a platform "keep-alive after response" primitive,
+ * so fire-and-forget usage reports fire reliably without the tool author
+ * wiring anything. Returns `undefined` when none is available (the caller
+ * then awaits the report instead).
+ *
+ * Vercel populates a request-context global (the same one `@vercel/functions`
+ * reads) holding a `waitUntil`. We read it directly to avoid a hard dependency
+ * on `@vercel/functions`. Cloudflare's `ctx.waitUntil` is per-request and is
+ * wired by `toCloudflareHandler` (passed via the `waitUntil` config option),
+ * so it isn't detected here.
+ *
+ * Reading a global symbol is an accepted, bounded risk: anything could shadow
+ * it, so we only trust it when it resolves to a callable `waitUntil` (the
+ * `typeof === "function"` guard below) and otherwise fall back to awaiting the
+ * report. The exposure is no worse than depending on `@vercel/functions`, which
+ * reads the same global.
+ */
+function detectPlatformWaitUntil(): WaitUntil | undefined {
+  try {
+    const store = (
+      globalThis as Record<symbol, unknown>
+    )[Symbol.for("@vercel/request-context")] as
+      | { get?: () => { waitUntil?: WaitUntil } | undefined }
+      | undefined
+    const ctx = store?.get?.()
+    if (typeof ctx?.waitUntil === "function") {
+      // Call through `ctx` to preserve `this` binding.
+      return (promise) => ctx.waitUntil?.(promise)
+    }
+  } catch {
+    // Detection is best-effort; fall back to awaiting the report.
+  }
+  return undefined
+}
+
 export interface ToolHandlerConfig<TIn, TOut> {
   manifest: ManifestDefinition
   env?: Record<string, string | undefined>
@@ -34,6 +72,20 @@ export interface ToolHandlerConfig<TIn, TOut> {
    * analytics or rate limiting. Errors are caught and logged.
    */
   onInvocation?: (event: InvocationEvent) => void | Promise<void>
+  /**
+   * Platform "keep-alive after response" primitive (e.g. Vercel/Cloudflare
+   * `waitUntil`). When available, the fire-and-forget usage report is
+   * registered through it and the response is returned without awaiting the
+   * report — so reporting never adds latency and a function freeze in the
+   * report window can't leave a paid caller charged with no result.
+   *
+   * Usually you don't set this: it's auto-detected from the Vercel request
+   * context, and `toCloudflareHandler` wires `ctx.waitUntil` for you. Pass it
+   * explicitly only to override detection or to support another runtime. When
+   * no `waitUntil` is available (long-running servers, or serverless without
+   * it), the report is awaited instead so it still fires before the freeze.
+   */
+  waitUntil?: (promise: Promise<unknown>) => void
 }
 
 export function createToolHandler<TIn, TOut>(
@@ -148,17 +200,27 @@ export function createToolHandler<TIn, TOut>(
         }
       }
 
-      // Await the report so it completes before the response is returned.
-      // On serverless runtimes (Vercel/AWS Lambda) the function is frozen
-      // once the response flushes, which kills any fire-and-forget request
-      // still in flight — the report would silently never arrive. The
-      // reporter has its own AbortController timeout (default 5s) and never
-      // throws; the catch is belt-and-suspenders so a misbehaving reporter
-      // can never turn a successful tool call into a failure.
+      // Fire the usage report. The reporter has its own AbortController
+      // timeout (default 5s) and never throws; the catch is belt-and-suspenders.
+      //
+      // With a platform `waitUntil` (auto-detected, or supplied via config /
+      // `toCloudflareHandler`), register the report as keep-alive-after-response
+      // work and return immediately — reporting adds no latency, and because the
+      // response flushes before the report runs, a freeze in the report window
+      // can't leave a paid caller charged with no result. Without `waitUntil`
+      // (long-running servers, or serverless lacking it), await instead: on a
+      // frozen runtime a fire-and-forget report would be killed at flush and
+      // never arrive.
       if (usageReporter) {
-        await usageReporter(event).catch((err) => {
+        const reportPromise = usageReporter(event).catch((err) => {
           console.error("[tool-sdk] usageReporting failed:", err)
         })
+        const waitUntil = config.waitUntil ?? detectPlatformWaitUntil()
+        if (waitUntil) {
+          waitUntil(reportPromise)
+        } else {
+          await reportPromise
+        }
       }
 
       // When the call was paid and settled onchain, echo the settlement tx

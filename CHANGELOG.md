@@ -1,5 +1,17 @@
 # @opensea/tool-sdk
 
+## 0.21.0
+
+### Minor Changes
+
+- 6c1be9c: `createToolHandler` now fires the usage report through a platform `waitUntil` (keep-alive-after-response) when one is available, instead of awaiting it inline. This removes reporting latency from every successful call and closes a billing edge case: because x402 settlement runs before the report, awaiting the report meant a function freeze in that window could charge a paid caller without returning a result. With `waitUntil` the response flushes first and the report runs after.
+
+  It's automatic for most tools: the Vercel request-context `waitUntil` is auto-detected (no dependency on `@vercel/functions`), and `toCloudflareHandler` now wires the per-request `ctx.waitUntil` (its `fetch` signature gains the optional `ctx` argument). A new optional `waitUntil` option on `ToolHandlerConfig` lets you override detection or support another runtime. When no `waitUntil` is available (long-running servers, or serverless lacking it), the report is awaited as before so it still fires before any freeze.
+
+### Patch Changes
+
+- 09f20a7: The `init` Vercel template now sets `export const maxDuration = 60` on the tool entrypoint. Tools that call an LLM or other slow upstream routinely exceed Vercel's 10s Hobby default, which returns a 502 to the caller; because x402 settlement runs after the handler succeeds, a timeout in the settle/report window can also charge the caller without returning a result. 60s is the Hobby maximum and valid on Pro/Enterprise.
+
 ## 0.20.1
 
 ### Patch Changes

@@ -42,6 +42,10 @@ const manifest = buildSubscriberManifest({
 })
 const vercelHandler = toVercelHandler(buildToolHandler({ manifest, gates }))
 
+// The LLM persona synthesis can take longer than the Hobby default (10s);
+// allow up to the Hobby maximum so slow generations don't 502 (gateway timeout).
+export const maxDuration = 60
+
 export default function (req: VercelRequest, res: VercelResponse) {
   return vercelHandler(req, res)
 }
