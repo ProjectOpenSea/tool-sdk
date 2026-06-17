@@ -6,6 +6,7 @@ import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
   extractSettlementTxHash,
   type PaymentRequirements,
+  rejectServerErrorAfterPayment,
   signX402Payment,
   x402PaymentHeaderName,
 } from "./x402-payment.js"
@@ -108,6 +109,8 @@ export async function paidAuthenticatedFetch(
         [x402PaymentHeaderName(x402Version)]: xPayment,
       },
     })
+
+    rejectServerErrorAfterPayment(res)
 
     if (reportCallerUsage && res.ok) {
       const settlement = extractSettlementTxHash(res)

@@ -2,6 +2,7 @@ import type { WalletAdapter } from "@opensea/wallet-adapters"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { PaymentRequirements } from "../lib/client/x402-payment.js"
+import { X402PaymentError } from "../lib/client/x402-payment.js"
 
 const mockReadContract = vi.fn().mockResolvedValue(1n)
 const mockVerifySiweMessage = vi.fn().mockResolvedValue(true)
@@ -491,5 +492,102 @@ describe("paidAuthenticatedFetch", () => {
     expect(headers.get("X-Custom")).toBe("value")
     expect(headers.get("Authorization")).toBeNull()
     expect(headers.get("X-Payment")).toBeTruthy()
+  })
+
+  it("throws X402PaymentError when paid request returns 502", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    const fetchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(JSON.stringify({ accepts }), { status: 402 })
+      }
+      return new Response("Bad Gateway", { status: 502 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    try {
+      await paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+        method: "POST",
+        body: JSON.stringify({ query: "test" }),
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      expect((err as X402PaymentError).message).toContain("server returned 502")
+      expect((err as X402PaymentError).response.status).toBe(502)
+    }
+  })
+
+  it("throws X402PaymentError with settled=true when settlement headers present on 5xx", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    const fetchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(JSON.stringify({ accepts }), { status: 402 })
+      }
+      return new Response("Internal Server Error", {
+        status: 500,
+        headers: {
+          "X-PAYMENT-RESPONSE": btoa(
+            JSON.stringify({ transaction: "0xabc123" }),
+          ),
+        },
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    try {
+      await paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      const paymentErr = err as X402PaymentError
+      expect(paymentErr.settled).toBe(true)
+      expect(paymentErr.response.status).toBe(500)
+      expect(paymentErr.message).toContain("payment may have been charged")
+    }
+  })
+
+  it("throws X402PaymentError with settled=false when no settlement headers on 5xx", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    const fetchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(JSON.stringify({ accepts }), { status: 402 })
+      }
+      return new Response("Gateway Timeout", { status: 504 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    try {
+      await paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      const paymentErr = err as X402PaymentError
+      expect(paymentErr.settled).toBe(false)
+      expect(paymentErr.response.status).toBe(504)
+      expect(paymentErr.message).toContain("payment was likely not settled")
+    }
   })
 })

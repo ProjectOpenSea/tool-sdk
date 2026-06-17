@@ -22,6 +22,29 @@ export interface CallerUsageReporterConfig {
   timeoutMs?: number
 }
 
+/**
+ * Outcome of a caller-side usage report. The reporters never throw; they
+ * return one of these so callers (e.g. the `pay` CLI) can surface an accurate
+ * status instead of assuming success.
+ *
+ * - `reported` — the aggregator accepted the report.
+ * - `already-reported` — the tool's own server-side reporter recorded this
+ *   settlement first; the usage is counted, the caller's report was a duplicate.
+ * - `skipped` — nothing was sent (failed validation, no API key, insecure URL).
+ * - `failed` — sent but rejected, or a network/timeout error.
+ */
+export type CallerUsageReportOutcome =
+  | "reported"
+  | "already-reported"
+  | "skipped"
+  | "failed"
+
+export interface CallerUsageReportResult {
+  outcome: CallerUsageReportOutcome
+  /** Human-readable detail, present for `skipped` and `failed`. */
+  detail?: string
+}
+
 export interface CallerX402UsageEvent {
   /** The tool's canonical endpoint URL (used for server-side lookup). */
   toolEndpoint: string
@@ -100,13 +123,20 @@ async function provisionApiKey(
   return promise
 }
 
-async function handleResponse(res: Response): Promise<void> {
-  if (!res.ok) {
-    const text = (await res.text().catch(() => "<no body>")).slice(0, 256)
-    console.error(
-      `[tool-sdk] caller usage report failed (${res.status}): ${text}`,
-    )
+async function handleResponse(res: Response): Promise<CallerUsageReportResult> {
+  if (res.ok) return { outcome: "reported" }
+  const text = (await res.text().catch(() => "<no body>")).slice(0, 256)
+  // The tool's own server-side reporter may have already recorded this
+  // settlement (same tx hash), in which case the aggregator rejects the
+  // caller's report as a duplicate. From the caller's perspective the usage
+  // IS reported, so this is a success, not an error worth logging.
+  if (res.status === 400 && /already reported|duplicate usage report/i.test(text)) {
+    return { outcome: "already-reported" }
   }
+  console.error(
+    `[tool-sdk] caller usage report failed (${res.status}): ${text}`,
+  )
+  return { outcome: "failed", detail: `HTTP ${res.status}` }
 }
 
 /**
@@ -135,18 +165,18 @@ function isSecureAggregatorUrl(aggregatorUrl: string): boolean {
 export async function reportCallerX402Usage(
   event: CallerX402UsageEvent,
   config: CallerUsageReporterConfig = {},
-): Promise<void> {
+): Promise<CallerUsageReportResult> {
   if (!isAddress(event.callerAddress)) {
     console.error(
       `[tool-sdk] invalid callerAddress: ${event.callerAddress}`,
     )
-    return
+    return { outcome: "skipped", detail: "invalid callerAddress" }
   }
   if (!TX_HASH_REGEX.test(event.txHash)) {
     console.error(
       `[tool-sdk] invalid txHash (expected 0x + 64 hex chars): ${event.txHash}`,
     )
-    return
+    return { outcome: "skipped", detail: "invalid txHash" }
   }
 
   const aggregatorUrl = config.aggregatorUrl ?? DEFAULT_AGGREGATOR_URL
@@ -154,7 +184,7 @@ export async function reportCallerX402Usage(
     console.error(
       `[tool-sdk] refusing to send caller usage report over insecure aggregatorUrl (https required): ${aggregatorUrl}`,
     )
-    return
+    return { outcome: "skipped", detail: "insecure aggregatorUrl" }
   }
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const controller = new AbortController()
@@ -167,7 +197,7 @@ export async function reportCallerX402Usage(
       console.warn(
         "[tool-sdk] no API key available and auto-provisioning failed — skipping caller usage report",
       )
-      return
+      return { outcome: "skipped", detail: "no API key available" }
     }
 
     const res = await fetch(aggregatorUrl, {
@@ -188,10 +218,15 @@ export async function reportCallerX402Usage(
       }),
       signal: controller.signal,
     })
-    await handleResponse(res)
+    return await handleResponse(res)
   } catch (err) {
-    if ((err as Error).name !== "AbortError") {
-      console.error("[tool-sdk] caller x402 usage report error:", err)
+    if ((err as Error).name === "AbortError") {
+      return { outcome: "failed", detail: "timed out" }
+    }
+    console.error("[tool-sdk] caller x402 usage report error:", err)
+    return {
+      outcome: "failed",
+      detail: err instanceof Error ? err.message : String(err),
     }
   } finally {
     clearTimeout(timer)
@@ -213,12 +248,12 @@ export async function reportCallerX402Usage(
 export async function reportCallerEip3009Usage(
   event: CallerEip3009UsageEvent,
   config: CallerUsageReporterConfig = {},
-): Promise<void> {
+): Promise<CallerUsageReportResult> {
   if (!isAddress(event.callerAddress)) {
     console.error(
       `[tool-sdk] invalid callerAddress: ${event.callerAddress}`,
     )
-    return
+    return { outcome: "skipped", detail: "invalid callerAddress" }
   }
   if (event.value !== "0") {
     console.warn(
@@ -231,7 +266,7 @@ export async function reportCallerEip3009Usage(
     console.error(
       `[tool-sdk] refusing to send caller usage report over insecure aggregatorUrl (https required): ${aggregatorUrl}`,
     )
-    return
+    return { outcome: "skipped", detail: "insecure aggregatorUrl" }
   }
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const controller = new AbortController()
@@ -244,7 +279,7 @@ export async function reportCallerEip3009Usage(
       console.warn(
         "[tool-sdk] no API key available and auto-provisioning failed — skipping caller usage report",
       )
-      return
+      return { outcome: "skipped", detail: "no API key available" }
     }
 
     const res = await fetch(aggregatorUrl, {
@@ -271,10 +306,15 @@ export async function reportCallerEip3009Usage(
       }),
       signal: controller.signal,
     })
-    await handleResponse(res)
+    return await handleResponse(res)
   } catch (err) {
-    if ((err as Error).name !== "AbortError") {
-      console.error("[tool-sdk] caller eip3009 usage report error:", err)
+    if ((err as Error).name === "AbortError") {
+      return { outcome: "failed", detail: "timed out" }
+    }
+    console.error("[tool-sdk] caller eip3009 usage report error:", err)
+    return {
+      outcome: "failed",
+      detail: err instanceof Error ? err.message : String(err),
     }
   } finally {
     clearTimeout(timer)

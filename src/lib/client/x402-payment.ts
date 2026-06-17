@@ -15,6 +15,53 @@ const REJECTED_ADDRESSES = new Set([
 ])
 
 /**
+ * Thrown when a signed x402 payment was sent but the server responded with a
+ * 5xx error (e.g. 502 Bad Gateway, 504 Gateway Timeout). The caller should
+ * **not** blindly retry — the payment authorization may have already been
+ * settled on-chain even though the HTTP response indicates failure.
+ *
+ * Inspect {@link settled} to determine whether settlement headers were
+ * present on the response. When `true`, the facilitator confirmed on-chain
+ * settlement before the transport error occurred; when `false`, settlement
+ * likely did not happen but is not guaranteed (a reverse proxy may have
+ * dropped the response after the server settled).
+ */
+export class X402PaymentError extends Error {
+  readonly response: Response
+  readonly settled: boolean
+
+  constructor(message: string, response: Response, settled: boolean) {
+    super(message)
+    this.name = "X402PaymentError"
+    this.response = response
+    this.settled = settled
+  }
+}
+
+/**
+ * Throw if a paid response came back with a server error (5xx). The signed
+ * authorization was already transmitted, so the caller must not silently
+ * swallow the failure — retrying could result in a double charge.
+ */
+export function rejectServerErrorAfterPayment(res: Response): void {
+  if (res.status < 500) return
+
+  const settlement = X402_SETTLEMENT_HEADERS.map((h) =>
+    res.headers.get(h),
+  ).find((v) => v != null)
+  const settled = settlement != null
+
+  throw new X402PaymentError(
+    `x402: payment was signed and sent but the server returned ${res.status}` +
+      (settled
+        ? " — settlement headers present, payment may have been charged"
+        : " — no settlement headers, payment was likely not settled"),
+    res,
+    settled,
+  )
+}
+
+/**
  * The HTTP header that carries the signed payment for a given x402 version.
  * v2 uses `PAYMENT-SIGNATURE`; v1 uses `X-PAYMENT`. Sending the wrong header
  * makes a v2 server silently ignore the payment and re-issue its 402.
@@ -293,6 +340,8 @@ export async function paidFetch(
       [x402PaymentHeaderName(x402Version)]: xPayment,
     },
   })
+
+  rejectServerErrorAfterPayment(paidRes)
 
   if (reportCallerUsage && paidRes.ok) {
     const settlement = extractSettlementTxHash(paidRes)

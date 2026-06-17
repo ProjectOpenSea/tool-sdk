@@ -30,6 +30,7 @@ export {
   extractSettlementTxHash,
   paidFetch,
   signX402Payment,
+  X402PaymentError,
 } from "./lib/client/x402-payment.js"
 export { ToolHandlerError } from "./lib/handler/error.js"
 export type { ToolHandlerConfig } from "./lib/handler/index.js"
@@ -165,6 +166,8 @@ export { ToolRegistryClient } from "./lib/onchain/registry.js"
 export type {
   CallerEip3009UsageEvent,
   CallerUsageReporterConfig,
+  CallerUsageReportOutcome,
+  CallerUsageReportResult,
   CallerX402UsageEvent,
 } from "./lib/usage/caller-reporter.js"
 export {

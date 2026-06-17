@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@opensea/tool-sdk": "^0.17.1",
+    "@opensea/tool-sdk": "^0.20.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

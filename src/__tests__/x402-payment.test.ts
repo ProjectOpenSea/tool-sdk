@@ -5,6 +5,7 @@ import {
   type PaymentRequirements,
   paidFetch,
   signX402Payment,
+  X402PaymentError,
   x402PaymentHeaderName,
 } from "../lib/client/x402-payment.js"
 
@@ -468,5 +469,112 @@ describe("paidFetch", () => {
       allowedAssets: [baseRequirements.asset.toUpperCase()],
     })
     expect(res.status).toBe(200)
+  })
+
+  it("throws X402PaymentError when paid request returns 502", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(JSON.stringify({ accepts }), { status: 402 })
+        }
+        return new Response("Bad Gateway", { status: 502 })
+      }),
+    )
+
+    try {
+      await paidFetch("https://tool.example.com/api", {
+        method: "POST",
+        signer,
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      expect((err as X402PaymentError).message).toContain("server returned 502")
+      expect((err as X402PaymentError).response.status).toBe(502)
+    }
+  })
+
+  it("throws X402PaymentError with settled=true when settlement headers present on 5xx", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(JSON.stringify({ accepts }), { status: 402 })
+        }
+        return new Response("Internal Server Error", {
+          status: 500,
+          headers: {
+            "PAYMENT-RESPONSE": btoa(
+              JSON.stringify({ transaction: "0xabc123" }),
+            ),
+          },
+        })
+      }),
+    )
+
+    try {
+      await paidFetch("https://tool.example.com/api", {
+        method: "POST",
+        signer,
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      const paymentErr = err as X402PaymentError
+      expect(paymentErr.settled).toBe(true)
+      expect(paymentErr.response.status).toBe(500)
+      expect(paymentErr.message).toContain("payment may have been charged")
+    }
+  })
+
+  it("throws X402PaymentError with settled=false when no settlement headers on 5xx", async () => {
+    const accepts = [baseRequirements]
+    let callCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount++
+        if (callCount === 1) {
+          return new Response(JSON.stringify({ accepts }), { status: 402 })
+        }
+        return new Response("Gateway Timeout", { status: 504 })
+      }),
+    )
+
+    try {
+      await paidFetch("https://tool.example.com/api", {
+        method: "POST",
+        signer,
+      })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(X402PaymentError)
+      const paymentErr = err as X402PaymentError
+      expect(paymentErr.settled).toBe(false)
+      expect(paymentErr.response.status).toBe(504)
+      expect(paymentErr.message).toContain("payment was likely not settled")
+    }
+  })
+
+  it("does not throw on non-402 non-5xx probe responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ ok: true }), { status: 403 }),
+      ),
+    )
+
+    const res = await paidFetch("https://tool.example.com/api", {
+      method: "POST",
+      signer,
+    })
+    expect(res.status).toBe(403)
   })
 })

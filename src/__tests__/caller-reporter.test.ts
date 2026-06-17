@@ -71,7 +71,8 @@ describe("reportCallerX402Usage", () => {
   })
 
   it("posts x402 settlement with correct body structure", async () => {
-    await reportCallerX402Usage(makeX402Event(), makeConfig())
+    const result = await reportCallerX402Usage(makeX402Event(), makeConfig())
+    expect(result.outcome).toBe("reported")
 
     expect(fetchSpy).toHaveBeenCalledOnce()
     const [url, opts] = fetchSpy.mock.calls[0]!
@@ -123,11 +124,12 @@ describe("reportCallerX402Usage", () => {
 
   it("refuses to send over an insecure http aggregatorUrl", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    await reportCallerX402Usage(
+    const result = await reportCallerX402Usage(
       makeX402Event(),
       makeConfig({ aggregatorUrl: "http://evil.example/usage" }),
     )
 
+    expect(result.outcome).toBe("skipped")
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("insecure aggregatorUrl"),
     )
@@ -143,6 +145,25 @@ describe("reportCallerX402Usage", () => {
     expect(fetchSpy).toHaveBeenCalledOnce()
     const [url] = fetchSpy.mock.calls[0]!
     expect(url).toBe("http://localhost:3000/usage")
+  })
+
+  it("treats a duplicate-report 400 as success without logging an error", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          errors: ["Duplicate usage report: tx_hash 0xabc already reported"],
+        }),
+        { status: 400 },
+      ),
+    )
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const result = await reportCallerX402Usage(makeX402Event(), makeConfig())
+
+    // The creator's server-side reporter already recorded this settlement;
+    // from the caller's side the usage IS reported, so no error is logged.
+    expect(result.outcome).toBe("already-reported")
+    expect(consoleSpy).not.toHaveBeenCalled()
   })
 
   it("skips report and logs error for malformed txHash", async () => {
@@ -164,8 +185,9 @@ describe("reportCallerX402Usage", () => {
     )
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
-    await reportCallerX402Usage(makeX402Event(), makeConfig())
+    const result = await reportCallerX402Usage(makeX402Event(), makeConfig())
 
+    expect(result.outcome).toBe("failed")
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("caller usage report failed (401)"),
     )

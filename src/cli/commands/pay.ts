@@ -56,12 +56,12 @@ export const payCommand = new Command("pay")
     `Reject challenges that charge more than this (token base units). Pass "unlimited" to disable. Defaults to ${DEFAULT_MAX_AMOUNT} (10 USDC).`,
   )
   .option(
-    "--report-usage",
-    "Send a caller-side usage report to OpenSea after a successful payment.",
+    "--no-report-usage",
+    "Disable the caller-side usage report that is otherwise sent to OpenSea after a successful payment.",
   )
   .option(
     "--api-key <key>",
-    "API key for usage reporting. If omitted, an instant key is auto-provisioned.",
+    "API key for usage reporting. Falls back to OPENSEA_API_KEY, then to an auto-provisioned instant key.",
   )
   .action(async (url: string, options: PayOptions) => {
     // The x402 X-Payment signature is a gasless EIP-3009 authorization — it is
@@ -144,8 +144,9 @@ export const payCommand = new Command("pay")
       explicitMethod,
       adapter,
       maxAmount,
-      options.reportUsage ?? false,
-      options.apiKey,
+      // Usage reporting is on by default; `--no-report-usage` opts out.
+      options.reportUsage ?? true,
+      options.apiKey ?? process.env.OPENSEA_API_KEY,
     )
   })
 
@@ -320,23 +321,36 @@ async function runPaymentOnly(
     } else {
       const callerAddress = await adapter.getAddress()
       console.log(pc.dim("Sending caller usage report..."))
-      try {
-        await reportCallerX402Usage(
-          {
-            toolEndpoint: url,
-            callerAddress: callerAddress as `0x${string}`,
-            txHash: settlementTx,
-            chainId: resolved.chainId,
-          },
-          { apiKey },
-        )
-        console.log(pc.green("Usage report sent."))
-      } catch (err) {
-        console.error(
-          pc.yellow(
-            `Usage report failed: ${err instanceof Error ? err.message : String(err)}`,
-          ),
-        )
+      const result = await reportCallerX402Usage(
+        {
+          toolEndpoint: url,
+          callerAddress: callerAddress as `0x${string}`,
+          txHash: settlementTx,
+          chainId: resolved.chainId,
+        },
+        { apiKey },
+      )
+      switch (result.outcome) {
+        case "reported":
+          console.log(pc.green("Usage report sent."))
+          break
+        case "already-reported":
+          console.log(pc.green("Usage already recorded for this payment."))
+          break
+        case "skipped":
+          console.log(
+            pc.dim(
+              `Usage report skipped${result.detail ? ` (${result.detail})` : ""}.`,
+            ),
+          )
+          break
+        case "failed":
+          console.warn(
+            pc.yellow(
+              `Usage report failed${result.detail ? `: ${result.detail}` : ""}.`,
+            ),
+          )
+          break
       }
     }
   }

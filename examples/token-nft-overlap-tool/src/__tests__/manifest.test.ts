@@ -13,7 +13,11 @@ describe("buildManifest", () => {
 
   it("includes ERC721 access requirement for the gate collection", () => {
     expect(manifest.access).toBeDefined()
-    const requirements = manifest.access?.requirements
+    // `ManifestDefinition["access"]` is typed loosely as `{}`; the structured
+    // shape is validated at runtime by the manifest schema. Narrow it here.
+    const requirements = (
+      manifest.access as { requirements?: { kind: string }[] } | undefined
+    )?.requirements
     expect(requirements).toHaveLength(1)
     const req = requirements?.[0]
     expect(req?.kind).toBe("0xbdf8c428")

@@ -1,5 +1,18 @@
 # @opensea/tool-sdk
 
+## 0.20.1
+
+### Patch Changes
+
+- 16c3380: Refine caller-side usage reporting:
+
+  - The `pay` CLI now sends a usage report by default; pass `--no-report-usage` to opt out.
+  - `--api-key` falls back to the `OPENSEA_API_KEY` env var before auto-provisioning an instant key (avoids the rate-limited provisioning endpoint when a key is already available).
+  - A "duplicate" rejection (the tool's own server-side reporter already recorded the settlement) is treated as success rather than logged as an error.
+  - `reportCallerX402Usage` / `reportCallerEip3009Usage` now return a `CallerUsageReportResult` (`reported` | `already-reported` | `skipped` | `failed`) so callers can surface an accurate status. The `pay` CLI uses it to print the real outcome.
+
+- `paidFetch` and `paidAuthenticatedFetch` now throw `X402PaymentError` when the server responds with a 5xx status after a payment is sent (e.g. 502, 504), instead of silently returning the error response. The error exposes `response` and `settled` (whether `PAYMENT-RESPONSE` headers were present), so callers can detect a payment that may already have settled onchain and avoid unintended retries or double charges. (#441)
+
 ## 0.20.0
 
 ### Minor Changes
