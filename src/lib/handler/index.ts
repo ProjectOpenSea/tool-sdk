@@ -4,6 +4,7 @@ import type {
   InvocationEvent,
   ToolContext,
 } from "../../types.js"
+import { buildSettlementResponseHeader } from "../client/x402-payment.js"
 import type { ManifestDefinition } from "../manifest/index.js"
 import { resolveManifest } from "../manifest/index.js"
 import type { Eip3009UsageReporterConfig } from "../usage/eip3009-reporter.js"
@@ -160,7 +161,25 @@ export function createToolHandler<TIn, TOut>(
         })
       }
 
-      return Response.json(outputResult.data, { status: 200 })
+      // When the call was paid and settled onchain, echo the settlement tx
+      // back to the caller in the x402 settlement-response header. This lets
+      // caller-side usage reporting (and any other x402 client) read the tx
+      // hash from the response — without it, `extractSettlementTxHash` finds
+      // nothing and a caller's `--report-usage` silently no-ops.
+      const settlementTxHash = ctx.gates.x402?.settlementTxHash
+      const responseInit: ResponseInit = { status: 200 }
+      if (settlementTxHash) {
+        // v2 requests arrive with `PAYMENT-SIGNATURE`; v1 with `X-PAYMENT`.
+        const x402Version = request.headers.has("PAYMENT-SIGNATURE") ? 2 : 1
+        const { name, value } = buildSettlementResponseHeader({
+          x402Version,
+          transaction: settlementTxHash,
+          payer: ctx.gates.x402?.payer,
+        })
+        responseInit.headers = { [name]: value }
+      }
+
+      return Response.json(outputResult.data, responseInit)
     } catch (error) {
       if (error instanceof ToolHandlerError) {
         console.error("[tool-sdk] tool handler error:", error)

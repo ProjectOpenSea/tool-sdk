@@ -1,7 +1,10 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
+import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
+import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
+  extractSettlementTxHash,
   type PaymentRequirements,
   signX402Payment,
   x402PaymentHeaderName,
@@ -15,6 +18,11 @@ export interface PaidAuthenticatedFetchOptions extends RequestInit {
   maxAmount?: string
   allowedRecipients?: string[]
   allowedAssets?: string[]
+  /**
+   * When set, sends a fire-and-forget caller-side usage report after a
+   * successful x402 payment. The tool is identified by endpoint URL.
+   */
+  reportCallerUsage?: CallerUsageReporterConfig | boolean
 }
 
 // Keep in sync with REJECTED_ADDRESSES in x402-payment.ts
@@ -44,6 +52,7 @@ export async function paidAuthenticatedFetch(
     maxAmount,
     allowedRecipients,
     allowedAssets,
+    reportCallerUsage,
     ...fetchOptions
   } = options
 
@@ -99,6 +108,24 @@ export async function paidAuthenticatedFetch(
         [x402PaymentHeaderName(x402Version)]: xPayment,
       },
     })
+
+    if (reportCallerUsage && res.ok) {
+      const settlement = extractSettlementTxHash(res)
+      const resolved = resolveNetwork(requirements.network)
+      if (settlement && resolved) {
+        const config =
+          typeof reportCallerUsage === "object" ? reportCallerUsage : {}
+        reportCallerX402Usage(
+          {
+            toolEndpoint: url,
+            callerAddress: account.address,
+            txHash: settlement,
+            chainId: resolved.chainId,
+          },
+          config,
+        ).catch(() => {})
+      }
+    }
   }
 
   return res

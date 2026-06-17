@@ -25,7 +25,12 @@ export type {
   PaidFetchOptions,
   PaymentRequirements,
 } from "./lib/client/x402-payment.js"
-export { paidFetch, signX402Payment } from "./lib/client/x402-payment.js"
+export {
+  buildSettlementResponseHeader,
+  extractSettlementTxHash,
+  paidFetch,
+  signX402Payment,
+} from "./lib/client/x402-payment.js"
 export { ToolHandlerError } from "./lib/handler/error.js"
 export type { ToolHandlerConfig } from "./lib/handler/index.js"
 export { createToolHandler } from "./lib/handler/index.js"
@@ -157,6 +162,15 @@ export {
   TraitGatedPredicateClient,
 } from "./lib/onchain/predicate-clients.js"
 export { ToolRegistryClient } from "./lib/onchain/registry.js"
+export type {
+  CallerEip3009UsageEvent,
+  CallerUsageReporterConfig,
+  CallerX402UsageEvent,
+} from "./lib/usage/caller-reporter.js"
+export {
+  reportCallerEip3009Usage,
+  reportCallerX402Usage,
+} from "./lib/usage/caller-reporter.js"
 export type {
   SignZeroValueAuthorizationParams,
   ZeroValueAuthorization,

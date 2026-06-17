@@ -1,5 +1,12 @@
 # @opensea/tool-sdk
 
+## 0.20.0
+
+### Minor Changes
+
+- e2d9789: Add caller-side usage reporting: `reportCallerX402Usage`, `reportCallerEip3009Usage`, and `extractSettlementTxHash`. Tool callers can now send usage reports by endpoint URL with auto-provisioned API keys. Integrated into `paidFetch`, `paidAuthenticatedFetch` (via `reportCallerUsage` option), and the `pay` CLI (`--report-usage`).
+- e2d9789: `createToolHandler` now echoes the onchain settlement tx hash back to the caller in the x402 settlement-response header (`PAYMENT-RESPONSE` for v2, `X-PAYMENT-RESPONSE` for v1) after a paid call settles. This lets caller-side usage reporting (and any x402 client) read the tx hash via `extractSettlementTxHash`; without it, `--report-usage` silently has nothing to report. Adds the `buildSettlementResponseHeader` helper.
+
 ## 0.19.0
 
 ### Minor Changes

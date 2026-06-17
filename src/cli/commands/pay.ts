@@ -1,12 +1,16 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { parseX402Challenge } from "../../lib/client/x402-challenge.js"
 import {
+  parseX402Challenge,
+  resolveNetwork,
+} from "../../lib/client/x402-challenge.js"
+import {
+  extractSettlementTxHash,
   signX402Payment,
   validatePaymentRequirements,
-  X402_SETTLEMENT_HEADERS,
   x402PaymentHeaderName,
 } from "../../lib/client/x402-payment.js"
+import { reportCallerX402Usage } from "../../lib/usage/caller-reporter.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
@@ -21,6 +25,8 @@ interface PayOptions {
   method?: string
   maxAmount?: string
   walletProvider?: string
+  reportUsage?: boolean
+  apiKey?: string
 }
 
 /** HTTP verbs that carry no request body — inputs go in the query string. */
@@ -48,6 +54,14 @@ export const payCommand = new Command("pay")
   .option(
     "--max-amount <baseUnits>",
     `Reject challenges that charge more than this (token base units). Pass "unlimited" to disable. Defaults to ${DEFAULT_MAX_AMOUNT} (10 USDC).`,
+  )
+  .option(
+    "--report-usage",
+    "Send a caller-side usage report to OpenSea after a successful payment.",
+  )
+  .option(
+    "--api-key <key>",
+    "API key for usage reporting. If omitted, an instant key is auto-provisioned.",
   )
   .action(async (url: string, options: PayOptions) => {
     // The x402 X-Payment signature is a gasless EIP-3009 authorization — it is
@@ -130,6 +144,8 @@ export const payCommand = new Command("pay")
       explicitMethod,
       adapter,
       maxAmount,
+      options.reportUsage ?? false,
+      options.apiKey,
     )
   })
 
@@ -179,6 +195,8 @@ async function runPaymentOnly(
   explicitMethod: boolean,
   adapter: WalletAdapter,
   maxAmount: string | undefined,
+  reportUsage: boolean,
+  apiKey: string | undefined,
 ): Promise<void> {
   console.log(pc.cyan("Probing endpoint for payment requirements..."))
 
@@ -286,19 +304,40 @@ async function runPaymentOnly(
     process.exit(1)
   }
 
-  const settlement = X402_SETTLEMENT_HEADERS.map(h =>
-    paidRes.headers.get(h),
-  ).find(v => v != null)
-  if (settlement) {
-    try {
-      const decoded = JSON.parse(
-        Buffer.from(settlement, "base64").toString("utf-8"),
+  const settlementTx = extractSettlementTxHash(paidRes)
+  if (settlementTx) {
+    console.log(pc.green(`Settled onchain: ${settlementTx}`))
+  }
+
+  if (reportUsage && paidRes.ok && settlementTx) {
+    const resolved = resolveNetwork(requirements.network)
+    if (!resolved) {
+      console.warn(
+        pc.yellow(
+          `Skipping usage report — unsupported network: ${requirements.network}`,
+        ),
       )
-      if (decoded.transaction) {
-        console.log(pc.green(`Settled on-chain: ${decoded.transaction}`))
+    } else {
+      const callerAddress = await adapter.getAddress()
+      console.log(pc.dim("Sending caller usage report..."))
+      try {
+        await reportCallerX402Usage(
+          {
+            toolEndpoint: url,
+            callerAddress: callerAddress as `0x${string}`,
+            txHash: settlementTx,
+            chainId: resolved.chainId,
+          },
+          { apiKey },
+        )
+        console.log(pc.green("Usage report sent."))
+      } catch (err) {
+        console.error(
+          pc.yellow(
+            `Usage report failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        )
       }
-    } catch {
-      // Non-base64 settlement header — ignore, the body is what matters.
     }
   }
 

@@ -1,6 +1,8 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import type { Account } from "viem"
 import { toHex } from "viem"
+import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
+import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import {
   parseX402Challenge,
   type RawRequirements,
@@ -220,6 +222,12 @@ export interface PaidFetchOptions extends RequestInit {
    * `USDC_BASE_SEPOLIA_ADDRESS`).
    */
   allowedAssets?: string[]
+  /**
+   * When set, sends a fire-and-forget caller-side usage report to the
+   * OpenSea usage endpoint after a successful x402 payment. The tool is
+   * identified by its endpoint URL — no onchain registry coordinates needed.
+   */
+  reportCallerUsage?: CallerUsageReporterConfig | boolean
 }
 
 /**
@@ -244,7 +252,7 @@ export async function paidFetch(
   url: string,
   options: PaidFetchOptions,
 ): Promise<Response> {
-  const { signer, maxAmount, allowedRecipients, allowedAssets, ...fetchOptions } = options
+  const { signer, maxAmount, allowedRecipients, allowedAssets, reportCallerUsage, ...fetchOptions } = options
 
   if (fetchOptions.body instanceof ReadableStream) {
     throw new Error(
@@ -286,7 +294,85 @@ export async function paidFetch(
     },
   })
 
+  if (reportCallerUsage && paidRes.ok) {
+    const settlement = extractSettlementTxHash(paidRes)
+    const resolved = resolveNetwork(requirements.network)
+    if (settlement && resolved) {
+      const callerAddress = await resolveSignerAddress(signer)
+      const config =
+        typeof reportCallerUsage === "object" ? reportCallerUsage : {}
+      reportCallerX402Usage(
+        {
+          toolEndpoint: url,
+          callerAddress: callerAddress as `0x${string}`,
+          txHash: settlement,
+          chainId: resolved.chainId,
+        },
+        config,
+      ).catch(() => {})
+    }
+  }
+
   return paidRes
+}
+
+/**
+ * Extract the onchain settlement tx hash from x402 response headers.
+ * Returns `undefined` if no settlement header is present.
+ */
+export function extractSettlementTxHash(
+  res: Response,
+): string | undefined {
+  const raw = X402_SETTLEMENT_HEADERS.map((h) => res.headers.get(h)).find(
+    (v) => v != null,
+  )
+  if (!raw) return undefined
+  try {
+    const decoded = JSON.parse(
+      typeof atob === "function"
+        ? atob(raw)
+        : Buffer.from(raw, "base64").toString("utf-8"),
+    ) as { transaction?: string }
+    return decoded.transaction
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Build the x402 settlement-response header a tool server returns after it
+ * settles a payment. The encoding is the inverse of {@link extractSettlementTxHash}:
+ * a base64-encoded JSON settle response. The header name tracks the protocol
+ * version — v2 uses `PAYMENT-RESPONSE`, v1 used `X-PAYMENT-RESPONSE` — matching
+ * the request header named by {@link x402PaymentHeaderName}.
+ */
+export function buildSettlementResponseHeader(params: {
+  x402Version: number
+  transaction: string
+  network?: string
+  payer?: string
+}): { name: string; value: string } {
+  const name = params.x402Version >= 2 ? "PAYMENT-RESPONSE" : "X-PAYMENT-RESPONSE"
+  const json = JSON.stringify({
+    success: true,
+    transaction: params.transaction,
+    network: params.network,
+    payer: params.payer,
+  })
+  const value =
+    typeof btoa === "function"
+      ? btoa(json)
+      : Buffer.from(json, "utf-8").toString("base64")
+  return { name, value }
+}
+
+async function resolveSignerAddress(
+  signer: WalletAdapter | Account,
+): Promise<string> {
+  if ("capabilities" in signer) {
+    return (signer as WalletAdapter).getAddress()
+  }
+  return (signer as Account).address
 }
 
 /**

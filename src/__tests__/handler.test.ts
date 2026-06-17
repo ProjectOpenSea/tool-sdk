@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { z } from "zod/v4"
 import { ToolHandlerError } from "../index.js"
+import { extractSettlementTxHash } from "../lib/client/x402-payment.js"
 import { createToolHandler } from "../lib/handler/index.js"
 import type { ManifestDefinition } from "../lib/manifest/index.js"
 import type { Eip3009UsageReporterConfig } from "../lib/usage/eip3009-reporter.js"
@@ -213,6 +214,74 @@ describe("createToolHandler", () => {
     const response = await handler(request)
     expect(response.status).toBe(200)
     expect(order).toEqual(["check", "handler", "settle"])
+  })
+
+  const TX_HASH =
+    "0xabababababababababababababababababababababababababababababababab"
+
+  function makeSettlingHandler() {
+    const gate: GateMiddleware = {
+      async check() {
+        return null
+      },
+      async settle(ctx) {
+        ctx.gates.x402 = {
+          paid: true,
+          payer: "0xpayer",
+          settlementTxHash: TX_HASH,
+        }
+      },
+    }
+    return createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [gate],
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+  }
+
+  it("emits an X-PAYMENT-RESPONSE settlement header on a settled v1 call", async () => {
+    const handler = makeSettlingHandler()
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-PAYMENT": "..." },
+      body: JSON.stringify({ query: "test" }),
+    })
+    const response = await handler(request)
+    expect(response.status).toBe(200)
+    // The caller's own extractor must be able to read it back.
+    expect(extractSettlementTxHash(response)).toBe(TX_HASH)
+    expect(response.headers.get("X-PAYMENT-RESPONSE")).not.toBeNull()
+    expect(response.headers.get("PAYMENT-RESPONSE")).toBeNull()
+  })
+
+  it("emits a PAYMENT-RESPONSE settlement header on a settled v2 call", async () => {
+    const handler = makeSettlingHandler()
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "PAYMENT-SIGNATURE": "...",
+      },
+      body: JSON.stringify({ query: "test" }),
+    })
+    const response = await handler(request)
+    expect(response.status).toBe(200)
+    expect(extractSettlementTxHash(response)).toBe(TX_HASH)
+    expect(response.headers.get("PAYMENT-RESPONSE")).not.toBeNull()
+  })
+
+  it("does not emit a settlement header when nothing settled", async () => {
+    const handler = makeHandler()
+    const request = new Request("https://test.example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "test" }),
+    })
+    const response = await handler(request)
+    expect(response.status).toBe(200)
+    expect(extractSettlementTxHash(response)).toBeUndefined()
   })
 
   it("does not call settle() when a gate short-circuits with a response", async () => {
