@@ -1,6 +1,5 @@
 import { Command } from "commander"
 import pc from "picocolors"
-import { isAddress } from "viem"
 import {
   parseX402Challenge,
   resolveNetwork,
@@ -34,45 +33,56 @@ interface PayOptions {
   toolRef?: string
 }
 
-/** ERC-8257 composite key identifying a tool onchain. */
+/** Composite key identifying a tool (ERC-8257 onchain or x402 registry). */
 export interface ToolRef {
   toolChainId: number
-  toolRegistryAddress: `0x${string}`
-  toolOnchainId: number
+  toolRegistryAddress: string
+  toolOnchainId: string
 }
 
 /**
- * Parse a `--tool-ref` value of the form `chainId:registryAddress:onchainId`
- * (e.g. `8453:0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1:65`) into an ERC-8257
- * composite key. The registry address contains no colons and both IDs are
- * numeric, so a 3-way split is unambiguous. Throws on a malformed ref.
+ * Parse a `--tool-ref` value of the form `chainId,registryAddress,onchainId`
+ * (comma-separated, exactly three fields).
+ *
+ * A comma delimiter keeps the registry identifier unambiguous even when it
+ * contains a colon, as the x402 registries do (`x402:bazaar`, `x402:bankr`).
+ *
+ * Examples:
+ *   `8453,0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1,65`  → onchain ERC-8257
+ *   `8453,x402:bazaar,8679018179619845322`                → x402 bazaar tool
+ *   `8453,x402:bankr,5311379622895099236`                 → x402 bankr tool
+ *
+ * The onchainId is kept as a string to preserve precision for IDs that
+ * exceed `Number.MAX_SAFE_INTEGER`.
  */
 export function parseToolRef(ref: string): ToolRef {
-  const parts = ref.split(":")
+  const parts = ref.split(",")
   if (parts.length !== 3) {
     throw new Error(
-      `Invalid --tool-ref "${ref}": expected chainId:registryAddress:onchainId`,
+      `Invalid --tool-ref "${ref}": expected chainId,registryAddress,onchainId`,
     )
   }
-  const [chainStr, registry, onchainStr] = parts
+  const [chainStr = "", registry = "", onchainStr = ""] = parts
+
   const toolChainId = Number(chainStr)
   if (!Number.isInteger(toolChainId) || toolChainId <= 0) {
     throw new Error(
       `Invalid --tool-ref chain id "${chainStr}": expected a positive integer`,
     )
   }
-  if (!isAddress(registry)) {
-    throw new Error(
-      `Invalid --tool-ref registry address "${registry}": expected a 0x address`,
-    )
+  if (!registry) {
+    throw new Error(`Invalid --tool-ref registry: must not be empty`)
   }
-  const toolOnchainId = Number(onchainStr)
-  if (!Number.isInteger(toolOnchainId) || toolOnchainId < 0) {
+  if (!/^\d+$/.test(onchainStr)) {
     throw new Error(
       `Invalid --tool-ref onchain id "${onchainStr}": expected a non-negative integer`,
     )
   }
-  return { toolChainId, toolRegistryAddress: registry, toolOnchainId }
+  return {
+    toolChainId,
+    toolRegistryAddress: registry,
+    toolOnchainId: onchainStr,
+  }
 }
 
 /** HTTP verbs that carry no request body — inputs go in the query string. */
@@ -111,7 +121,7 @@ export const payCommand = new Command("pay")
   )
   .option(
     "--tool-ref <ref>",
-    "ERC-8257 tool coordinates as chainId:registryAddress:onchainId (e.g. 8453:0x265b...2cf1:65). Disambiguates usage reporting when multiple tools share one endpoint.",
+    "Tool coordinates as chainId,registryAddress,onchainId (e.g. 8453,0x265b...2cf1,65 or 8453,x402:bazaar,123). Disambiguates usage reporting when multiple tools share one endpoint.",
   )
   .action(async (url: string, options: PayOptions) => {
     // The x402 X-Payment signature is a gasless EIP-3009 authorization — it is

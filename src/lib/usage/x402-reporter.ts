@@ -1,5 +1,7 @@
 import { isAddress } from "viem"
 
+const NUMERIC_STRING_RE = /^\d+$/
+
 export interface X402UsageReporterConfig {
   /**
    * URL of the OpenSea usage endpoint.
@@ -13,11 +15,13 @@ export interface X402UsageReporterConfig {
   /**
    * ERC-8257 composite key: registry contract address.
    */
-  toolRegistryAddress: `0x${string}`
+  toolRegistryAddress: string
   /**
-   * ERC-8257 composite key: the tool's onchain ID in the registry.
+   * Composite key: the tool's ID in the registry. A number (for onchain
+   * tools that fit in a JS integer) or a numeric string (for x402 tools
+   * whose IDs exceed `Number.MAX_SAFE_INTEGER`).
    */
-  toolOnchainId: number
+  toolOnchainId: number | string
   /**
    * API key sent as `x-api-key` header.
    */
@@ -44,17 +48,21 @@ const DEFAULT_TIMEOUT_MS = 5_000
 const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/
 
 function validateX402Config(config: X402UsageReporterConfig): void {
-  if (!isAddress(config.toolRegistryAddress)) {
+  if (!config.toolRegistryAddress) {
     throw new Error(
-      `[tool-sdk] invalid toolRegistryAddress: ${config.toolRegistryAddress}`,
+      `[tool-sdk] toolRegistryAddress must not be empty`,
     )
   }
-  if (
-    !Number.isInteger(config.toolOnchainId) ||
-    config.toolOnchainId < 0
-  ) {
+  const onchainId = config.toolOnchainId
+  if (typeof onchainId === "number") {
+    if (!Number.isInteger(onchainId) || onchainId < 0) {
+      throw new Error(
+        `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${onchainId}`,
+      )
+    }
+  } else if (!NUMERIC_STRING_RE.test(onchainId)) {
     throw new Error(
-      `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${config.toolOnchainId}`,
+      `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${onchainId}`,
     )
   }
   if (

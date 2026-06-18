@@ -1,5 +1,7 @@
 import { isAddress } from "viem"
 
+const NUMERIC_STRING_RE = /^\d+$/
+
 /**
  * Configuration for caller-side usage reporting. Unlike the server-side
  * reporters, this identifies the tool by its canonical endpoint URL — the
@@ -64,8 +66,8 @@ export interface CallerX402UsageEvent {
    * server-side reporter's payload.
    */
   toolChainId?: number
-  toolRegistryAddress?: `0x${string}`
-  toolOnchainId?: number
+  toolRegistryAddress?: string
+  toolOnchainId?: number | string
 }
 
 export interface CallerEip3009UsageEvent {
@@ -127,15 +129,23 @@ function buildToolIdentity(
       detail: "invalid toolChainId",
     }
   }
-  if (!isAddress(event.toolRegistryAddress)) {
+  if (!event.toolRegistryAddress) {
     return {
-      error: `invalid toolRegistryAddress: ${event.toolRegistryAddress}`,
+      error: "toolRegistryAddress must not be empty",
       detail: "invalid toolRegistryAddress",
     }
   }
-  if (!Number.isInteger(event.toolOnchainId) || event.toolOnchainId < 0) {
+  const onchainId = event.toolOnchainId
+  if (typeof onchainId === "number") {
+    if (!Number.isInteger(onchainId) || onchainId < 0) {
+      return {
+        error: `toolOnchainId must be a non-negative integer, got: ${onchainId}`,
+        detail: "invalid toolOnchainId",
+      }
+    }
+  } else if (!NUMERIC_STRING_RE.test(onchainId)) {
     return {
-      error: `toolOnchainId must be a non-negative integer, got: ${event.toolOnchainId}`,
+      error: `toolOnchainId must be a non-negative integer, got: ${onchainId}`,
       detail: "invalid toolOnchainId",
     }
   }

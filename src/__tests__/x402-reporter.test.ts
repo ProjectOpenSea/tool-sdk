@@ -5,8 +5,7 @@ import {
   type X402UsageReporterConfig,
 } from "../lib/usage/x402-reporter.js"
 
-const REGISTRY_ADDRESS =
-  "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1" as `0x${string}`
+const REGISTRY_ADDRESS = "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1"
 const CALLER_ADDRESS =
   "0xabcdefabcdef1234567890abcdefabcdef123456" as `0x${string}`
 
@@ -123,13 +122,26 @@ describe("createX402UsageReporter", () => {
     expect(consoleSpy).not.toHaveBeenCalled()
   })
 
+  it("accepts x402:bazaar registry and string onchainId", async () => {
+    const report = createX402UsageReporter(
+      makeConfig({
+        toolRegistryAddress: "x402:bazaar",
+        toolOnchainId: "8679018179619845322",
+      }),
+    )
+    await report(makeEvent())
+
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const body = JSON.parse(fetchSpy.mock.calls[0]![1].body)
+    expect(body.tool_registry_address).toBe("x402:bazaar")
+    expect(body.tool_onchain_id).toBe("8679018179619845322")
+  })
+
   // Validation tests
-  it("throws for invalid toolRegistryAddress", () => {
+  it("throws for empty toolRegistryAddress", () => {
     expect(() =>
-      createX402UsageReporter(
-        makeConfig({ toolRegistryAddress: "0xinvalid" as `0x${string}` }),
-      ),
-    ).toThrow("invalid toolRegistryAddress")
+      createX402UsageReporter(makeConfig({ toolRegistryAddress: "" })),
+    ).toThrow("toolRegistryAddress must not be empty")
   })
 
   it("throws for negative toolOnchainId", () => {

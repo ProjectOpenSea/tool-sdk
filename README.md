@@ -172,14 +172,20 @@ npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
 | `--max-amount <baseUnits>` | Reject challenges charging more than this (token base units). Pass `unlimited` to disable |
 | `--no-report-usage` | Disable the caller-side usage report sent to OpenSea after a successful payment |
 | `--api-key <key>` | API key for usage reporting (falls back to `OPENSEA_API_KEY`, then an auto-provisioned instant key) |
-| `--tool-ref <ref>` | ERC-8257 tool coordinates as `chainId:registryAddress:onchainId` (e.g. `8453:0x265b...2cf1:65`). Disambiguates usage reporting when multiple tools share one endpoint |
+| `--tool-ref <ref>` | Tool coordinates as `chainId,registryAddress,onchainId` (e.g. `8453,0x265b...2cf1,65`, or `8453,x402:bazaar,123` for x402 registries). Disambiguates usage reporting when multiple tools share one endpoint |
 
-When an endpoint URL maps to more than one registered tool, an endpoint-only usage report is rejected with `400 Multiple tools registered for endpoint`. Pass `--tool-ref` so the report identifies the exact tool by its onchain composite key:
+When an endpoint URL maps to more than one registered tool, an endpoint-only usage report is rejected with `400 Multiple tools registered for endpoint`. Pass `--tool-ref` so the report identifies the exact tool by its composite key. The fields are comma-separated so a registry identifier that contains a colon (such as the `x402:bazaar` / `x402:bankr` registries used for tools that are not registered onchain) stays unambiguous:
 
 ```bash
+# Onchain (ERC-8257) registry:
 npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
   --body '{"query":"hello"}' \
-  --tool-ref 8453:0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1:65
+  --tool-ref 8453,0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1,65
+
+# x402 registry (not registered onchain):
+npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
+  --body '{"query":"hello"}' \
+  --tool-ref 8453,x402:bazaar,8679018179619845322
 ```
 
 ### `auth <url>`

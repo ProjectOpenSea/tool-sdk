@@ -10,8 +10,7 @@ const CALLER_ADDRESS =
   "0xabcdefabcdef1234567890abcdefabcdef12345678" as `0x${string}`
 const PAYER_ADDRESS =
   "0x1234561234561234561234561234561234561234" as `0x${string}`
-const REGISTRY_ADDRESS =
-  "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1" as `0x${string}`
+const REGISTRY_ADDRESS = "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1"
 
 function makeConfig(
   overrides: Partial<Parameters<typeof createEip3009UsageReporter>[0]> = {},
@@ -312,12 +311,21 @@ describe("createEip3009UsageReporter", () => {
     expect(() => createEip3009UsageReporter(makeConfig())).not.toThrow()
   })
 
-  it("throws for invalid toolRegistryAddress", () => {
+  it("throws for empty toolRegistryAddress", () => {
+    expect(() =>
+      createEip3009UsageReporter(makeConfig({ toolRegistryAddress: "" })),
+    ).toThrow("toolRegistryAddress must not be empty")
+  })
+
+  it("accepts x402:bankr registry and string onchainId", () => {
     expect(() =>
       createEip3009UsageReporter(
-        makeConfig({ toolRegistryAddress: "0xinvalid" as `0x${string}` }),
+        makeConfig({
+          toolRegistryAddress: "x402:bankr",
+          toolOnchainId: "5311379622895099236",
+        }),
       ),
-    ).toThrow("invalid toolRegistryAddress")
+    ).not.toThrow()
   })
 
   it("throws for negative toolOnchainId", () => {

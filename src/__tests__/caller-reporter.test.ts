@@ -103,8 +103,7 @@ describe("reportCallerX402Usage", () => {
     const result = await reportCallerX402Usage(
       makeX402Event({
         toolChainId: 8453,
-        toolRegistryAddress:
-          "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1" as `0x${string}`,
+        toolRegistryAddress: "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1",
         toolOnchainId: 65,
       }),
       makeConfig(),
@@ -126,6 +125,24 @@ describe("reportCallerX402Usage", () => {
     })
   })
 
+  it("sends x402:bazaar registry and string onchainId in the composite key", async () => {
+    const result = await reportCallerX402Usage(
+      makeX402Event({
+        toolChainId: 8453,
+        toolRegistryAddress: "x402:bazaar",
+        toolOnchainId: "8679018179619845322",
+      }),
+      makeConfig(),
+    )
+    expect(result.outcome).toBe("reported")
+
+    const body = JSON.parse(fetchSpy.mock.calls[0]![1].body)
+    expect(body.tool_chain_id).toBe(8453)
+    expect(body.tool_registry_address).toBe("x402:bazaar")
+    expect(body.tool_onchain_id).toBe("8679018179619845322")
+    expect(body.tool_endpoint).toBeUndefined()
+  })
+
   it("skips the report when only partial composite coordinates are given", async () => {
     const result = await reportCallerX402Usage(
       // chainId without registry/onchainId — must be all-or-nothing.
@@ -137,11 +154,11 @@ describe("reportCallerX402Usage", () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it("skips the report when the composite registry address is invalid", async () => {
+  it("skips the report when the composite registry address is empty", async () => {
     const result = await reportCallerX402Usage(
       makeX402Event({
         toolChainId: 8453,
-        toolRegistryAddress: "not-an-address" as `0x${string}`,
+        toolRegistryAddress: "",
         toolOnchainId: 65,
       }),
       makeConfig(),

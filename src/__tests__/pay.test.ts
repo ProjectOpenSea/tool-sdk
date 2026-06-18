@@ -23,33 +23,63 @@ afterEach(() => {
 describe("parseToolRef", () => {
   const REGISTRY = "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1"
 
-  it("parses chainId:registryAddress:onchainId", async () => {
+  it("parses chainId,registryAddress,onchainId for onchain tools", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(parseToolRef(`8453:${REGISTRY}:65`)).toEqual({
+    expect(parseToolRef(`8453,${REGISTRY},65`)).toEqual({
       toolChainId: 8453,
       toolRegistryAddress: REGISTRY,
-      toolOnchainId: 65,
+      toolOnchainId: "65",
     })
+  })
+
+  it("parses an x402:bazaar registry whose name contains a colon", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(parseToolRef("8453,x402:bazaar,8679018179619845322")).toEqual({
+      toolChainId: 8453,
+      toolRegistryAddress: "x402:bazaar",
+      toolOnchainId: "8679018179619845322",
+    })
+  })
+
+  it("parses an x402:bankr registry", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(parseToolRef("8453,x402:bankr,5311379622895099236")).toEqual({
+      toolChainId: 8453,
+      toolRegistryAddress: "x402:bankr",
+      toolOnchainId: "5311379622895099236",
+    })
+  })
+
+  it("preserves an onchain id beyond Number.MAX_SAFE_INTEGER as a string", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    const big = "9007199254740993" // 2^53 + 1, not representable as a JS number
+    expect(parseToolRef(`8453,x402:bazaar,${big}`).toolOnchainId).toBe(big)
   })
 
   it("accepts onchain id 0", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(parseToolRef(`8453:${REGISTRY}:0`).toolOnchainId).toBe(0)
+    expect(parseToolRef(`8453,${REGISTRY},0`).toolOnchainId).toBe("0")
   })
 
-  it("throws when the ref does not have exactly three parts", async () => {
+  it("throws when the ref does not have exactly three comma fields", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(() => parseToolRef(`8453:${REGISTRY}`)).toThrow(/tool-ref/)
+    expect(() => parseToolRef(`8453,${REGISTRY}`)).toThrow(/tool-ref/)
+    expect(() => parseToolRef(`8453,${REGISTRY},65,extra`)).toThrow(/tool-ref/)
   })
 
   it("throws on a non-numeric chain id", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(() => parseToolRef(`base:${REGISTRY}:65`)).toThrow(/chain/i)
+    expect(() => parseToolRef(`base,${REGISTRY},65`)).toThrow(/chain/i)
   })
 
-  it("throws on an invalid registry address", async () => {
+  it("throws on an empty registry", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(() => parseToolRef("8453:not-an-address:65")).toThrow(/registry/i)
+    expect(() => parseToolRef("8453,,65")).toThrow(/registry/i)
+  })
+
+  it("throws on a non-numeric onchain id", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(() => parseToolRef(`8453,${REGISTRY},abc`)).toThrow(/onchain/i)
   })
 })
 

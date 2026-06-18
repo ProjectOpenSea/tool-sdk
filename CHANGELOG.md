@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.23.1
+
+### Patch Changes
+
+- cbc654a: `--tool-ref` and the usage reporters now support non-address registries such as `x402:bazaar` and `x402:bankr` for tools that are not registered onchain. The `--tool-ref` field delimiter is a comma (`chainId,registryAddress,onchainId`) so a registry identifier that itself contains a colon stays unambiguous; `parseToolRef` requires exactly three comma-separated fields. `toolRegistryAddress` is widened from `0x${string}` to `string`, and `toolOnchainId` is kept as a string to preserve precision for IDs exceeding `Number.MAX_SAFE_INTEGER`.
+
 ## 0.23.0
 
 ### Minor Changes
