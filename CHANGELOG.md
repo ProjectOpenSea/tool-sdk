@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.23.0
+
+### Minor Changes
+
+- a39766d: Caller-side usage reporting can now identify a tool by its ERC-8257 composite key instead of only its endpoint URL. `reportCallerX402Usage` accepts optional `toolChainId`, `toolRegistryAddress`, and `toolOnchainId` fields, and the `pay` CLI gains a `--tool-ref <chainId:registryAddress:onchainId>` flag (e.g. `--tool-ref 8453:0x265b...2cf1:65`). When supplied, these are sent in place of `tool_endpoint`, matching the server-side reporter's payload. This fixes the `400 Multiple tools registered for endpoint` error that occurred when reporting usage for a tool whose endpoint maps to more than one registry entry.
+
 ## 0.22.0
 
 ### Minor Changes

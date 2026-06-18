@@ -20,6 +20,39 @@ afterEach(() => {
   delete process.env.RPC_URL
 })
 
+describe("parseToolRef", () => {
+  const REGISTRY = "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1"
+
+  it("parses chainId:registryAddress:onchainId", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(parseToolRef(`8453:${REGISTRY}:65`)).toEqual({
+      toolChainId: 8453,
+      toolRegistryAddress: REGISTRY,
+      toolOnchainId: 65,
+    })
+  })
+
+  it("accepts onchain id 0", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(parseToolRef(`8453:${REGISTRY}:0`).toolOnchainId).toBe(0)
+  })
+
+  it("throws when the ref does not have exactly three parts", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(() => parseToolRef(`8453:${REGISTRY}`)).toThrow(/tool-ref/)
+  })
+
+  it("throws on a non-numeric chain id", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(() => parseToolRef(`base:${REGISTRY}:65`)).toThrow(/chain/i)
+  })
+
+  it("throws on an invalid registry address", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(() => parseToolRef("8453:not-an-address:65")).toThrow(/registry/i)
+  })
+})
+
 describe("pay command", () => {
   it("probes for 402 then replays with X-Payment header", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []

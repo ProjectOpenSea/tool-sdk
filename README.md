@@ -167,7 +167,20 @@ npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
 | Flag | Description |
 |------|-------------|
 | `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
+| `--method <verb>` | HTTP method (defaults to POST; falls back to GET if a POST probe 404/405s) |
 | `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--max-amount <baseUnits>` | Reject challenges charging more than this (token base units). Pass `unlimited` to disable |
+| `--no-report-usage` | Disable the caller-side usage report sent to OpenSea after a successful payment |
+| `--api-key <key>` | API key for usage reporting (falls back to `OPENSEA_API_KEY`, then an auto-provisioned instant key) |
+| `--tool-ref <ref>` | ERC-8257 tool coordinates as `chainId:registryAddress:onchainId` (e.g. `8453:0x265b...2cf1:65`). Disambiguates usage reporting when multiple tools share one endpoint |
+
+When an endpoint URL maps to more than one registered tool, an endpoint-only usage report is rejected with `400 Multiple tools registered for endpoint`. Pass `--tool-ref` so the report identifies the exact tool by its onchain composite key:
+
+```bash
+npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
+  --body '{"query":"hello"}' \
+  --tool-ref 8453:0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1:65
+```
 
 ### `auth <url>`
 

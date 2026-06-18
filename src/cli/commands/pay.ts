@@ -1,5 +1,6 @@
 import { Command } from "commander"
 import pc from "picocolors"
+import { isAddress } from "viem"
 import {
   parseX402Challenge,
   resolveNetwork,
@@ -30,6 +31,48 @@ interface PayOptions {
   walletProvider?: string
   reportUsage?: boolean
   apiKey?: string
+  toolRef?: string
+}
+
+/** ERC-8257 composite key identifying a tool onchain. */
+export interface ToolRef {
+  toolChainId: number
+  toolRegistryAddress: `0x${string}`
+  toolOnchainId: number
+}
+
+/**
+ * Parse a `--tool-ref` value of the form `chainId:registryAddress:onchainId`
+ * (e.g. `8453:0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1:65`) into an ERC-8257
+ * composite key. The registry address contains no colons and both IDs are
+ * numeric, so a 3-way split is unambiguous. Throws on a malformed ref.
+ */
+export function parseToolRef(ref: string): ToolRef {
+  const parts = ref.split(":")
+  if (parts.length !== 3) {
+    throw new Error(
+      `Invalid --tool-ref "${ref}": expected chainId:registryAddress:onchainId`,
+    )
+  }
+  const [chainStr, registry, onchainStr] = parts
+  const toolChainId = Number(chainStr)
+  if (!Number.isInteger(toolChainId) || toolChainId <= 0) {
+    throw new Error(
+      `Invalid --tool-ref chain id "${chainStr}": expected a positive integer`,
+    )
+  }
+  if (!isAddress(registry)) {
+    throw new Error(
+      `Invalid --tool-ref registry address "${registry}": expected a 0x address`,
+    )
+  }
+  const toolOnchainId = Number(onchainStr)
+  if (!Number.isInteger(toolOnchainId) || toolOnchainId < 0) {
+    throw new Error(
+      `Invalid --tool-ref onchain id "${onchainStr}": expected a non-negative integer`,
+    )
+  }
+  return { toolChainId, toolRegistryAddress: registry, toolOnchainId }
 }
 
 /** HTTP verbs that carry no request body — inputs go in the query string. */
@@ -65,6 +108,10 @@ export const payCommand = new Command("pay")
   .option(
     "--api-key <key>",
     "API key for usage reporting. Falls back to OPENSEA_API_KEY, then to an auto-provisioned instant key.",
+  )
+  .option(
+    "--tool-ref <ref>",
+    "ERC-8257 tool coordinates as chainId:registryAddress:onchainId (e.g. 8453:0x265b...2cf1:65). Disambiguates usage reporting when multiple tools share one endpoint.",
   )
   .action(async (url: string, options: PayOptions) => {
     // The x402 X-Payment signature is a gasless EIP-3009 authorization — it is
@@ -140,6 +187,18 @@ export const payCommand = new Command("pay")
         ? undefined
         : (options.maxAmount ?? DEFAULT_MAX_AMOUNT)
 
+    let toolRef: ToolRef | undefined
+    if (options.toolRef) {
+      try {
+        toolRef = parseToolRef(options.toolRef)
+      } catch (err) {
+        console.error(
+          pc.red(`Error: ${err instanceof Error ? err.message : String(err)}`),
+        )
+        process.exit(1)
+      }
+    }
+
     await runPaymentOnly(
       url,
       params,
@@ -150,6 +209,7 @@ export const payCommand = new Command("pay")
       // Usage reporting is on by default; `--no-report-usage` opts out.
       options.reportUsage ?? true,
       options.apiKey ?? process.env.OPENSEA_API_KEY,
+      toolRef,
     )
   })
 
@@ -201,6 +261,7 @@ async function runPaymentOnly(
   maxAmount: string | undefined,
   reportUsage: boolean,
   apiKey: string | undefined,
+  toolRef?: ToolRef,
 ): Promise<void> {
   console.log(pc.cyan("Probing endpoint for payment requirements..."))
 
@@ -336,6 +397,7 @@ async function runPaymentOnly(
           callerAddress: callerAddress as `0x${string}`,
           txHash: settlementTx,
           chainId: resolved.chainId,
+          ...toolRef,
         },
         { apiKey },
       )

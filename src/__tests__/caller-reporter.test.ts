@@ -99,6 +99,57 @@ describe("reportCallerX402Usage", () => {
     expect(body.latency_ms).toBe(250)
   })
 
+  it("sends the ERC-8257 composite key in place of tool_endpoint when provided", async () => {
+    const result = await reportCallerX402Usage(
+      makeX402Event({
+        toolChainId: 8453,
+        toolRegistryAddress:
+          "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1" as `0x${string}`,
+        toolOnchainId: 65,
+      }),
+      makeConfig(),
+    )
+    expect(result.outcome).toBe("reported")
+
+    const body = JSON.parse(fetchSpy.mock.calls[0]![1].body)
+    expect(body.tool_chain_id).toBe(8453)
+    expect(body.tool_registry_address).toBe(
+      "0x265bb2dbfc0a8165c9a1941eb1372f349bad2cf1",
+    )
+    expect(body.tool_onchain_id).toBe(65)
+    // The composite key is sent INSTEAD of the (ambiguous) endpoint.
+    expect(body.tool_endpoint).toBeUndefined()
+    expect(body.x402).toEqual({
+      caller_address: CALLER_ADDRESS,
+      tx_hash: VALID_TX_HASH,
+      chain_id: 8453,
+    })
+  })
+
+  it("skips the report when only partial composite coordinates are given", async () => {
+    const result = await reportCallerX402Usage(
+      // chainId without registry/onchainId — must be all-or-nothing.
+      makeX402Event({ toolChainId: 8453 }),
+      makeConfig(),
+    )
+    expect(result.outcome).toBe("skipped")
+    expect(result.detail).toMatch(/coordinates/i)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it("skips the report when the composite registry address is invalid", async () => {
+    const result = await reportCallerX402Usage(
+      makeX402Event({
+        toolChainId: 8453,
+        toolRegistryAddress: "not-an-address" as `0x${string}`,
+        toolOnchainId: 65,
+      }),
+      makeConfig(),
+    )
+    expect(result.outcome).toBe("skipped")
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it("uses custom aggregatorUrl when provided", async () => {
     await reportCallerX402Usage(
       makeX402Event(),

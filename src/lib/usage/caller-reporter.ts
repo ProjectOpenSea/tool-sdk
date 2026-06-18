@@ -56,6 +56,16 @@ export interface CallerX402UsageEvent {
   chainId: number
   /** Tool invocation latency in milliseconds. */
   latencyMs?: number
+  /**
+   * ERC-8257 composite key identifying the tool onchain. Provide ALL THREE to
+   * disambiguate when several tools are registered to the same endpoint URL —
+   * the aggregator rejects an endpoint-only report with 400 in that case. When
+   * present, these are sent in place of `toolEndpoint`, matching the
+   * server-side reporter's payload.
+   */
+  toolChainId?: number
+  toolRegistryAddress?: `0x${string}`
+  toolOnchainId?: number
 }
 
 export interface CallerEip3009UsageEvent {
@@ -80,6 +90,64 @@ export interface CallerEip3009UsageEvent {
 const DEFAULT_AGGREGATOR_URL = "https://api.opensea.io/api/v2/tools/usage"
 const DEFAULT_TIMEOUT_MS = 5_000
 const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/
+
+/**
+ * Resolve which tool-identity fields to send: the ERC-8257 composite key when
+ * its coordinates are supplied (all three required, and valid), otherwise the
+ * endpoint URL. Returns an `error`/`detail` pair instead of throwing so the
+ * caller can record a `skipped` outcome.
+ */
+function buildToolIdentity(
+  event: CallerX402UsageEvent,
+):
+  | { fields: Record<string, unknown> }
+  | { error: string; detail: string } {
+  const hasAny =
+    event.toolChainId !== undefined ||
+    event.toolRegistryAddress !== undefined ||
+    event.toolOnchainId !== undefined
+  if (!hasAny) {
+    return { fields: { tool_endpoint: event.toolEndpoint } }
+  }
+
+  if (
+    event.toolChainId === undefined ||
+    event.toolRegistryAddress === undefined ||
+    event.toolOnchainId === undefined
+  ) {
+    return {
+      error:
+        "tool coordinates must be provided together: toolChainId, toolRegistryAddress, and toolOnchainId",
+      detail: "partial tool coordinates",
+    }
+  }
+  if (!Number.isInteger(event.toolChainId) || event.toolChainId <= 0) {
+    return {
+      error: `toolChainId must be a positive integer, got: ${event.toolChainId}`,
+      detail: "invalid toolChainId",
+    }
+  }
+  if (!isAddress(event.toolRegistryAddress)) {
+    return {
+      error: `invalid toolRegistryAddress: ${event.toolRegistryAddress}`,
+      detail: "invalid toolRegistryAddress",
+    }
+  }
+  if (!Number.isInteger(event.toolOnchainId) || event.toolOnchainId < 0) {
+    return {
+      error: `toolOnchainId must be a non-negative integer, got: ${event.toolOnchainId}`,
+      detail: "invalid toolOnchainId",
+    }
+  }
+
+  return {
+    fields: {
+      tool_chain_id: event.toolChainId,
+      tool_registry_address: event.toolRegistryAddress,
+      tool_onchain_id: event.toolOnchainId,
+    },
+  }
+}
 
 // Bounded in practice: one entry per unique origin (typically 1–2).
 const apiKeyCache = new Map<string, string>()
@@ -179,6 +247,14 @@ export async function reportCallerX402Usage(
     return { outcome: "skipped", detail: "invalid txHash" }
   }
 
+  // Identify the tool either by its ERC-8257 composite key (preferred when an
+  // endpoint maps to multiple registered tools) or by its endpoint URL.
+  const toolIdentity = buildToolIdentity(event)
+  if ("error" in toolIdentity) {
+    console.error(`[tool-sdk] ${toolIdentity.error}`)
+    return { outcome: "skipped", detail: toolIdentity.detail }
+  }
+
   const aggregatorUrl = config.aggregatorUrl ?? DEFAULT_AGGREGATOR_URL
   if (!isSecureAggregatorUrl(aggregatorUrl)) {
     console.error(
@@ -208,7 +284,7 @@ export async function reportCallerX402Usage(
       },
       body: JSON.stringify({
         verification_type: "x402_settlement",
-        tool_endpoint: event.toolEndpoint,
+        ...toolIdentity.fields,
         latency_ms: event.latencyMs,
         x402: {
           caller_address: event.callerAddress,
