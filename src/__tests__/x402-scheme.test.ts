@@ -1,11 +1,15 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { describe, expect, it } from "vitest"
-import type { PaymentRequirements } from "../lib/client/x402-payment.js"
+import {
+  createX402Client,
+  type PaymentRequirements,
+} from "../lib/client/x402-payment.js"
 import {
   ExactEip3009Scheme,
   signEip3009Authorization,
   toX402PaymentRequired,
+  UptoEip3009Scheme,
 } from "../lib/client/x402-scheme.js"
 
 const signer = privateKeyToAccount(generatePrivateKey())
@@ -179,6 +183,96 @@ describe("signEip3009Authorization", () => {
     })
 
     expect(defaultResult.signature).not.toBe(customResult.signature)
+  })
+})
+
+describe("UptoEip3009Scheme", () => {
+  it("creates a v1 payload with upto scheme identifier", async () => {
+    const scheme = new UptoEip3009Scheme(signer)
+    const result = await scheme.createPaymentPayload(1, {
+      scheme: "upto",
+      network: "eip155:8453",
+      asset: baseRequirements.asset,
+      amount: "10000",
+      payTo: baseRequirements.payTo,
+      maxTimeoutSeconds: 600,
+      extra: {},
+    })
+
+    const payload = result.payload as {
+      signature: string
+      authorization: Record<string, string>
+    }
+    expect(result.x402Version).toBe(1)
+    expect((result as Record<string, unknown>).scheme).toBe("upto")
+    expect((result as Record<string, unknown>).network).toBe("eip155:8453")
+    expect(payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+    expect(payload.authorization.from).toBe(signer.address)
+    expect(payload.authorization.to).toBe(baseRequirements.payTo)
+    expect(payload.authorization.value).toBe("10000")
+  })
+
+  it("creates a v2 payload without scheme/network fields", async () => {
+    const scheme = new UptoEip3009Scheme(signer)
+    const result = await scheme.createPaymentPayload(2, {
+      scheme: "upto",
+      network: "eip155:8453",
+      asset: baseRequirements.asset,
+      amount: "10000",
+      payTo: baseRequirements.payTo,
+      maxTimeoutSeconds: 600,
+      extra: {},
+    })
+
+    expect(result.x402Version).toBe(2)
+    expect((result as Record<string, unknown>).scheme).toBeUndefined()
+    expect((result as Record<string, unknown>).network).toBeUndefined()
+    expect(result.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it("has scheme property set to upto", () => {
+    const scheme = new UptoEip3009Scheme(signer)
+    expect(scheme.scheme).toBe("upto")
+  })
+})
+
+describe("createX402Client", () => {
+  const v2Requirements: PaymentRequirements = {
+    ...baseRequirements,
+    network: "eip155:8453",
+  }
+
+  it("routes to exact scheme for exact requirements", async () => {
+    const client = createX402Client(signer, "eip155:8453", 2)
+    const paymentRequired = toX402PaymentRequired({
+      requirements: { ...v2Requirements, scheme: "exact" },
+      x402Version: 2,
+      raw: { scheme: "exact", network: "eip155:8453", amount: "10000" },
+    })
+    const result = await client.createPaymentPayload(paymentRequired)
+    expect(result.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it("routes to upto scheme for upto requirements", async () => {
+    const client = createX402Client(signer, "eip155:8453", 2)
+    const paymentRequired = toX402PaymentRequired({
+      requirements: { ...v2Requirements, scheme: "upto" },
+      x402Version: 2,
+      raw: { scheme: "upto", network: "eip155:8453", amount: "10000" },
+    })
+    const result = await client.createPaymentPayload(paymentRequired)
+    expect(result.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
+  })
+
+  it("registers both schemes for v1", async () => {
+    const client = createX402Client(signer, "base", 1)
+    const paymentRequired = toX402PaymentRequired({
+      requirements: { ...baseRequirements, scheme: "upto" },
+      x402Version: 1,
+      raw: { scheme: "upto", network: "base", amount: "10000" },
+    })
+    const result = await client.createPaymentPayload(paymentRequired)
+    expect(result.payload.signature).toMatch(/^0x[0-9a-f]+$/i)
   })
 })
 

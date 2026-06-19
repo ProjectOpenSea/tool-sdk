@@ -9,10 +9,7 @@ import {
   extractSettlementTxHash,
   validatePaymentRequirements,
 } from "../../lib/client/x402-payment.js"
-import {
-  ExactEip3009Scheme,
-  toX402PaymentRequired,
-} from "../../lib/client/x402-scheme.js"
+import { toX402PaymentRequired } from "../../lib/client/x402-scheme.js"
 import { reportCallerX402Usage } from "../../lib/usage/caller-reporter.js"
 import {
   createWalletForProvider,
@@ -352,8 +349,7 @@ async function runPaymentOnly(
 
   console.log(pc.cyan("\nSigning EIP-3009 transferWithAuthorization..."))
 
-  const scheme = new ExactEip3009Scheme(adapter)
-  const client = createX402Client(scheme, requirements.network, x402Version)
+  const client = createX402Client(adapter, requirements.network, x402Version)
   const { x402HTTPClient } = await import("@x402/core/client")
   const httpClient = new x402HTTPClient(client)
 

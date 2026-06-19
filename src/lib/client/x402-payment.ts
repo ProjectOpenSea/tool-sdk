@@ -12,6 +12,7 @@ import {
   ExactEip3009Scheme,
   signEip3009Authorization,
   toX402PaymentRequired,
+  UptoEip3009Scheme,
 } from "./x402-scheme.js"
 
 const REJECTED_ADDRESSES = new Set([
@@ -240,8 +241,7 @@ export async function paidFetch(
     allowedAssets,
   })
 
-  const scheme = new ExactEip3009Scheme(signer)
-  const client = createX402Client(scheme, requirements.network, x402Version)
+  const client = createX402Client(signer, requirements.network, x402Version)
   const httpClient = new x402HTTPClient(client)
 
   const paymentRequired = toX402PaymentRequired({
@@ -403,19 +403,24 @@ export function validatePaymentRequirements(
 }
 
 /**
- * Create an x402Client with an {@link ExactEip3009Scheme} registered for the
- * given network and protocol version.
+ * Create an x402Client with both exact and upto EIP-3009 schemes registered
+ * for the specified network and protocol version. The x402Client routes to
+ * the correct scheme based on the challenge's `scheme` field.
  */
 export function createX402Client(
-  scheme: ExactEip3009Scheme,
+  signer: WalletAdapter | Account,
   network: string,
   x402Version: number,
 ): x402Client {
+  const exact = new ExactEip3009Scheme(signer)
+  const upto = new UptoEip3009Scheme(signer)
   const client = new x402Client()
   if (x402Version >= 2) {
-    client.register(network as `${string}:${string}`, scheme)
+    client.register(network as `${string}:${string}`, exact)
+    client.register(network as `${string}:${string}`, upto)
   } else {
-    client.registerV1(network, scheme)
+    client.registerV1(network, exact)
+    client.registerV1(network, upto)
   }
   return client
 }

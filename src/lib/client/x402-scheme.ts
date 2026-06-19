@@ -49,6 +49,44 @@ export class ExactEip3009Scheme implements SchemeNetworkClient {
 }
 
 /**
+ * x402 "upto" scheme — ceiling-price variant of EIP-3009. The caller
+ * authorizes up to `amount` but the facilitator may settle for less based
+ * on the tool's response. Signing logic is identical to exact; only the
+ * scheme identifier differs so the facilitator knows to apply variable
+ * pricing.
+ */
+export class UptoEip3009Scheme implements SchemeNetworkClient {
+  readonly scheme = "upto"
+
+  constructor(private readonly signer: WalletAdapter | Account) {}
+
+  async createPaymentPayload(
+    x402Version: number,
+    paymentRequirements: X402PaymentRequirements,
+    _context?: PaymentPayloadContext,
+  ): Promise<PaymentPayloadResult> {
+    const payload = await signEip3009Authorization(this.signer, {
+      network: paymentRequirements.network,
+      payTo: paymentRequirements.payTo,
+      asset: paymentRequirements.asset,
+      amount: paymentRequirements.amount,
+      extra: paymentRequirements.extra,
+    })
+
+    if (x402Version === 1) {
+      return {
+        x402Version,
+        scheme: paymentRequirements.scheme,
+        network: paymentRequirements.network,
+        payload,
+      } as PaymentPayloadResult
+    }
+
+    return { x402Version, payload }
+  }
+}
+
+/**
  * Core EIP-3009 TransferWithAuthorization signing logic shared by
  * {@link ExactEip3009Scheme} and the standalone {@link signX402Payment}.
  */

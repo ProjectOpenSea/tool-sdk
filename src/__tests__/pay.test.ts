@@ -149,6 +149,64 @@ describe("pay command", () => {
     logSpy.mockRestore()
   })
 
+  it("uses upto scheme when challenge specifies scheme: upto", async () => {
+    const uptoRequirements = { ...PAYMENT_REQUIREMENTS, scheme: "upto" }
+    const calls: { url: string; headers: Record<string, string> }[] = []
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const headers = Object.fromEntries(
+        new Headers(init?.headers).entries(),
+      ) as Record<string, string>
+      calls.push({ url: url as string, headers })
+
+      if (!headers["x-payment"]) {
+        return new Response(
+          JSON.stringify({
+            x402Version: 1,
+            error: "Payment required",
+            accepts: [uptoRequirements],
+          }),
+          { status: 402 },
+        )
+      }
+
+      return new Response(
+        JSON.stringify({ result: "success", txHash: "0xabc" }),
+        { status: 200 },
+      )
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    process.env.PRIVATE_KEY = PRIVATE_KEY
+    process.env.RPC_URL = "http://localhost:8545"
+
+    const { payCommand } = await import("../cli/commands/pay.js")
+
+    await payCommand.parseAsync([
+      "node",
+      "pay",
+      "https://tool.example.com/api",
+      "--body",
+      '{"query":"test"}',
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    const paymentPayload = JSON.parse(
+      Buffer.from(calls[1].headers["x-payment"], "base64").toString("utf-8"),
+    )
+    expect(paymentPayload.x402Version).toBe(1)
+    expect(paymentPayload.scheme).toBe("upto")
+    expect(paymentPayload.payload.signature).toBeDefined()
+    expect(paymentPayload.payload.authorization.to).toBe(
+      PAYMENT_REQUIREMENTS.payTo,
+    )
+
+    logSpy.mockRestore()
+  })
+
   it("falls back to GET when an unspecified-method POST probe 404s", async () => {
     const calls: { method?: string }[] = []
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {

@@ -10,7 +10,7 @@ import {
   type PaymentRequirements,
   rejectServerErrorAfterPayment,
 } from "./x402-payment.js"
-import { ExactEip3009Scheme, toX402PaymentRequired } from "./x402-scheme.js"
+import { toX402PaymentRequired } from "./x402-scheme.js"
 
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
   account: Account
@@ -95,8 +95,7 @@ export async function paidAuthenticatedFetch(
       allowedAssets,
     })
 
-    const scheme = new ExactEip3009Scheme(paymentSigner)
-    const client = createX402Client(scheme, requirements.network, x402Version)
+    const client = createX402Client(paymentSigner, requirements.network, x402Version)
     const httpClient = new x402HTTPClient(client)
 
     const paymentRequired = toX402PaymentRequired({

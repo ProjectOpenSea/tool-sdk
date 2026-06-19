@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.24.0
+
+### Minor Changes
+
+- c23aa96: Add support for the `upto` x402 payment scheme, which allows variable pricing (charge up to `amountPerCall`, with the actual charge potentially less). `createX402Client` now accepts a signer and registers both `ExactEip3009Scheme` and `UptoEip3009Scheme` internally, letting `@x402/core` route to the correct scheme based on the challenge's `scheme` field. The `pay` CLI, `paidFetch`, and `paidAuthenticatedFetch` route to the appropriate scheme automatically, so callers no longer need to know which scheme to instantiate.
+
 ## 0.23.1
 
 ### Patch Changes
