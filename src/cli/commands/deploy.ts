@@ -500,9 +500,29 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
     const manifestOrigin = new URL(manifestUrl).origin
     const endpointOrigin = new URL(manifest.endpoint).origin
     if (manifestOrigin !== endpointOrigin) {
-      console.error(pc.red("Error: Origin mismatch (anti-impersonation check)"))
-      console.error(pc.dim(`  Manifest served from: ${manifestOrigin}`))
-      console.error(pc.dim(`  Endpoint origin: ${endpointOrigin}`))
+      console.error(
+        pc.red(
+          "Error: Origin mismatch between manifest URL and declared endpoint",
+        ),
+      )
+      console.error(pc.dim(`  Manifest origin:  ${manifestOrigin}`))
+      console.error(pc.dim(`  Endpoint origin:  ${endpointOrigin}`))
+      console.error()
+      console.error(
+        pc.yellow(
+          "  The manifest and endpoint must be served from the exact same origin (scheme + host + port).",
+        ),
+      )
+      console.error(
+        pc.yellow(
+          "  Subdomains count as different origins (e.g. example.com ≠ api.example.com).",
+        ),
+      )
+      console.error(
+        pc.yellow(
+          "  Move your manifest or endpoint so both share the same host, then retry.",
+        ),
+      )
       process.exit(1)
     }
 

@@ -19,7 +19,8 @@ pnpm run type-check  # TypeScript type checking
 | Path | Role |
 |------|------|
 | `src/index.ts` | Library entry point — public `tool-sdk` exports |
-| `src/cli.ts` | CLI entry point (Commander program wiring) |
+| `src/cli.ts` | CLI bin entry — imports `program` and calls `program.parse()` |
+| `src/cli/index.ts` | Commander program wiring — builds `program` and registers all commands |
 | `src/types.ts` | Shared public types |
 | `src/cli/commands/` | CLI commands: `auth`, `configure-erc20-gate`, `configure-subscription`, `configure-trait-gating`, `deploy`, `dry-run-gate`, `dry-run-predicate-gate`, `export`, `get-collections`, `get-erc20-config`, `get-trait-config`, `hash`, `init`, `inspect`, `pay`, `register`, `set-collection-tokens`, `set-collections`, `smoke`, `update-metadata`, `validate`, `verify` |
 | `src/lib/onchain/abis.ts` | TypeScript ABI definitions mirroring Solidity interfaces |

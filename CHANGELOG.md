@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.25.0
+
+### Minor Changes
+
+- 5deb6c1: The `register` command now validates that the manifest URL and declared endpoint share the same origin before sending the onchain transaction. Previously only `verify` and `deploy` checked this, so a developer could burn gas registering a tool the indexer would immediately reject. All three commands (`register`, `verify`, `deploy`) now show a consistent, actionable error message that explicitly calls out subdomains as different origins and explains how to fix it.
+
 ## 0.24.0
 
 ### Minor Changes
