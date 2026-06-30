@@ -10,19 +10,36 @@ import { readInput } from "./read-input.js"
 interface DryRunPredicateGateOptions {
   manifest: string
   toolId?: string
+  operatorAddress?: string
   input?: string
 }
 
 export const dryRunPredicateGateCommand = new Command("dry-run-predicate-gate")
   .description(
-    "Invoke a tool handler locally with no SIWE auth header and assert a valid 401 response",
+    "Invoke a tool handler locally with no X-Payment header and assert a valid 402 challenge response",
   )
   .option("--manifest <path>", "Path to manifest .ts or .json file (required)")
   .option("--tool-id <id>", "Onchain tool ID to configure in the gate")
+  .requiredOption(
+    "--operator-address <address>",
+    "Operator address (0x-prefixed) for the 402 challenge",
+  )
   .option("--input <json>", "JSON input body (inline or @path)")
   .action(async (options: DryRunPredicateGateOptions) => {
     if (!options.manifest) {
       console.error(pc.red("Error: --manifest is required"))
+      process.exit(1)
+    }
+
+    if (
+      !options.operatorAddress ||
+      !/^0x[0-9a-fA-F]{40}$/.test(options.operatorAddress)
+    ) {
+      console.error(
+        pc.red(
+          "Error: --operator-address must be a valid 0x-prefixed Ethereum address",
+        ),
+      )
       process.exit(1)
     }
 
@@ -62,7 +79,10 @@ export const dryRunPredicateGateCommand = new Command("dry-run-predicate-gate")
     console.log(
       pc.cyan(`Building predicate gate (toolId: ${toolId.toString()})...`),
     )
-    const gate = predicateGate({ toolId })
+    const gate = predicateGate({
+      toolId,
+      operatorAddress: options.operatorAddress as `0x${string}`,
+    })
 
     const handler = createToolHandler({
       manifest,
@@ -84,7 +104,7 @@ export const dryRunPredicateGateCommand = new Command("dry-run-predicate-gate")
       process.exit(1)
     }
 
-    console.log(pc.cyan("Invoking handler with no Authorization header...\n"))
+    console.log(pc.cyan("Invoking handler with no X-Payment header...\n"))
 
     const request = new Request(manifest.endpoint, {
       method: "POST",
@@ -94,40 +114,59 @@ export const dryRunPredicateGateCommand = new Command("dry-run-predicate-gate")
 
     const res = await handler(request)
 
-    if (res.status !== 401) {
-      console.error(pc.red(`FAIL: Expected status 401, got ${res.status}`))
+    if (res.status !== 402) {
+      console.error(pc.red(`FAIL: Expected status 402, got ${res.status}`))
       const text = await res.text()
       if (text) console.error(pc.dim(text))
       process.exit(1)
     }
 
-    console.log(pc.green("Status: 401 (correct)"))
+    console.log(pc.green("Status: 402 (correct)"))
 
-    let body: { error?: string; hint?: string }
+    let body: {
+      x402Version?: number
+      accepts?: Array<{ payTo?: string; maxAmountRequired?: string }>
+      error?: string
+    }
     try {
       body = (await res.json()) as typeof body
     } catch {
-      console.error(pc.red("FAIL: 401 response body is not valid JSON"))
+      console.error(pc.red("FAIL: 402 response body is not valid JSON"))
       process.exit(1)
     }
 
     let allPass = true
 
-    if (body.error) {
-      console.log(pc.green(`  error: ${JSON.stringify(body.error)}`))
+    if (body.x402Version === 1) {
+      console.log(pc.green(`  x402Version: ${body.x402Version}`))
     } else {
-      console.error(pc.red("  error: MISSING"))
+      console.error(
+        pc.red(`  x402Version: expected 1, got ${body.x402Version}`),
+      )
       allPass = false
     }
 
-    if (body.hint && /SIWE/i.test(body.hint)) {
-      console.log(pc.green(`  hint: ${JSON.stringify(body.hint)}`))
-    } else if (body.hint) {
-      console.error(pc.red(`  hint: present but does not mention SIWE`))
-      allPass = false
+    if (body.accepts && body.accepts.length > 0) {
+      const req = body.accepts[0]
+      const operatorAddr = options.operatorAddress as string
+      if (req.payTo?.toLowerCase() === operatorAddr.toLowerCase()) {
+        console.log(
+          pc.green(`  payTo: ${req.payTo} (matches --operator-address)`),
+        )
+      } else {
+        console.error(
+          pc.red(`  payTo: ${req.payTo} (expected ${operatorAddr})`),
+        )
+        allPass = false
+      }
+      console.log(pc.green(`  maxAmountRequired: ${req.maxAmountRequired}`))
     } else {
-      console.error(pc.red("  hint: MISSING"))
+      console.error(pc.red("  accepts: MISSING or empty"))
       allPass = false
+    }
+
+    if (body.error) {
+      console.log(pc.green(`  error: ${JSON.stringify(body.error)}`))
     }
 
     if (allPass) {

@@ -1,5 +1,16 @@
 # @opensea/tool-sdk
 
+## 0.26.0
+
+### Minor Changes
+
+- 1699f42: **BREAKING**: Unify `predicateGate` to use the standard 402 + X-Payment (EIP-3009) auth flow only.
+
+  - `PredicateGateConfig.operatorAddress` is now **required** (was optional)
+  - `Authorization: EIP-3009 <token>` header is no longer accepted: use the X-Payment header via the 402 challenge flow
+  - `Authorization: SIWE <msg>.<sig>` header is no longer accepted (was already deprecated)
+  - CLI `dry-run-predicate-gate` now requires `--operator-address` and asserts a 402 response
+
 ## 0.25.0
 
 ### Minor Changes

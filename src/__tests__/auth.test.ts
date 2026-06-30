@@ -220,7 +220,7 @@ describe("auth command", () => {
 
 function stubBankrFetch() {
   return vi.fn(async (url: string, init?: RequestInit) => {
-    if (typeof url === "string" && url.includes("/wallet/info")) {
+    if (typeof url === "string" && url.includes("/wallet/me")) {
       return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
         status: 200,
       })
@@ -258,8 +258,8 @@ describe("auth command with --bankr-key", () => {
       "{}",
     ])
 
-    // Should have called /wallet/info first
-    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/info")
+    // Should have called /wallet/me first
+    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/me")
 
     // Should print the Bankr address
     const output = logSpy.mock.calls.map(c => c.join(" ")).join("\n")
@@ -287,8 +287,8 @@ describe("auth command with --bankr-key", () => {
       "{}",
     ])
 
-    // Bankr path: first call should be /wallet/info
-    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/info")
+    // Bankr path: first call should be /wallet/me
+    expect(fetchMock.mock.calls[0][0]).toContain("/wallet/me")
 
     logSpy.mockRestore()
   })

@@ -218,9 +218,9 @@ describe("external signer + authenticatedFetch round-trip", () => {
 const BANKR_ADDRESS = "0x8b8e1C20E0630De8C60f0e0D5C3e9C7c20F0c20e"
 
 describe("createBankrAccount", () => {
-  it("fetches address from /wallet/info and creates a signing account", async () => {
+  it("fetches address from /wallet/me and creates a signing account", async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-      if (url.includes("/wallet/info")) {
+      if (url.includes("/wallet/me")) {
         return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
           status: 200,
         })
@@ -241,9 +241,9 @@ describe("createBankrAccount", () => {
     const sig = await account.signMessage!({ message: "hello" })
     expect(sig).toBe("0xdeadbeef")
 
-    // Verify /wallet/info was called with API key header
+    // Verify /wallet/me was called with API key header
     const infoCall = fetchMock.mock.calls[0]
-    expect(infoCall[0]).toContain("/wallet/info")
+    expect(infoCall[0]).toContain("/wallet/me")
     expect(infoCall[1]?.headers).toEqual(
       expect.objectContaining({ "X-API-Key": "test-api-key" }),
     )
@@ -256,14 +256,14 @@ describe("createBankrAccount", () => {
     expect(signBody.message).toBe("hello")
   })
 
-  it("throws when /wallet/info returns an error", async () => {
+  it("throws when /wallet/me returns an error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("Unauthorized", { status: 401 })),
     )
 
     await expect(createBankrAccount("bad-key")).rejects.toThrow(
-      "Bankr /wallet/info failed (401)",
+      "Bankr /wallet/me failed (401)",
     )
   })
 
@@ -271,7 +271,7 @@ describe("createBankrAccount", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (typeof url === "string" && url.includes("/wallet/info")) {
+        if (typeof url === "string" && url.includes("/wallet/me")) {
           return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
             status: 200,
           })

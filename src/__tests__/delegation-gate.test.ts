@@ -8,6 +8,8 @@ const HOLDER_ADDRESS =
   "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984" as `0x${string}`
 const TEST_PREDICATE =
   "0xpredicatepredicatepredicatepredicatepredi" as `0x${string}`
+const TEST_OPERATOR =
+  "0x5ECA0441311643608a8c9Ab8B250f695Dd32E2a8" as `0x${string}`
 
 const mockTryHasAccess = vi.fn(async () => ({ ok: true, granted: true }))
 const mockGetToolConfig = vi.fn(async () => ({
@@ -31,23 +33,11 @@ vi.mock("viem", async importOriginal => {
   return {
     ...actual,
     createPublicClient: () => ({
-      verifySiweMessage: vi.fn().mockResolvedValue(true),
       readContract: mockReadContract,
     }),
+    recoverTypedDataAddress: () => Promise.resolve(AGENT_ADDRESS),
   }
 })
-
-vi.mock("viem/siwe", () => ({
-  parseSiweMessage: vi.fn().mockReturnValue({
-    address: AGENT_ADDRESS,
-    domain: "example.com",
-    uri: "https://example.com",
-    version: "1",
-    chainId: 8453,
-    nonce: "testnonce",
-    issuedAt: new Date(),
-  }),
-}))
 
 beforeEach(() => {
   mockTryHasAccess.mockReset()
@@ -60,19 +50,33 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function makeAuthHeader(): string {
-  const siweB64 = btoa("mock-siwe-message")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "")
-  return `SIWE ${siweB64}.0xmocksignature`
+function makeXPaymentHeader(overrides: Record<string, unknown> = {}): string {
+  const authorization = {
+    from: AGENT_ADDRESS,
+    to: TEST_OPERATOR,
+    value: "0",
+    validAfter: "0",
+    validBefore: String(Math.floor(Date.now() / 1000) + 300),
+    nonce: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    ...overrides,
+  }
+  const payload = {
+    x402Version: 1,
+    scheme: "exact",
+    network: "base",
+    payload: {
+      signature: "0xabcd",
+      authorization,
+    },
+  }
+  return Buffer.from(JSON.stringify(payload)).toString("base64")
 }
 
 function makeRequest(headers?: Record<string, string>): Request {
   return new Request("https://example.com/api", {
     method: "POST",
     headers: {
-      Authorization: makeAuthHeader(),
+      "X-Payment": makeXPaymentHeader(),
       ...headers,
     },
   })
@@ -83,7 +87,10 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
     const ctx: Partial<ToolContext> = { gates: {} }
 
     const response = await gate.check(
@@ -118,7 +125,10 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
     const ctx: Partial<ToolContext> = { gates: {} }
 
     const response = await gate.check(
@@ -136,7 +146,10 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
     const ctx: Partial<ToolContext> = { gates: {} }
 
     const response = await gate.check(
@@ -155,7 +168,10 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
     const ctx: Partial<ToolContext> = { gates: {} }
 
     const response = await gate.check(
@@ -174,7 +190,10 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
     const ctx: Partial<ToolContext> = { gates: {} }
 
     const response = await gate.check(
@@ -196,9 +215,11 @@ describe("predicateGate with delegate.xyz delegation", () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
     )
-    const gate = predicateGate({ toolId: TEST_TOOL_ID })
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
 
-    // Override parseSiweMessage to return AGENT_ADDRESS as caller for this test
     mockTryHasAccess.mockResolvedValue({ ok: true, granted: true })
 
     const ctx: Partial<ToolContext> = { gates: {} }
@@ -218,6 +239,7 @@ describe("predicateGate with delegate.xyz delegation", () => {
     )
     const gate = predicateGate({
       toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
       delegateRegistryAddress: customAddress,
     })
     const ctx: Partial<ToolContext> = { gates: {} }

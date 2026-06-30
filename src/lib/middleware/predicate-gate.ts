@@ -5,7 +5,6 @@ import {
   recoverTypedDataAddress,
 } from "viem"
 import { base } from "viem/chains"
-import { parseSiweMessage } from "viem/siwe"
 import type { GateMiddleware, ToolContext } from "../../types.js"
 import {
   CDP_X402_FACILITATOR_URL,
@@ -51,8 +50,8 @@ export interface PredicateGateConfig {
    */
   chain?: Chain
   /**
-   * RPC URL for read calls (SIWE verify + registry staticcall). Defaults to
-   * the chain's public RPC.
+   * RPC URL for read calls (registry staticcall + delegate registry).
+   * Defaults to the chain's public RPC.
    */
   rpcUrl?: string
   /**
@@ -72,26 +71,19 @@ export interface PredicateGateConfig {
    */
   delegateRegistryAddress?: `0x${string}`
   /**
-   * Tool operator address. When set, EIP-3009 authorizations are validated
-   * to ensure their `to` field matches this address (domain binding). If
-   * unset, any `to` address is accepted (including `0x0`).
+   * Tool operator address. The 402 challenge advertises this as the `payTo`
+   * field, and X-Payment authorizations must have their `to` field match.
    */
-  operatorAddress?: `0x${string}`
+  operatorAddress: `0x${string}`
 }
 
 /**
  * Server-side gate that delegates access decisions to the onchain
- * `ToolRegistry`. Accepts either EIP-3009 zero-value authorization (preferred)
- * or SIWE auth (deprecated), recovers the caller's address, and staticcalls
- * `tryHasAccess(toolId, caller, data)` on the registry.
- *
- * **Auth schemes (in order of preference):**
- *
- * 1. `Authorization: EIP-3009 <base64url(json)>` — zero-value
- *    `TransferWithAuthorization` signature. Pure `ecrecover` verification,
- *    no RPC needed. Preferred for new integrations.
- * 2. `Authorization: SIWE <base64url(message)>.<signature>` — deprecated.
- *    Requires an RPC call to verify the SIWE message.
+ * `ToolRegistry`. Uses the standard 402 + EIP-3009 flow: returns a 402
+ * challenge with `PaymentRequirements` when no `X-Payment` header is
+ * present, then verifies the zero-value `TransferWithAuthorization`
+ * signature from the `X-Payment` header to recover the caller's address
+ * and staticcalls `tryHasAccess(toolId, caller, data)` on the registry.
  *
  * **Access results:**
  * - `(ok=true, granted=true)`: gate passes; sets `ctx.callerAddress`.
@@ -158,58 +150,21 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       ctx: Partial<ToolContext>,
     ): Promise<Response | null> {
       const paymentHeader = request.headers.get("X-Payment")
-      const authHeader = request.headers.get("Authorization")
 
-      let recoveredAddress: `0x${string}` | null = null
-      let callerAuthorization: ZeroValueAuthorization | undefined
-
-      if (paymentHeader) {
-        const result = await verifyXPaymentAuth(paymentHeader, config)
-        if (result.error) {
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          )
-        }
-        recoveredAddress = result.address!
-        callerAuthorization = result.authorization
-      } else if (authHeader?.startsWith("EIP-3009 ")) {
-        const result = await verifyEip3009Auth(authHeader, config, chain)
-        if (result.error) {
-          if (config.operatorAddress && result.toMismatch) {
-            return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
-          }
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          )
-        }
-        recoveredAddress = result.address!
-        callerAuthorization = result.authorization
-      } else if (authHeader?.startsWith("SIWE ")) {
-        const result = await verifySiweAuth(
-          authHeader,
-          request,
-          publicClient,
-        )
-        if (result.error) {
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          )
-        }
-        recoveredAddress = result.address!
-      } else if (config.operatorAddress) {
+      if (!paymentHeader) {
         return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
-      } else {
+      }
+
+      const result = await verifyXPaymentAuth(paymentHeader, config)
+      if (result.error) {
         return Response.json(
-          {
-            error: "Predicate gate: authorization required",
-            hint: "Include Authorization: EIP-3009 <base64url(json)> or Authorization: SIWE <base64url(message)>.<signature>",
-          },
-          { status: 401 },
+          { error: result.error },
+          { status: result.status },
         )
       }
+
+      const recoveredAddress = result.address
+      const callerAuthorization = result.authorization
 
       if (!recoveredAddress) {
         return Response.json(
@@ -274,9 +229,9 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       }
 
       const data = config.data ?? "0x"
-      let result: { ok: boolean; granted: boolean }
+      let accessResult: { ok: boolean; granted: boolean }
       try {
-        result = await registry.tryHasAccess(
+        accessResult = await registry.tryHasAccess(
           config.toolId,
           predicateSubject,
           data,
@@ -291,7 +246,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         )
       }
 
-      if (!result.ok) {
+      if (!accessResult.ok) {
         return Response.json(
           {
             error:
@@ -301,7 +256,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         )
       }
 
-      if (!result.granted) {
+      if (!accessResult.granted) {
         let predicate: `0x${string}` | undefined
         try {
           predicate = await loadPredicateAddress()
@@ -334,7 +289,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
 }
 
 // ---------------------------------------------------------------------------
-// EIP-3009 verification (preferred)
+// Auth result type
 // ---------------------------------------------------------------------------
 
 interface AuthResult {
@@ -343,139 +298,6 @@ interface AuthResult {
   authorization?: ZeroValueAuthorization
   error?: string
   status: number
-  /** Set when EIP-3009 `to` field does not match the configured operator. */
-  toMismatch?: boolean
-}
-
-async function verifyEip3009Auth(
-  authHeader: string,
-  config: PredicateGateConfig,
-  chain: Chain,
-): Promise<AuthResult> {
-  const token = authHeader.slice("EIP-3009 ".length)
-
-  let decoded: string
-  try {
-    decoded = Buffer.from(token, "base64url").toString("utf-8")
-  } catch {
-    return {
-      error: "Predicate gate: invalid EIP-3009 token (bad base64url)",
-      status: 401,
-    }
-  }
-
-  let authorization: ZeroValueAuthorization
-  try {
-    authorization = JSON.parse(decoded) as ZeroValueAuthorization
-  } catch {
-    return {
-      error: "Predicate gate: invalid EIP-3009 token (bad JSON)",
-      status: 401,
-    }
-  }
-
-  if (
-    !authorization.from ||
-    !authorization.to ||
-    !authorization.signature ||
-    !authorization.nonce ||
-    !authorization.validBefore
-  ) {
-    return {
-      error:
-        "Predicate gate: EIP-3009 token missing required fields (from, to, signature, nonce, validBefore)",
-      status: 401,
-    }
-  }
-
-  if (authorization.value !== "0") {
-    return {
-      error: "Predicate gate: EIP-3009 authorization must have value=0",
-      status: 401,
-    }
-  }
-
-  // Validate operator binding
-  if (
-    config.operatorAddress &&
-    authorization.to.toLowerCase() !== config.operatorAddress.toLowerCase()
-  ) {
-    return {
-      error: `Predicate gate: EIP-3009 'to' address mismatch (expected ${config.operatorAddress})`,
-      status: 401,
-      toMismatch: true,
-    }
-  }
-
-  // Check expiry (validBefore is required above, so it is always present here)
-  {
-    const validBefore = BigInt(authorization.validBefore)
-    const nowSec = BigInt(Math.floor(Date.now() / 1000))
-    if (nowSec >= validBefore) {
-      return {
-        error: "Predicate gate: EIP-3009 authorization expired",
-        status: 401,
-      }
-    }
-  }
-
-  // Check not-before (validAfter)
-  if (authorization.validAfter !== undefined && authorization.validAfter !== "0") {
-    const validAfter = BigInt(authorization.validAfter)
-    const nowSec = BigInt(Math.floor(Date.now() / 1000))
-    if (nowSec < validAfter) {
-      return {
-        error: "Predicate gate: EIP-3009 authorization not yet valid",
-        status: 401,
-      }
-    }
-  }
-
-  const chainId = authorization.chainId ?? chain.id
-  const tokenAddress = NETWORK_USDC[chainId]
-  if (!tokenAddress) {
-    return {
-      error: `Predicate gate: unsupported chainId ${chainId} for EIP-3009`,
-      status: 401,
-    }
-  }
-
-  let recoveredAddress: `0x${string}`
-  try {
-    recoveredAddress = await recoverTypedDataAddress({
-      domain: {
-        name: "USD Coin",
-        version: "2",
-        chainId,
-        verifyingContract: tokenAddress,
-      },
-      types: TRANSFER_WITH_AUTHORIZATION_TYPES,
-      primaryType: "TransferWithAuthorization",
-      message: {
-        from: authorization.from,
-        to: authorization.to,
-        value: BigInt(authorization.value),
-        validAfter: BigInt(authorization.validAfter),
-        validBefore: BigInt(authorization.validBefore),
-        nonce: authorization.nonce,
-      },
-      signature: authorization.signature,
-    })
-  } catch {
-    return {
-      error: "Predicate gate: invalid EIP-3009 signature",
-      status: 401,
-    }
-  }
-
-  if (recoveredAddress.toLowerCase() !== authorization.from.toLowerCase()) {
-    return {
-      error: "Predicate gate: EIP-3009 signer does not match 'from' address",
-      status: 401,
-    }
-  }
-
-  return { address: recoveredAddress, authorization, status: 200 }
 }
 
 // ---------------------------------------------------------------------------
@@ -665,110 +487,6 @@ function buildPredicateChallengeResponse(
       headers: { "X-Accept-Payment": "x402" },
     },
   )
-}
-
-// ---------------------------------------------------------------------------
-// SIWE verification (deprecated — kept for backward compatibility)
-// ---------------------------------------------------------------------------
-
-async function verifySiweAuth(
-  authHeader: string,
-  request: Request,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OP Stack chains widen the transaction union; safe because we only call verifySiweMessage
-  publicClient: { verifySiweMessage: (...args: any[]) => Promise<boolean> },
-): Promise<AuthResult> {
-  const token = authHeader.slice("SIWE ".length)
-  const dotIndex = token.lastIndexOf(".")
-  if (dotIndex === -1) {
-    return {
-      error: "Predicate gate: invalid SIWE token format",
-      status: 401,
-    }
-  }
-
-  const messageB64 = token.slice(0, dotIndex)
-  const signatureRaw = token.slice(dotIndex + 1)
-  if (!signatureRaw.startsWith("0x")) {
-    return {
-      error: "Predicate gate: invalid SIWE signature",
-      status: 401,
-    }
-  }
-  const signature = signatureRaw as `0x${string}`
-
-  let messageStr: string
-  try {
-    messageStr = Buffer.from(messageB64, "base64url").toString("utf-8")
-  } catch {
-    return {
-      error: "Predicate gate: invalid SIWE signature",
-      status: 401,
-    }
-  }
-
-  let siweMessage: ReturnType<typeof parseSiweMessage>
-  try {
-    siweMessage = parseSiweMessage(messageStr)
-  } catch {
-    return {
-      error: "Predicate gate: invalid SIWE signature",
-      status: 401,
-    }
-  }
-
-  const requestDomain = new URL(request.url).host
-  if (siweMessage.domain !== requestDomain) {
-    return {
-      error: "Predicate gate: SIWE domain mismatch",
-      status: 401,
-    }
-  }
-
-  if (
-    siweMessage.expirationTime &&
-    siweMessage.expirationTime < new Date()
-  ) {
-    return {
-      error: "Predicate gate: SIWE message expired",
-      status: 401,
-    }
-  }
-
-  if (siweMessage.notBefore && siweMessage.notBefore > new Date()) {
-    return {
-      error: "Predicate gate: SIWE message not yet valid",
-      status: 401,
-    }
-  }
-
-  try {
-    const valid = await publicClient.verifySiweMessage({
-      message: messageStr,
-      signature,
-      domain: requestDomain,
-    })
-    if (!valid) {
-      return {
-        error: "Predicate gate: invalid SIWE signature",
-        status: 401,
-      }
-    }
-  } catch {
-    return {
-      error: "Predicate gate: invalid SIWE signature",
-      status: 401,
-    }
-  }
-
-  const recoveredAddress = siweMessage.address
-  if (!recoveredAddress) {
-    return {
-      error: "Predicate gate: invalid SIWE signature",
-      status: 401,
-    }
-  }
-
-  return { address: recoveredAddress, status: 200 }
 }
 
 // ---------------------------------------------------------------------------

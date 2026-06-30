@@ -44,16 +44,16 @@ export function createExternalSignerAccount(params: {
 
 /**
  * Create a viem Account backed by the Bankr wallet HTTP API.
- * Fetches the signer address from `/wallet/info` and signs via `/wallet/sign`.
+ * Fetches the signer address from `/wallet/me` and signs via `/wallet/sign`.
  */
 export async function createBankrAccount(apiKey: string): Promise<Account> {
-  const infoRes = await fetch(`${BANKR_API_BASE}/wallet/info`, {
+  const infoRes = await fetch(`${BANKR_API_BASE}/wallet/me`, {
     headers: { "X-API-Key": apiKey },
   })
   if (!infoRes.ok) {
     const text = await infoRes.text()
     throw new Error(
-      `Bankr /wallet/info failed (${infoRes.status}): ${text}`,
+      `Bankr /wallet/me failed (${infoRes.status}): ${text}`,
     )
   }
   const info = (await infoRes.json()) as { address: string }

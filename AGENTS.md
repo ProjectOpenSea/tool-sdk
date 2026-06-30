@@ -33,7 +33,7 @@ pnpm run type-check  # TypeScript type checking
 | `src/lib/handler/` | `createToolHandler` — Web Request/Response handler factory |
 | `src/lib/middleware/` | Gating middleware (predicate gate, x402, x402 facilitators, well-known endpoint) |
 | `src/lib/wallet/` | Re-exports from `@opensea/wallet-adapters` (adapters, types, and viem bridge) |
-| `src/lib/client/` | Authenticated HTTP clients: EIP-3009 auth, x402 payment, external signer, paid authenticated fetch |
+| `src/lib/client/` | Authenticated HTTP clients: EIP-3009 auth, SIWE auth, x402 payment, external signer, paid authenticated fetch |
 | `src/lib/usage/` | Usage reporters — report tool invocations / x402 settlements to the OpenSea usage endpoint, plus EIP-3009 zero-value auth helpers |
 | `src/lib/adapters/` | Framework adapters (Vercel, Cloudflare, Express) |
 | `src/lib/utils.ts` | Shared utilities used across `lib/` |
