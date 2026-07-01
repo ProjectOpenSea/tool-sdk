@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.26.0",
+  "version": "0.26.1",
   "type": "module",
   "description": "SDK and CLI for building ERC-8257 compliant AI agent tools",
   "repository": {
@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "@clack/prompts": "0.10.1",
-    "@opensea/wallet-adapters": "^0.3.1",
+    "@opensea/wallet-adapters": "^0.3.2",
     "@x402/core": "2.15.0",
     "@x402/fetch": "2.15.0",
     "canonicalize": "2.1.0",

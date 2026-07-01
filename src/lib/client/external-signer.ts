@@ -56,8 +56,16 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
       `Bankr /wallet/me failed (${infoRes.status}): ${text}`,
     )
   }
-  const info = (await infoRes.json()) as { address: string }
-  const address = getAddress(info.address)
+  // `/wallet/me` returns `{ wallets: [{ chain, address }, ...] }` — one entry
+  // per chain (e.g. "evm", "solana"). There is no top-level `address` field.
+  const info = (await infoRes.json()) as {
+    wallets?: Array<{ chain: string; address: string }>
+  }
+  const evmWallet = info.wallets?.find((w) => w.chain === "evm")
+  if (!evmWallet) {
+    throw new Error("Bankr /wallet/me returned no EVM wallet address")
+  }
+  const address = getAddress(evmWallet.address)
 
   return createExternalSignerAccount({
     address,

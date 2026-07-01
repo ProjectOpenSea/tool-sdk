@@ -1,5 +1,13 @@
 # @opensea/tool-sdk
 
+## 0.26.1
+
+### Patch Changes
+
+- 158f38f: Fix `createBankrAccount` reading the wrong shape from Bankr's `/wallet/me`. The endpoint returns `{ wallets: [{ chain, address }, ...] }` (no top-level `address`), so the account was created with an undefined address. Now resolve the EVM entry from `wallets[]`.
+- Updated dependencies [158f38f]
+  - @opensea/wallet-adapters@0.3.2
+
 ## 0.26.0
 
 ### Minor Changes

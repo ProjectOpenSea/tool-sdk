@@ -221,9 +221,16 @@ describe("createBankrAccount", () => {
   it("fetches address from /wallet/me and creates a signing account", async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url.includes("/wallet/me")) {
-        return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
-          status: 200,
-        })
+        return new Response(
+          JSON.stringify({
+            success: true,
+            wallets: [
+              { chain: "evm", address: BANKR_ADDRESS },
+              { chain: "solana", address: "5DcKsomeSolanaAddress" },
+            ],
+          }),
+          { status: 200 },
+        )
       }
       if (url.includes("/wallet/sign")) {
         return new Response(JSON.stringify({ signature: "0xdeadbeef" }), {
@@ -267,14 +274,38 @@ describe("createBankrAccount", () => {
     )
   })
 
+  it("throws when /wallet/me returns no EVM wallet", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              wallets: [{ chain: "solana", address: "5DcKsomeSolanaAddress" }],
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+
+    await expect(createBankrAccount("test-key")).rejects.toThrow(
+      "Bankr /wallet/me returned no EVM wallet address",
+    )
+  })
+
   it("throws when /wallet/sign returns an error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (typeof url === "string" && url.includes("/wallet/me")) {
-          return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
-            status: 200,
-          })
+          return new Response(
+            JSON.stringify({
+              success: true,
+              wallets: [{ chain: "evm", address: BANKR_ADDRESS }],
+            }),
+            { status: 200 },
+          )
         }
         return new Response("Rate limited", { status: 429 })
       }),

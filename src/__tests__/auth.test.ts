@@ -221,9 +221,13 @@ describe("auth command", () => {
 function stubBankrFetch() {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (typeof url === "string" && url.includes("/wallet/me")) {
-      return new Response(JSON.stringify({ address: BANKR_ADDRESS }), {
-        status: 200,
-      })
+      return new Response(
+        JSON.stringify({
+          success: true,
+          wallets: [{ chain: "evm", address: BANKR_ADDRESS }],
+        }),
+        { status: 200 },
+      )
     }
     if (typeof url === "string" && url.includes("/wallet/sign")) {
       return new Response(JSON.stringify({ signature: "0xdeadbeef" }), {
