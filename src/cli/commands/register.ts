@@ -56,7 +56,7 @@ export const registerCommand = new Command("register")
   .option("--metadata <url>", "Metadata URI (required)")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

@@ -19,7 +19,7 @@ export const getTraitConfigCommand = new Command("get-trait-config")
   .argument("<toolId>", "Tool ID (uint256)")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

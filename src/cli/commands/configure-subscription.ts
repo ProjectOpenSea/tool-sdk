@@ -34,7 +34,7 @@ export const configureSubscriptionCommand = new Command(
   .option("--min-tier <tier>", "Minimum subscription tier (uint8, 0-255)", "0")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

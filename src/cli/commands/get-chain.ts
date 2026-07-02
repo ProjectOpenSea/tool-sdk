@@ -1,4 +1,5 @@
 import type { Chain } from "viem"
+import { defineChain } from "viem"
 import {
   abstract as abstractChain,
   base,
@@ -6,6 +7,40 @@ import {
   mainnet,
   shape,
 } from "viem/chains"
+
+/**
+ * Monad mainnet, mirroring viem's definition. The pinned viem version
+ * predates Monad mainnet — replace with `import { monad } from "viem/chains"`
+ * once viem is upgraded past 2.38.
+ */
+const monad = defineChain({
+  id: 143,
+  name: "Monad",
+  nativeCurrency: {
+    name: "Monad",
+    symbol: "MON",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://rpc.monad.xyz"],
+      webSocket: ["wss://rpc.monad.xyz"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Monadscan",
+      url: "https://monadscan.com",
+      apiUrl: "https://api.etherscan.io/v2/api?chainid=143",
+    },
+  },
+  contracts: {
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      blockCreated: 9248132,
+    },
+  },
+})
 
 export function getChain(network: string) {
   switch (network) {
@@ -19,6 +54,8 @@ export function getChain(network: string) {
       return shape
     case "abstract":
       return abstractChain
+    case "monad":
+      return monad
     default:
       throw new Error(`Unsupported network: ${network}`)
   }

@@ -30,7 +30,7 @@ export const setCollectionsCommand = new Command("set-collections")
   .argument("<addresses...>", "Collection addresses to gate on")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

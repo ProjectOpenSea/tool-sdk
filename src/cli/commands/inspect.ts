@@ -35,7 +35,7 @@ export const inspectCommand = new Command("inspect")
   .option("--tool-id <id>", "Numeric tool ID (required)")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

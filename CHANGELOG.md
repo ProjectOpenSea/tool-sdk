@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.27.0
+
+### Minor Changes
+
+- 05b370a: feat: add Monad (chain 143) support. The `--network` flag now accepts `monad` in addition to `base`, `mainnet`, `shape`, and `abstract` — the chain is defined locally (mirroring viem's `monad` definition) because the pinned viem version predates Monad mainnet. Added 143 to every `Deployment.chains` array in `chains.ts` and updated the deployed-address docs; the canonical v0.2 addresses are identical on Monad (verified via CREATE2 dry-run).
+
 ## 0.26.1
 
 ### Patch Changes

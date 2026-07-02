@@ -50,7 +50,7 @@ export const configureTraitGatingCommand = new Command("configure-trait-gating")
   )
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

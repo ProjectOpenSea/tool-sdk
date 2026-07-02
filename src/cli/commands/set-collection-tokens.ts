@@ -31,7 +31,7 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
   .argument("<tokenIds...>", "Token IDs to gate on")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

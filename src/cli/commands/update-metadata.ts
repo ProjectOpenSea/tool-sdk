@@ -28,7 +28,7 @@ export const updateMetadataCommand = new Command("update-metadata")
   .option("--metadata <url>", "New metadata URI (required)")
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(

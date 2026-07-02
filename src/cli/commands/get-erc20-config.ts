@@ -25,7 +25,7 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
   )
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option("--rpc-url <url>", "RPC endpoint")

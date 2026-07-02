@@ -39,7 +39,7 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
   )
   .option(
     "--network <network>",
-    "Network: base, mainnet, shape, or abstract",
+    "Network: base, mainnet, shape, abstract, or monad",
     "base",
   )
   .option(
