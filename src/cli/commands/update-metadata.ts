@@ -10,7 +10,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface UpdateMetadataOptions {
   toolId: string
@@ -26,11 +26,7 @@ export const updateMetadataCommand = new Command("update-metadata")
   .description("Update a tool's metadata URI and manifest hash onchain")
   .option("--tool-id <id>", "Numeric tool ID (required)")
   .option("--metadata <url>", "New metadata URI (required)")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

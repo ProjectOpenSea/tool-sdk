@@ -1,5 +1,17 @@
 # @opensea/tool-sdk
 
+## 0.28.0
+
+### Minor Changes
+
+- f1db520: Add Robinhood Chain (4663) support: `--network robinhood` on all CLI commands (custom viem chain definition until viem ships one), 4663 added to every canonical `Deployment.chains` array in `chains.ts`, and skill/docs chain enumerations updated.
+
+### Patch Changes
+
+- ac4ac6f: tool-registry: add an explicit Etherscan v2 `url` to the `monad` entry in `foundry.toml`. Forge's built-in chain list doesn't know chain 143, so config resolution failed during `forge script --verify` and aborted verification for every chain in the run (including Robinhood).
+- 10dcac1: Fix x402 CAIP-2 network handling asymmetry. The server-side predicate gates now accept CAIP-2 (`eip155:8453`) and numeric (`8453`) network identifiers in the `X-Payment` payload — previously they only accepted the short names (`base`, `base-sepolia`) and rejected anything else as an "unsupported network", even though the client already tolerated CAIP-2 forms. Additionally, the client now normalizes the `network` field in v1 payment payloads to the canonical short name so that v1 gates (which key off short names) don't reject a verbatim CAIP-2 echo.
+- 6649847: Fix x402 usage reporting when the facilitator returns a CAIP-2/numeric network. The predicate gate's `settle()` now resolves the settlement network via `resolveNetwork`, so `settlementChainId` (used by the usage-reporting REST endpoint) is populated for `eip155:8453` / `8453` responses, not just the short name `base`.
+
 ## 0.27.0
 
 ### Minor Changes

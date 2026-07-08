@@ -18,7 +18,7 @@ import {
 import { decodeRequirement } from "../../lib/onchain/access.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
 
 interface InspectOptions {
@@ -33,11 +33,7 @@ export const inspectCommand = new Command("inspect")
     "Read onchain tool state and cross-check against the live manifest",
   )
   .option("--tool-id <id>", "Numeric tool ID (required)")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--check-access <address>",
     "Check whether an address has access to the tool",

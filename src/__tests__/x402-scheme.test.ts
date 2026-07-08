@@ -41,7 +41,10 @@ describe("ExactEip3009Scheme", () => {
     }
     expect(result.x402Version).toBe(1)
     expect((result as Record<string, unknown>).scheme).toBe("exact")
-    expect((result as Record<string, unknown>).network).toBe("eip155:8453")
+    // v1 payloads normalize the network to the canonical short name so v1
+    // gates (which key off short names) accept it, even when the challenge
+    // advertised the CAIP-2 form.
+    expect((result as Record<string, unknown>).network).toBe("base")
     expect(payload.signature).toMatch(/^0x[0-9a-f]+$/i)
     expect(payload.authorization.from).toBe(signer.address)
     expect(payload.authorization.to).toBe(baseRequirements.payTo)
@@ -205,7 +208,8 @@ describe("UptoEip3009Scheme", () => {
     }
     expect(result.x402Version).toBe(1)
     expect((result as Record<string, unknown>).scheme).toBe("upto")
-    expect((result as Record<string, unknown>).network).toBe("eip155:8453")
+    // v1 payloads normalize CAIP-2 networks to the canonical short name.
+    expect((result as Record<string, unknown>).network).toBe("base")
     expect(payload.signature).toMatch(/^0x[0-9a-f]+$/i)
     expect(payload.authorization.from).toBe(signer.address)
     expect(payload.authorization.to).toBe(baseRequirements.payTo)

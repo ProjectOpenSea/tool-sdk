@@ -75,6 +75,16 @@ describe("signX402Payment", () => {
     expect(parsed.network).toBe("base-sepolia")
   })
 
+  it("normalizes a CAIP-2 network to the canonical short name in v1 payloads", async () => {
+    const reqs: PaymentRequirements = {
+      ...baseRequirements,
+      network: "eip155:8453",
+    }
+    const result = await signX402Payment({ signer, paymentRequirements: reqs })
+    const parsed = JSON.parse(atob(result))
+    expect(parsed.network).toBe("base")
+  })
+
   it("throws for unsupported network", async () => {
     const reqs = {
       ...baseRequirements,

@@ -13,7 +13,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface ConfigureSubscriptionOptions {
   network: string
@@ -32,11 +32,7 @@ export const configureSubscriptionCommand = new Command(
   .argument("<toolId>", "Tool ID (uint256)")
   .argument("<collection>", "Subscription NFT collection address")
   .option("--min-tier <tier>", "Minimum subscription tier (uint8, 0-255)", "0")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

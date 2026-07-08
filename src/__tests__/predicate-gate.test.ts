@@ -63,7 +63,10 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function makeXPaymentHeader(overrides: Record<string, unknown> = {}): string {
+function makeXPaymentHeader(
+  overrides: Record<string, unknown> = {},
+  network = "base",
+): string {
   const authorization = {
     from: TEST_CALLER,
     to: TEST_OPERATOR,
@@ -76,7 +79,7 @@ function makeXPaymentHeader(overrides: Record<string, unknown> = {}): string {
   const payload = {
     x402Version: 1,
     scheme: "exact",
-    network: "base",
+    network,
     payload: {
       signature: "0xabcd",
       authorization,
@@ -171,6 +174,71 @@ describe("predicateGate", () => {
       TEST_CALLER,
       "0x",
     )
+  })
+
+  it("accepts a CAIP-2 network (eip155:8453) in the X-Payment payload", async () => {
+    mockTryHasAccess.mockResolvedValueOnce({ ok: true, granted: true })
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader({}, "eip155:8453") },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.callerAuthorization).toMatchObject({ chainId: 8453 })
+  })
+
+  it("accepts a numeric network (8453) in the X-Payment payload", async () => {
+    mockTryHasAccess.mockResolvedValueOnce({ ok: true, granted: true })
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader({}, "8453") },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.callerAuthorization).toMatchObject({ chainId: 8453 })
+  })
+
+  it("returns 401 for a genuinely unsupported network in the X-Payment payload", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader({}, "eip155:1") },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/unsupported network/i)
   })
 
   it("returns 403 with predicate address when tryHasAccess returns (true, false)", async () => {

@@ -34,7 +34,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 import { warnBareExtensionKeys } from "./warn-bare-extensions.js"
 
 interface RegisterOptions {
@@ -54,11 +54,7 @@ interface RegisterOptions {
 export const registerCommand = new Command("register")
   .description("Register a tool onchain via the ToolRegistry")
   .option("--metadata <url>", "Metadata URI (required)")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--nft-gate <address>",
     "ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry)",

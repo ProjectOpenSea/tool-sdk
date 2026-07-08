@@ -7,7 +7,7 @@ import {
 } from "../../lib/onchain/chains.js"
 import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface GetCollectionsOptions {
   network: string
@@ -17,11 +17,7 @@ interface GetCollectionsOptions {
 export const getCollectionsCommand = new Command("get-collections")
   .description("Read the ERC-721 collection gate list for a registered tool")
   .argument("<toolId>", "Tool ID (uint256)")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetCollectionsOptions) => {
     let toolId: bigint

@@ -13,7 +13,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface ConfigureTraitGatingOptions {
   network: string
@@ -48,11 +48,7 @@ export const configureTraitGatingCommand = new Command("configure-trait-gating")
     "--traits-contract <address>",
     "ERC-7496 traits contract address (defaults to collection if omitted)",
   )
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

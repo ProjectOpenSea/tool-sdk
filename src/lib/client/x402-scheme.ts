@@ -39,7 +39,7 @@ export class ExactEip3009Scheme implements SchemeNetworkClient {
       return {
         x402Version,
         scheme: paymentRequirements.scheme,
-        network: paymentRequirements.network,
+        network: v1Network(paymentRequirements.network),
         payload,
       } as PaymentPayloadResult
     }
@@ -77,13 +77,23 @@ export class UptoEip3009Scheme implements SchemeNetworkClient {
       return {
         x402Version,
         scheme: paymentRequirements.scheme,
-        network: paymentRequirements.network,
+        network: v1Network(paymentRequirements.network),
         payload,
       } as PaymentPayloadResult
     }
 
     return { x402Version, payload }
   }
+}
+
+/**
+ * Normalize a network identifier to the canonical short name (`base`,
+ * `base-sepolia`) for v1 payloads. v1 gates historically key off the short
+ * name, so echoing back a CAIP-2 form (`eip155:8453`) can be rejected as an
+ * "unsupported network". Falls back to the original string if unrecognized.
+ */
+function v1Network(network: string): string {
+  return resolveNetwork(network)?.canonical ?? network
 }
 
 /**

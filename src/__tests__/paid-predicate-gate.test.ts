@@ -20,7 +20,6 @@ vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
     tryHasAccess = mockTryHasAccess
     getToolConfig = mockGetToolConfig
-    constructor() {}
   },
 }))
 
@@ -93,13 +92,13 @@ function mockFacilitatorVerifySuccess() {
   )
 }
 
-function mockFacilitatorSettleSuccess() {
+function mockFacilitatorSettleSuccess(network = "base") {
   mockFetch.mockResolvedValueOnce(
     new Response(
       JSON.stringify({
         success: true,
         transaction: "0xtxhash123",
-        network: "base",
+        network,
       }),
       { status: 200 },
     ),
@@ -290,6 +289,34 @@ describe("paidPredicateGate", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2)
     const settleCall = mockFetch.mock.calls[1]
     expect(settleCall[0]).toContain("/settle")
+  })
+
+  it("resolves settlementChainId from a CAIP-2 facilitator network", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+    expect(response).toBeNull()
+
+    // Facilitator reports the CAIP-2 network form; the usage-reporting
+    // chain id must still resolve so downstream reporters get a numeric id.
+    mockFacilitatorSettleSuccess("eip155:8453")
+    await gate.settle!(ctx as ToolContext)
+
+    expect(ctx.gates?.x402?.settlementTxHash).toBe("0xtxhash123")
+    expect(ctx.gates?.x402?.settlementChainId).toBe(8453)
   })
 
   it("returns 502 when registry call fails", async () => {

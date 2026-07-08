@@ -13,6 +13,7 @@ import {
   USDC_BASE_SEPOLIA_ADDRESS,
   type X402Network,
 } from "../middleware/x402-facilitators.js"
+import { resolveNetwork } from "../client/x402-challenge.js"
 import { IDelegateRegistryABI } from "../onchain/abis.js"
 import { DELEGATE_REGISTRY } from "../onchain/chains.js"
 import { ToolRegistryClient } from "../onchain/registry.js"
@@ -21,11 +22,6 @@ import type { ZeroValueAuthorization } from "../usage/eip3009-auth.js"
 const NETWORK_USDC: Record<number, `0x${string}`> = {
   8453: USDC_BASE_ADDRESS as `0x${string}`,
   84532: USDC_BASE_SEPOLIA_ADDRESS as `0x${string}`,
-}
-
-const X402_NETWORK_CHAIN_IDS: Record<string, number> = {
-  base: 8453,
-  "base-sepolia": 84532,
 }
 
 const TRANSFER_WITH_AUTHORIZATION_TYPES = {
@@ -363,22 +359,21 @@ async function verifyXPaymentAuth(
     }
   }
 
+  // Accept both the short names this SDK's middleware emits (`base`,
+  // `base-sepolia`) and the CAIP-2 / numeric forms the broader x402
+  // ecosystem uses (`eip155:8453`, `8453`). A client may echo back whatever
+  // `network` string the 402 challenge advertised, which is not always the
+  // short name — resolve it rather than requiring an exact short-name match.
   const network = paymentPayload.network ?? "base"
-  const chainId = X402_NETWORK_CHAIN_IDS[network]
-  if (chainId === undefined) {
+  const resolved = resolveNetwork(network)
+  if (resolved === undefined) {
     return {
       error: `Predicate gate: unsupported network '${network}' in X-Payment`,
       status: 401,
     }
   }
-
-  const tokenAddress = NETWORK_USDC[chainId]
-  if (!tokenAddress) {
-    return {
-      error: `Predicate gate: no USDC address for chainId ${chainId}`,
-      status: 401,
-    }
-  }
+  const chainId = resolved.chainId
+  const tokenAddress = resolved.usdc as `0x${string}`
 
   // validBefore is required above, so it is always present here
   {
@@ -969,7 +964,7 @@ export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddlewa
           ctx.gates.x402.settlementTxHash = body.transaction
         }
         if (ctx.gates?.x402 && body.network) {
-          const chainId = X402_NETWORK_CHAIN_IDS[body.network]
+          const chainId = resolveNetwork(body.network)?.chainId
           if (chainId !== undefined) {
             ctx.gates.x402.settlementChainId = chainId
           }

@@ -151,10 +151,14 @@ export async function signX402Payment(params: {
     )
   }
 
+  // In v1, emit the canonical short network name (`base`, `base-sepolia`)
+  // rather than echoing back whatever form the challenge advertised (e.g. the
+  // CAIP-2 `eip155:8453`). v1 gates historically key off the short name, so a
+  // verbatim CAIP-2 echo can be rejected as an "unsupported network".
   const paymentPayload = {
     x402Version,
     scheme: reqs.scheme,
-    network: reqs.network,
+    network: resolveNetwork(reqs.network)?.canonical ?? reqs.network,
     payload,
   }
 

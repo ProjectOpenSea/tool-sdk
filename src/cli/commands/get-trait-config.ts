@@ -6,7 +6,7 @@ import {
   TRAIT_GATED_PREDICATE,
 } from "../../lib/onchain/chains.js"
 import { TraitGatedPredicateClient } from "../../lib/onchain/predicate-clients.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface GetTraitConfigOptions {
   network: string
@@ -17,11 +17,7 @@ interface GetTraitConfigOptions {
 export const getTraitConfigCommand = new Command("get-trait-config")
   .description("Read the trait gating configuration for a registered tool")
   .argument("<toolId>", "Tool ID (uint256)")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--predicate-address <address>",
     "Override the canonical TraitGatedPredicate address",

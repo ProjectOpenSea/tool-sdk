@@ -6,7 +6,7 @@ import {
   ERC20_BALANCE_PREDICATE,
 } from "../../lib/onchain/chains.js"
 import { ERC20BalancePredicateClient } from "../../lib/onchain/predicate-clients.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface GetERC20ConfigOptions {
   network: string
@@ -23,11 +23,7 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
     "--predicate-address <address>",
     "Override the canonical ERC20BalancePredicate address",
   )
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetERC20ConfigOptions) => {
     let toolId: bigint

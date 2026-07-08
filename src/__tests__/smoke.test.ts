@@ -13,7 +13,7 @@ vi.mock("viem", async importOriginal => {
     }),
     createWalletClient: (opts: Record<string, unknown>) => ({
       account: opts.account,
-      signTypedData: vi.fn().mockResolvedValue("0x" + "ab".repeat(65)),
+      signTypedData: vi.fn().mockResolvedValue(`0x${"ab".repeat(65)}`),
     }),
   }
 })

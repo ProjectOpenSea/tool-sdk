@@ -63,7 +63,6 @@ try {
   const res = await fetch(config.metadataURI)
   if (!res.ok) throw new Error(`fetch returned ${res.status}`)
   liveManifest = await res.json()
-  // biome-ignore lint/suspicious/noExplicitAny: SDK validates shape internally
   const liveHash = computeManifestHash(liveManifest as any)
   checks.push([
     "manifestHash matches live manifest hash",

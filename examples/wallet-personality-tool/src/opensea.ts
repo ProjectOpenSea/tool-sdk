@@ -286,7 +286,7 @@ function ethValueFromPayment(payment?: {
   decimals?: number
   quantity?: string
 }): { ethValue?: number; symbol?: string } {
-  if (!payment || !payment.quantity) return {}
+  if (!payment?.quantity) return {}
   const decimals = payment.decimals ?? 18
   const symbol = payment.symbol ?? "ETH"
   // Only treat ETH/WETH as eth-equivalent. Stable-priced sales (USDC etc.)

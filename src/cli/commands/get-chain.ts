@@ -42,6 +42,41 @@ const monad = defineChain({
   },
 })
 
+/**
+ * Robinhood Chain mainnet. Not yet in the pinned viem version — replace with
+ * `import { robinhoodChain } from "viem/chains"` once viem ships a definition.
+ */
+const robinhood = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: {
+    name: "Ether",
+    symbol: "ETH",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://rpc.mainnet.chain.robinhood.com"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Robinhood Chain Blockscout Explorer",
+      url: "https://robinhoodchain.blockscout.com",
+      apiUrl: "https://robinhoodchain.blockscout.com/api",
+    },
+  },
+  contracts: {
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+    },
+  },
+})
+
+/** Help text for the `--network` CLI option, shared across commands. */
+export const NETWORK_OPTION_DESCRIPTION =
+  "Network: base, mainnet, shape, abstract, monad, or robinhood"
+
 export function getChain(network: string) {
   switch (network) {
     case "base":
@@ -56,6 +91,8 @@ export function getChain(network: string) {
       return abstractChain
     case "monad":
       return monad
+    case "robinhood":
+      return robinhood
     default:
       throw new Error(`Unsupported network: ${network}`)
   }

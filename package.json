@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "type": "module",
   "description": "SDK and CLI for building ERC-8257 compliant AI agent tools",
   "repository": {
@@ -32,10 +32,10 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "lint": "biome check --config-path . .",
-    "lint:fix": "biome check --config-path . --write .",
-    "format": "biome format --config-path . --write .",
-    "format:check": "biome format --config-path . .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -55,7 +55,7 @@
     "tsup": "8.5.1",
     "typescript": "6.0.2",
     "vitest": "3.2.4",
-    "@biomejs/biome": "^2.4.10"
+    "@biomejs/biome": "^2.5.2"
   },
   "engines": {
     "node": ">=18.0.0"

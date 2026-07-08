@@ -13,7 +13,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface ConfigureERC20GateOptions {
   network: string
@@ -37,11 +37,7 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
     "--predicate-address <address>",
     "Override the canonical ERC20BalancePredicate address",
   )
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,

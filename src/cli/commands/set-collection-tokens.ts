@@ -13,7 +13,7 @@ import {
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
-import { getChain } from "./get-chain.js"
+import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 
 interface SetCollectionTokensOptions {
   network: string
@@ -29,11 +29,7 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
   .argument("<toolId>", "Tool ID (uint256)")
   .argument("<address>", "Collection address")
   .argument("<tokenIds...>", "Token IDs to gate on")
-  .option(
-    "--network <network>",
-    "Network: base, mainnet, shape, abstract, or monad",
-    "base",
-  )
+  .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option(
     "--wallet-provider <provider>",
     `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
