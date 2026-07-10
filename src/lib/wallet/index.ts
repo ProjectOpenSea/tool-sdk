@@ -18,9 +18,10 @@ export {
   TurnkeyAdapter,
   WALLET_PROVIDERS,
 } from "@opensea/wallet-adapters"
-import type { Account, Chain, Transport, WalletClient } from "viem"
+
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import { walletAdapterToViemClient } from "@opensea/wallet-adapters/viem"
+import type { Account, Chain, Transport, WalletClient } from "viem"
 
 export async function walletAdapterToClient(
   adapter: WalletAdapter,

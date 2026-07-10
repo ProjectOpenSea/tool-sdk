@@ -31,7 +31,7 @@ export function createExternalSignerAccount(params: {
         "createExternalSignerAccount does not support signTransaction — use it for EIP-3009 auth only",
       )
     },
-    signTypedData: async (typedData) => {
+    signTypedData: async typedData => {
       if (!params.signTypedData) {
         throw new Error(
           "signTypedData not provided to createExternalSignerAccount",
@@ -52,16 +52,14 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
   })
   if (!infoRes.ok) {
     const text = await infoRes.text()
-    throw new Error(
-      `Bankr /wallet/me failed (${infoRes.status}): ${text}`,
-    )
+    throw new Error(`Bankr /wallet/me failed (${infoRes.status}): ${text}`)
   }
   // `/wallet/me` returns `{ wallets: [{ chain, address }, ...] }` — one entry
   // per chain (e.g. "evm", "solana"). There is no top-level `address` field.
   const info = (await infoRes.json()) as {
     wallets?: Array<{ chain: string; address: string }>
   }
-  const evmWallet = info.wallets?.find((w) => w.chain === "evm")
+  const evmWallet = info.wallets?.find(w => w.chain === "evm")
   if (!evmWallet) {
     throw new Error("Bankr /wallet/me returned no EVM wallet address")
   }
@@ -69,7 +67,7 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
 
   return createExternalSignerAccount({
     address,
-    signMessage: async (message) => {
+    signMessage: async message => {
       const signRes = await fetch(`${BANKR_API_BASE}/wallet/sign`, {
         method: "POST",
         headers: {

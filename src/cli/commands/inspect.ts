@@ -20,6 +20,7 @@ import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
+import { parseToolId } from "./shared.js"
 
 interface InspectOptions {
   toolId: string
@@ -45,13 +46,10 @@ export const inspectCommand = new Command("inspect")
       process.exit(1)
     }
 
-    let toolId: bigint
-    try {
-      toolId = BigInt(options.toolId)
-    } catch {
-      console.error(pc.red("Error: --tool-id must be a numeric value"))
-      process.exit(1)
-    }
+    const toolId = parseToolId(
+      options.toolId,
+      "Error: --tool-id must be a numeric value",
+    )
 
     const chain = getChain(options.network)
     const client = new ToolRegistryClient({ chain, rpcUrl: options.rpcUrl })

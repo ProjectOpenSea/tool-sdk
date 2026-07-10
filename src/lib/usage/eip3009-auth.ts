@@ -54,8 +54,9 @@ export async function signZeroValueAuthorization(
   params: SignZeroValueAuthorizationParams,
 ): Promise<ZeroValueAuthorization> {
   const { walletClient, from, to, chainId } = params
-  const tokenAddress =
-    (params.tokenAddress ?? NETWORK_USDC[chainId]) as `0x${string}` | undefined
+  const tokenAddress = (params.tokenAddress ?? NETWORK_USDC[chainId]) as
+    | `0x${string}`
+    | undefined
   if (!tokenAddress) {
     throw new Error(
       `No USDC token address known for chainId ${chainId}. Pass tokenAddress explicitly.`,

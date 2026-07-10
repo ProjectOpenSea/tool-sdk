@@ -30,7 +30,7 @@ export function createWellKnownHandler(
 ) {
   let resolved: ToolManifest | undefined
 
-  return (request: Request): Response => {
+  return (_request: Request): Response => {
     if (!resolved) {
       const env =
         options?.env ??

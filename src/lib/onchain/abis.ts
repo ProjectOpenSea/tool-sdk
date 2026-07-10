@@ -10,9 +10,7 @@ export const IToolRegistryABI = [
   {
     type: "event",
     name: "ToolDeregistered",
-    inputs: [
-      { name: "toolId", type: "uint256", indexed: true },
-    ],
+    inputs: [{ name: "toolId", type: "uint256", indexed: true }],
   },
   {
     type: "event",
@@ -37,9 +35,7 @@ export const IToolRegistryABI = [
   {
     type: "error",
     name: "InvalidAccessPredicate",
-    inputs: [
-      { name: "predicate", type: "address" },
-    ],
+    inputs: [{ name: "predicate", type: "address" }],
   },
   {
     type: "error",
@@ -62,32 +58,24 @@ export const IToolRegistryABI = [
   {
     type: "error",
     name: "ToolIsDeregistered",
-    inputs: [
-      { name: "toolId", type: "uint256" },
-    ],
+    inputs: [{ name: "toolId", type: "uint256" }],
   },
   {
     type: "error",
     name: "ToolNotFound",
-    inputs: [
-      { name: "toolId", type: "uint256" },
-    ],
+    inputs: [{ name: "toolId", type: "uint256" }],
   },
   {
     type: "function",
     name: "deregisterTool",
-    inputs: [
-      { name: "toolId", type: "uint256" },
-    ],
+    inputs: [{ name: "toolId", type: "uint256" }],
     outputs: [],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "getToolConfig",
-    inputs: [
-      { name: "toolId", type: "uint256" },
-    ],
+    inputs: [{ name: "toolId", type: "uint256" }],
     outputs: [
       {
         name: "",
@@ -110,18 +98,14 @@ export const IToolRegistryABI = [
       { name: "account", type: "address" },
       { name: "data", type: "bytes" },
     ],
-    outputs: [
-      { name: "", type: "bool" },
-    ],
+    outputs: [{ name: "", type: "bool" }],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "name",
     inputs: [],
-    outputs: [
-      { name: "", type: "string" },
-    ],
+    outputs: [{ name: "", type: "string" }],
     stateMutability: "view",
   },
   {
@@ -132,9 +116,7 @@ export const IToolRegistryABI = [
       { name: "manifestHash", type: "bytes32" },
       { name: "accessPredicate", type: "address" },
     ],
-    outputs: [
-      { name: "toolId", type: "uint256" },
-    ],
+    outputs: [{ name: "toolId", type: "uint256" }],
     stateMutability: "nonpayable",
   },
   {
@@ -151,9 +133,7 @@ export const IToolRegistryABI = [
     type: "function",
     name: "toolCount",
     inputs: [],
-    outputs: [
-      { name: "", type: "uint256" },
-    ],
+    outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
   {
@@ -185,19 +165,19 @@ export const IToolRegistryABI = [
     type: "function",
     name: "version",
     inputs: [],
-    outputs: [
-      { name: "", type: "string" },
-    ],
+    outputs: [{ name: "", type: "string" }],
     stateMutability: "view",
   },
 ] as const
 
+// biome-ignore lint/style/noNonNullAssertion: the event is a known member of the const ABI above
 export const ToolRegisteredEvent = IToolRegistryABI.find(
-  (e) => e.type === "event" && e.name === "ToolRegistered",
+  e => e.type === "event" && e.name === "ToolRegistered",
 )!
 
+// biome-ignore lint/style/noNonNullAssertion: the event is a known member of the const ABI above
 export const ToolDeregisteredEvent = IToolRegistryABI.find(
-  (e) => e.type === "event" && e.name === "ToolDeregistered",
+  e => e.type === "event" && e.name === "ToolDeregistered",
 )!
 
 export const IAccessPredicateABI = [

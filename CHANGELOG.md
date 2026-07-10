@@ -1,5 +1,14 @@
 # @opensea/tool-sdk
 
+## 0.28.1
+
+### Patch Changes
+
+- c93fece: `eip3009AuthenticatedFetch` now validates the 402 challenge's `asset` and `network` before signing: the network must be supported and the asset must be the canonical USDC contract for that network. Previously a zero-value challenge could name an arbitrary verifying contract/EIP-712 domain and the SDK would still sign it, creating a signature-phishing surface for contracts that assign different semantics to a zero-value `TransferWithAuthorization`. Thanks to @Nexory for raising this x402-signing hardening (tool-sdk#11).
+- 6d0baa7: `eip3009AuthenticatedFetch` now enforces the documented zero-value guarantee: it only signs `X-Payment` authorizations with `value: 0`, and returns non-zero (or unparseable-amount) 402 challenges as-is instead of signing an authorization that could move USDC to the server's advertised `payTo`.
+- adc561d: Deduplicate CLI command boilerplate: extract a shared `WALLET_PROVIDER_OPTION_DESCRIPTION` constant and a `parseToolId()` helper (both in `cli/commands/shared.ts`), replacing the repeated `Wallet provider: …` `--wallet-provider` help text (10 commands) and the copy-pasted `try/catch` tool-id parsing blocks (10 commands). No behavior change — same option text, same error messages, same exit codes.
+- 6096c0d: Deduplicate predicate-client boilerplate in `lib/onchain/predicate-clients.ts`: extract a shared `openSeaAssetLinks(collection)` helper on `BasePredicateClient` (replacing the copy-pasted segment/normalized/`links` construction in 4 `toManifestAccess()` methods), and add typed `read()`/`write()` helpers on the base class (holding the ABI as a generic `const TAbi extends Abi`) so subclasses no longer repeat the `publicClient.readContract`/`requireWalletClient()` + `walletClient.writeContract` wiring. viem's per-function argument/return typing is preserved. No behavior change.
+
 ## 0.28.0
 
 ### Minor Changes

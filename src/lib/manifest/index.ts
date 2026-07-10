@@ -1,8 +1,10 @@
 import type { ZodError } from "zod/v4"
-import type { PricingEntry, ToolManifest } from "./types.js"
 import { ToolManifestSchema } from "./schema.js"
+import type { PricingEntry, ToolManifest } from "./types.js"
 
-export type EnvResolver<T> = T | ((env: Record<string, string | undefined>) => T)
+export type EnvResolver<T> =
+  | T
+  | ((env: Record<string, string | undefined>) => T)
 
 export interface ManifestDefinition
   extends Omit<ToolManifest, "endpoint" | "creatorAddress" | "pricing"> {
@@ -11,7 +13,9 @@ export interface ManifestDefinition
   pricing?: EnvResolver<PricingEntry[]>
 }
 
-export function defineManifest(definition: ManifestDefinition): ManifestDefinition {
+export function defineManifest(
+  definition: ManifestDefinition,
+): ManifestDefinition {
   return definition
 }
 
@@ -22,10 +26,15 @@ export function resolveManifest(
   const resolved = {
     ...definition,
     endpoint: resolveField(definition.endpoint, env, "endpoint"),
-    creatorAddress: resolveField(definition.creatorAddress, env, "creatorAddress"),
-    pricing: definition.pricing !== undefined
-      ? resolveField(definition.pricing, env, "pricing")
-      : undefined,
+    creatorAddress: resolveField(
+      definition.creatorAddress,
+      env,
+      "creatorAddress",
+    ),
+    pricing:
+      definition.pricing !== undefined
+        ? resolveField(definition.pricing, env, "pricing")
+        : undefined,
   }
   const result = ToolManifestSchema.safeParse(resolved)
   if (!result.success) {
@@ -42,7 +51,9 @@ function resolveField<T>(
   fieldName: string,
 ): T {
   if (typeof value === "function") {
-    const resolved = (value as (env: Record<string, string | undefined>) => T)(env)
+    const resolved = (value as (env: Record<string, string | undefined>) => T)(
+      env,
+    )
     if (resolved === undefined || resolved === null) {
       throw new Error(
         `[tool-sdk] Resolver for "${fieldName}" returned ${String(resolved)}. ` +

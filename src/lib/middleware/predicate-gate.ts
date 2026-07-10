@@ -6,6 +6,7 @@ import {
 } from "viem"
 import { base } from "viem/chains"
 import type { GateMiddleware, ToolContext } from "../../types.js"
+import { resolveNetwork } from "../client/x402-challenge.js"
 import {
   CDP_X402_FACILITATOR_URL,
   PAYAI_X402_FACILITATOR_URL,
@@ -13,7 +14,6 @@ import {
   USDC_BASE_SEPOLIA_ADDRESS,
   type X402Network,
 } from "../middleware/x402-facilitators.js"
-import { resolveNetwork } from "../client/x402-challenge.js"
 import { IDelegateRegistryABI } from "../onchain/abis.js"
 import { DELEGATE_REGISTRY } from "../onchain/chains.js"
 import { ToolRegistryClient } from "../onchain/registry.js"
@@ -127,12 +127,12 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
     if (!inflight) {
       inflight = registry
         .getToolConfig(config.toolId)
-        .then((c) => {
+        .then(c => {
           cached = { address: c.accessPredicate, fetchedAt: Date.now() }
           inflight = null
           return c.accessPredicate
         })
-        .catch((err) => {
+        .catch(err => {
           inflight = null
           throw err
         })
@@ -153,10 +153,7 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
 
       const result = await verifyXPaymentAuth(paymentHeader, config)
       if (result.error) {
-        return Response.json(
-          { error: result.error },
-          { status: result.status },
-        )
+        return Response.json({ error: result.error }, { status: result.status })
       }
 
       const recoveredAddress = result.address
@@ -331,7 +328,10 @@ async function verifyXPaymentAuth(
     }
   }
 
-  if (paymentPayload.x402Version !== undefined && paymentPayload.x402Version !== 1) {
+  if (
+    paymentPayload.x402Version !== undefined &&
+    paymentPayload.x402Version !== 1
+  ) {
     return {
       error: `Predicate gate: unsupported x402 version ${paymentPayload.x402Version}`,
       status: 400,
@@ -341,10 +341,15 @@ async function verifyXPaymentAuth(
   const auth = paymentPayload.payload?.authorization
   const signature = paymentPayload.payload?.signature
 
-  if (!auth?.from || !auth?.to || !signature || !auth?.nonce || !auth?.validBefore) {
+  if (
+    !auth?.from ||
+    !auth?.to ||
+    !signature ||
+    !auth?.nonce ||
+    !auth?.validBefore
+  ) {
     return {
-      error:
-        "Predicate gate: X-Payment missing required authorization fields",
+      error: "Predicate gate: X-Payment missing required authorization fields",
       status: 401,
     }
   }
@@ -428,8 +433,7 @@ async function verifyXPaymentAuth(
 
   if (recoveredAddress.toLowerCase() !== auth.from.toLowerCase()) {
     return {
-      error:
-        "Predicate gate: X-Payment signer does not match 'from' address",
+      error: "Predicate gate: X-Payment signer does not match 'from' address",
       status: 401,
     }
   }
@@ -588,7 +592,9 @@ export interface PaidPredicateGateConfig {
  * payment. If the caller does not meet the access requirement, a 403 is
  * returned and no funds move.
  */
-export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddleware {
+export function paidPredicateGate(
+  config: PaidPredicateGateConfig,
+): GateMiddleware {
   if (config.facilitator === "cdp" && !config.createAuthHeaders) {
     throw new Error(
       "paidPredicateGate: createAuthHeaders is required when facilitator is 'cdp'",
@@ -632,12 +638,12 @@ export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddlewa
     if (!inflight) {
       inflight = registry
         .getToolConfig(config.toolId)
-        .then((c) => {
+        .then(c => {
           cached = { address: c.accessPredicate, fetchedAt: Date.now() }
           inflight = null
           return c.accessPredicate
         })
-        .catch((err) => {
+        .catch(err => {
           inflight = null
           throw err
         })
@@ -718,6 +724,7 @@ export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddlewa
         )
       }
 
+      // biome-ignore lint/style/noNonNullAssertion: address is present on the success branch (the error branch returns above)
       const recoveredAddress = authResult.address!
 
       // --- Delegation support ---
@@ -753,7 +760,9 @@ export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddlewa
         } catch (err) {
           const reason = err instanceof Error ? err.message : "unknown error"
           return Response.json(
-            { error: `Paid predicate gate: delegate registry call failed (${reason})` },
+            {
+              error: `Paid predicate gate: delegate registry call failed (${reason})`,
+            },
             { status: 502 },
           )
         }
@@ -942,9 +951,7 @@ export function paidPredicateGate(config: PaidPredicateGateConfig): GateMiddlewa
         })
         if (!res.ok) {
           const body = (await res.text().catch(() => "<no body>")).slice(0, 256)
-          throw new Error(
-            `facilitator /settle returned ${res.status}: ${body}`,
-          )
+          throw new Error(`facilitator /settle returned ${res.status}: ${body}`)
         }
         const body = (await res.json()) as {
           success?: boolean

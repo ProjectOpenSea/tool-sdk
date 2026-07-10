@@ -7,6 +7,7 @@ import {
 } from "../../lib/onchain/chains.js"
 import { ERC20BalancePredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { parseToolId } from "./shared.js"
 
 interface GetERC20ConfigOptions {
   network: string
@@ -26,14 +27,7 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetERC20ConfigOptions) => {
-    let toolId: bigint
-    try {
-      toolId = BigInt(toolIdRaw)
-    } catch {
-      console.error(pc.red("Error: toolId must be a valid integer"))
-      process.exit(1)
-      return
-    }
+    const toolId = parseToolId(toolIdRaw)
 
     const chain = getChain(options.network)
 

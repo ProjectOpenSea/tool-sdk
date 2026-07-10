@@ -1,5 +1,5 @@
-import type { Attestation, ReproducibleBuild, Verifiability } from "./types.js"
 import { VerifiabilitySchema } from "./schema.js"
+import type { Attestation, ReproducibleBuild, Verifiability } from "./types.js"
 
 type DataRetention = NonNullable<Verifiability["dataRetention"]>
 type SourceVisibility = NonNullable<Verifiability["sourceVisibility"]>
@@ -31,16 +31,14 @@ function validate(raw: Record<string, unknown>): Verifiability {
     const msgs = result.error.issues
       .map(i => `${i.path.join(".")}: ${i.message}`)
       .join("; ")
-    throw new Error(
-      `[tool-sdk] defineVerifiability: invalid config: ${msgs}`,
-    )
+    throw new Error(`[tool-sdk] defineVerifiability: invalid config: ${msgs}`)
   }
   return result.data
 }
 
-function selfAttested(
-  config: SelfAttestedConfig = {},
-): { verifiability: Verifiability } {
+function selfAttested(config: SelfAttestedConfig = {}): {
+  verifiability: Verifiability
+} {
   const verifiability = validate({
     ...config,
     tier: "self-attested",
@@ -49,9 +47,9 @@ function selfAttested(
   return { verifiability }
 }
 
-function hardwareAttested(
-  config: HardwareAttestedConfig,
-): { verifiability: Verifiability } {
+function hardwareAttested(config: HardwareAttestedConfig): {
+  verifiability: Verifiability
+} {
   const verifiability = validate({
     ...config,
     tier: "hardware-attested",
@@ -59,9 +57,9 @@ function hardwareAttested(
   return { verifiability }
 }
 
-function verifiable(
-  config: VerifiableConfig,
-): { verifiability: Verifiability } {
+function verifiable(config: VerifiableConfig): {
+  verifiability: Verifiability
+} {
   const verifiability = validate({
     ...config,
     tier: "verifiable",

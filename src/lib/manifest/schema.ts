@@ -32,9 +32,7 @@ function validateJsonSchemaStructure(
     typeof schema.type !== "string" &&
     !(
       Array.isArray(schema.type) &&
-      (schema.type as unknown[]).every(
-        item => typeof item === "string",
-      )
+      (schema.type as unknown[]).every(item => typeof item === "string")
     )
   ) {
     ctx.addIssue({
@@ -81,9 +79,7 @@ function validateJsonSchemaStructure(
   if (
     "required" in schema &&
     (!Array.isArray(schema.required) ||
-      !(schema.required as unknown[]).every(
-        item => typeof item === "string",
-      ))
+      !(schema.required as unknown[]).every(item => typeof item === "string"))
   ) {
     ctx.addIssue({
       code: "custom",
@@ -113,11 +109,9 @@ function validateJsonSchemaStructure(
 }
 
 function jsonSchemaField(fieldName: string) {
-  return z
-    .record(z.string(), z.unknown())
-    .superRefine((val, ctx) => {
-      validateJsonSchemaStructure(val, ctx, fieldName)
-    })
+  return z.record(z.string(), z.unknown()).superRefine((val, ctx) => {
+    validateJsonSchemaStructure(val, ctx, fieldName)
+  })
 }
 
 export const AccessRequirementLinksSchema = z
@@ -140,10 +134,7 @@ export const AccessRequirementSchema = z.object({
   data: z
     .string()
     .regex(/^0x[0-9a-f]*$/, "must be lowercase hex-encoded")
-    .refine(
-      s => (s.length - 2) / 2 <= 4096,
-      "data exceeds 4096-byte cap",
-    ),
+    .refine(s => (s.length - 2) / 2 <= 4096, "data exceeds 4096-byte cap"),
   label: z
     .string()
     .refine(
@@ -187,10 +178,7 @@ export const ReproducibleBuildSchema = z.object({
   sourceCodeURI: z
     .string()
     .url()
-    .refine(
-      u => u.startsWith("https://"),
-      "source code URI must use https",
-    ),
+    .refine(u => u.startsWith("https://"), "source code URI must use https"),
   buildInstructions: z.string().max(1000).optional(),
   buildHash: z
     .string()
@@ -217,15 +205,13 @@ export const VerifiabilitySchema = z
       if (val.execution !== "tee" && val.execution !== "e2ee") {
         ctx.addIssue({
           code: "custom",
-          message:
-            `tier "hardware-attested" requires "tee" or "e2ee" execution, got "${val.execution}"`,
+          message: `tier "hardware-attested" requires "tee" or "e2ee" execution, got "${val.execution}"`,
         })
       }
       if (!val.attestation) {
         ctx.addIssue({
           code: "custom",
-          message:
-            'tier "hardware-attested" requires an attestation field',
+          message: 'tier "hardware-attested" requires an attestation field',
         })
       }
     }
@@ -239,8 +225,7 @@ export const VerifiabilitySchema = z
       if (val.attestation) {
         ctx.addIssue({
           code: "custom",
-          message:
-            'tier "self-attested" cannot include an attestation field',
+          message: 'tier "self-attested" cannot include an attestation field',
         })
       }
     }
@@ -260,10 +245,7 @@ export const ToolManifestSchema = z.looseObject({
   endpoint: z
     .string()
     .url()
-    .refine(
-      u => u.startsWith("https://"),
-      "endpoint must use https",
-    ),
+    .refine(u => u.startsWith("https://"), "endpoint must use https"),
   image: z.string().url().optional(),
   featuredImage: z.string().url().optional(),
   tags: z.array(z.string()).optional(),

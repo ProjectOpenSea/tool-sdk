@@ -60,9 +60,7 @@ const DEFAULT_TIMEOUT_MS = 5_000
  */
 function validateConfig(config: Eip3009UsageReporterConfig): void {
   if (!config.toolRegistryAddress) {
-    throw new Error(
-      `[tool-sdk] toolRegistryAddress must not be empty`,
-    )
+    throw new Error(`[tool-sdk] toolRegistryAddress must not be empty`)
   }
   const onchainId = config.toolOnchainId
   if (typeof onchainId === "number") {
@@ -76,18 +74,12 @@ function validateConfig(config: Eip3009UsageReporterConfig): void {
       `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${onchainId}`,
     )
   }
-  if (
-    !Number.isInteger(config.toolChainId) ||
-    config.toolChainId <= 0
-  ) {
+  if (!Number.isInteger(config.toolChainId) || config.toolChainId <= 0) {
     throw new Error(
       `[tool-sdk] toolChainId must be a positive integer, got: ${config.toolChainId}`,
     )
   }
-  if (
-    !Number.isInteger(config.chainId) ||
-    config.chainId <= 0
-  ) {
+  if (!Number.isInteger(config.chainId) || config.chainId <= 0) {
     throw new Error(
       `[tool-sdk] chainId must be a positive integer, got: ${config.chainId}`,
     )

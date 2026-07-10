@@ -9,13 +9,13 @@ import { signX402Payment } from "../../lib/client/x402-payment.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
-  WALLET_PROVIDERS,
   type WalletAdapter,
   type WalletProvider,
 } from "../../lib/wallet/index.js"
 import { getChain } from "./get-chain.js"
 import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
 import { readInput } from "./read-input.js"
+import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 
 // 1 USDC (6 decimals)
 const DEFAULT_MAX_AMOUNT = "1000000"
@@ -48,10 +48,7 @@ export const smokeCommand = new Command("smoke")
     "--paid",
     "Handle x402 payment challenge after EIP-3009 authentication",
   )
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option(
     "--max-amount <amount>",
     "Maximum payment amount in base units (default: 1000000 = 1 USDC)",
@@ -82,16 +79,10 @@ export const smokeCommand = new Command("smoke")
 
     let toolId: bigint | undefined
     if (options.toolId) {
-      try {
-        toolId = BigInt(options.toolId)
-      } catch {
-        console.error(
-          pc.red(
-            `Error: --tool-id must be a valid integer (got ${options.toolId})`,
-          ),
-        )
-        process.exit(1)
-      }
+      toolId = parseToolId(
+        options.toolId,
+        `Error: --tool-id must be a valid integer (got ${options.toolId})`,
+      )
 
       if (toolId < 0n) {
         console.error(

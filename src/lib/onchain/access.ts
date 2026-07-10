@@ -1,4 +1,10 @@
-import { type Chain, createPublicClient, decodeAbiParameters, http, zeroAddress } from "viem"
+import {
+  type Chain,
+  createPublicClient,
+  decodeAbiParameters,
+  http,
+  zeroAddress,
+} from "viem"
 import { base } from "viem/chains"
 import { IAccessPredicateABI } from "./abis.js"
 import { ToolRegistryClient } from "./registry.js"
@@ -180,7 +186,7 @@ function boundRequirements(
   // silently inspect a subset.
   if (raw.length > MAX_REQUIREMENTS_ENTRIES) return []
 
-  return raw.map((r) => {
+  return raw.map(r => {
     if (
       hexByteLength(r.data) > MAX_REQUIREMENT_DATA_BYTES ||
       utf8ByteLength(r.label) > MAX_REQUIREMENT_LABEL_BYTES
@@ -264,15 +270,16 @@ export type DecodedRequirement =
  * Known kinds (ERC-721 holding, ERC-1155 holding, Subscription) are fully
  * decoded; unknown kinds are returned as-is with `type: "unknown"`.
  */
-export function decodeRequirement(req: AccessRequirementInfo): DecodedRequirement {
-  const kindKey = req.kind.slice(0, 10).toLowerCase() as keyof typeof KNOWN_KINDS
+export function decodeRequirement(
+  req: AccessRequirementInfo,
+): DecodedRequirement {
+  const kindKey = req.kind
+    .slice(0, 10)
+    .toLowerCase() as keyof typeof KNOWN_KINDS
   const knownType = KNOWN_KINDS[kindKey]
 
   if (knownType === "erc721") {
-    const [collection] = decodeAbiParameters(
-      [{ type: "address" }],
-      req.data,
-    )
+    const [collection] = decodeAbiParameters([{ type: "address" }], req.data)
     return { type: "erc721", collection }
   }
 
@@ -293,11 +300,23 @@ export function decodeRequirement(req: AccessRequirementInfo): DecodedRequiremen
   }
 
   if (knownType === "erc7496Trait") {
-    const [collection, traitsContract, traitKey, allowedValues] = decodeAbiParameters(
-      [{ type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32[]" }],
-      req.data,
-    )
-    return { type: "erc7496Trait", collection, traitsContract, traitKey, allowedValues }
+    const [collection, traitsContract, traitKey, allowedValues] =
+      decodeAbiParameters(
+        [
+          { type: "address" },
+          { type: "address" },
+          { type: "bytes32" },
+          { type: "bytes32[]" },
+        ],
+        req.data,
+      )
+    return {
+      type: "erc7496Trait",
+      collection,
+      traitsContract,
+      traitKey,
+      allowedValues,
+    }
   }
 
   if (knownType === "erc20Balance") {

@@ -3,8 +3,8 @@ import type {
   PaymentPayloadContext,
   PaymentPayloadResult,
   PaymentRequired,
-  PaymentRequirements as X402PaymentRequirements,
   SchemeNetworkClient,
+  PaymentRequirements as X402PaymentRequirements,
 } from "@x402/core/types"
 import type { Account } from "viem"
 import { toHex } from "viem"
@@ -237,8 +237,7 @@ export function toX402PaymentRequired(parsed: {
         asset: requirements.asset,
         amount: requirements.maxAmountRequired,
         payTo: requirements.payTo,
-        maxTimeoutSeconds:
-          (raw.maxTimeoutSeconds as number) ?? 600,
+        maxTimeoutSeconds: (raw.maxTimeoutSeconds as number) ?? 600,
         extra: (requirements.extra as Record<string, unknown>) ?? {},
       },
     ],

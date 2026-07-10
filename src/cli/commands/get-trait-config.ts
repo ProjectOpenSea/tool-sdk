@@ -7,6 +7,7 @@ import {
 } from "../../lib/onchain/chains.js"
 import { TraitGatedPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { parseToolId } from "./shared.js"
 
 interface GetTraitConfigOptions {
   network: string
@@ -24,14 +25,7 @@ export const getTraitConfigCommand = new Command("get-trait-config")
   )
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetTraitConfigOptions) => {
-    let toolId: bigint
-    try {
-      toolId = BigInt(toolIdRaw)
-    } catch {
-      console.error(pc.red("Error: toolId must be a valid integer"))
-      process.exit(1)
-      return
-    }
+    const toolId = parseToolId(toolIdRaw)
 
     const chain = getChain(options.network)
 

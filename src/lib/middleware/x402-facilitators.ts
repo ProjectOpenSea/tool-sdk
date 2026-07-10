@@ -1,9 +1,8 @@
+import type { GateMiddleware, ToolContext } from "../../types.js"
 import type { EnvResolver } from "../manifest/index.js"
 import type { PricingEntry } from "../manifest/types.js"
-import type { GateMiddleware, ToolContext } from "../../types.js"
 
-export const PAYAI_X402_FACILITATOR_URL =
-  "https://facilitator.payai.network"
+export const PAYAI_X402_FACILITATOR_URL = "https://facilitator.payai.network"
 
 /**
  * Coinbase Developer Platform x402 facilitator. CDP requires JWT auth signed
@@ -120,9 +119,7 @@ interface FacilitatorSettleResponse {
  * Use this for prototyping and dogfooding. For production, evaluate CDP
  * (`cdpX402Gate`) once you have CDP credentials.
  */
-export function payaiX402Gate(
-  config: HostedX402GateConfig,
-): GateMiddleware {
+export function payaiX402Gate(config: HostedX402GateConfig): GateMiddleware {
   return hostedX402Gate({
     ...config,
     facilitatorUrl: config.facilitatorUrl ?? PAYAI_X402_FACILITATOR_URL,
@@ -172,8 +169,7 @@ function hostedX402Gate(
   validateConfig(config)
   const network = config.network ?? "base"
   const asset = NETWORK_USDC[network]
-  const facilitatorUrl =
-    config.facilitatorUrl ?? PAYAI_X402_FACILITATOR_URL
+  const facilitatorUrl = config.facilitatorUrl ?? PAYAI_X402_FACILITATOR_URL
   const maxAmountRequired = toBaseUnits(config.amountUsdc, USDC_DECIMALS)
   const description = config.description ?? "Tool invocation"
   const maxTimeoutSeconds = config.maxTimeoutSeconds ?? 60
@@ -350,13 +346,8 @@ function hostedX402Gate(
           // Truncate the upstream body so a verbose facilitator error
           // (potentially echoing wallet addresses, nonces, or internal
           // state) does not flood operator log aggregation.
-          const body = (await res.text().catch(() => "<no body>")).slice(
-            0,
-            256,
-          )
-          throw new Error(
-            `facilitator /settle returned ${res.status}: ${body}`,
-          )
+          const body = (await res.text().catch(() => "<no body>")).slice(0, 256)
+          throw new Error(`facilitator /settle returned ${res.status}: ${body}`)
         }
         const body = (await res.json()) as FacilitatorSettleResponse
         if (!body.success) {
@@ -397,7 +388,10 @@ export interface ToolPaywallConfig {
    * logging, or post-payment side-effects. Errors are caught and logged
    * but do not affect the response.
    */
-  onSettle?: (ctx: { txHash: string; payer?: `0x${string}` }) => void | Promise<void>
+  onSettle?: (ctx: {
+    txHash: string
+    payer?: `0x${string}`
+  }) => void | Promise<void>
 }
 
 export function defineToolPaywall(config: ToolPaywallConfig): {
@@ -410,10 +404,14 @@ export function defineToolPaywall(config: ToolPaywallConfig): {
     )
   }
 
-  const resolveRecipient = (env?: Record<string, string | undefined>): `0x${string}` => {
+  const resolveRecipient = (
+    env?: Record<string, string | undefined>,
+  ): `0x${string}` => {
     if (typeof config.recipient === "function") {
       const resolved = config.recipient(
-        env ?? (globalThis.process?.env as Record<string, string | undefined> ?? {}),
+        env ??
+          (globalThis.process?.env as Record<string, string | undefined>) ??
+          {},
       )
       if (!resolved) {
         throw new Error(
@@ -428,7 +426,7 @@ export function defineToolPaywall(config: ToolPaywallConfig): {
 
   const pricing: EnvResolver<PricingEntry[]> =
     typeof config.recipient === "function"
-      ? (env) =>
+      ? env =>
           x402UsdcPricing({
             recipient: resolveRecipient(env),
             amountUsdc: config.amountUsdc,
@@ -458,7 +456,10 @@ export function defineToolPaywall(config: ToolPaywallConfig): {
     cachedRecipient = recipient
     cachedGate =
       config.facilitator === "cdp"
-        ? cdpX402Gate({ ...gateConfig, createAuthHeaders: config.createAuthHeaders })
+        ? cdpX402Gate({
+            ...gateConfig,
+            createAuthHeaders: config.createAuthHeaders,
+          })
         : payaiX402Gate(gateConfig)
     return cachedGate
   }
@@ -477,7 +478,9 @@ export function defineToolPaywall(config: ToolPaywallConfig): {
         try {
           await config.onSettle({
             txHash: ctx.gates.x402.settlementTxHash,
-            payer: (ctx.gates.x402.payer as `0x${string}` | undefined) ?? ctx.callerAddress,
+            payer:
+              (ctx.gates.x402.payer as `0x${string}` | undefined) ??
+              ctx.callerAddress,
           })
         } catch (err) {
           console.error("[tool-sdk] onSettle callback failed:", err)
@@ -496,9 +499,7 @@ function validateConfig(
     throw new Error("x402 gate: recipient is required")
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(config.recipient)) {
-    throw new Error(
-      `x402 gate: invalid recipient address: ${config.recipient}`,
-    )
+    throw new Error(`x402 gate: invalid recipient address: ${config.recipient}`)
   }
   if (REJECTED_ADDRESSES.has(config.recipient.toLowerCase())) {
     throw new Error(

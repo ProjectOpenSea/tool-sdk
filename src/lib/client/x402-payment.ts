@@ -52,9 +52,9 @@ export class X402PaymentError extends Error {
 export function rejectServerErrorAfterPayment(res: Response): void {
   if (res.status < 500) return
 
-  const settlement = X402_SETTLEMENT_HEADERS.map((h) =>
-    res.headers.get(h),
-  ).find((v) => v != null)
+  const settlement = X402_SETTLEMENT_HEADERS.map(h => res.headers.get(h)).find(
+    v => v != null,
+  )
   const settled = settlement != null
 
   throw new X402PaymentError(
@@ -219,7 +219,14 @@ export async function paidFetch(
   url: string,
   options: PaidFetchOptions,
 ): Promise<Response> {
-  const { signer, maxAmount, allowedRecipients, allowedAssets, reportCallerUsage, ...fetchOptions } = options
+  const {
+    signer,
+    maxAmount,
+    allowedRecipients,
+    allowedAssets,
+    reportCallerUsage,
+    ...fetchOptions
+  } = options
 
   if (fetchOptions.body instanceof ReadableStream) {
     throw new Error(
@@ -293,11 +300,9 @@ export async function paidFetch(
  * Extract the onchain settlement tx hash from x402 response headers.
  * Returns `undefined` if no settlement header is present.
  */
-export function extractSettlementTxHash(
-  res: Response,
-): string | undefined {
-  const raw = X402_SETTLEMENT_HEADERS.map((h) => res.headers.get(h)).find(
-    (v) => v != null,
+export function extractSettlementTxHash(res: Response): string | undefined {
+  const raw = X402_SETTLEMENT_HEADERS.map(h => res.headers.get(h)).find(
+    v => v != null,
   )
   if (!raw) return undefined
   try {
@@ -325,7 +330,8 @@ export function buildSettlementResponseHeader(params: {
   network?: string
   payer?: string
 }): { name: string; value: string } {
-  const name = params.x402Version >= 2 ? "PAYMENT-RESPONSE" : "X-PAYMENT-RESPONSE"
+  const name =
+    params.x402Version >= 2 ? "PAYMENT-RESPONSE" : "X-PAYMENT-RESPONSE"
   const json = JSON.stringify({
     success: true,
     transaction: params.transaction,
@@ -372,7 +378,7 @@ export function validatePaymentRequirements(
   }
 
   if (opts.allowedRecipients) {
-    const allowed = new Set(opts.allowedRecipients.map((a) => a.toLowerCase()))
+    const allowed = new Set(opts.allowedRecipients.map(a => a.toLowerCase()))
     if (!allowed.has(payToLower)) {
       throw new Error(
         `x402: payTo address ${reqs.payTo} is not in allowedRecipients`,
@@ -390,11 +396,9 @@ export function validatePaymentRequirements(
 
   const assetLower = reqs.asset.toLowerCase()
   if (opts.allowedAssets) {
-    const allowed = new Set(opts.allowedAssets.map((a) => a.toLowerCase()))
+    const allowed = new Set(opts.allowedAssets.map(a => a.toLowerCase()))
     if (!allowed.has(assetLower)) {
-      throw new Error(
-        `x402: asset ${reqs.asset} is not in allowedAssets`,
-      )
+      throw new Error(`x402: asset ${reqs.asset} is not in allowedAssets`)
     }
   } else {
     const expectedUsdc = resolveNetwork(reqs.network)?.usdc

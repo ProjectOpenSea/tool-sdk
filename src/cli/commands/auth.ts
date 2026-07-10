@@ -13,11 +13,11 @@ import {
 import {
   createWalletForProvider,
   createWalletFromEnv,
-  WALLET_PROVIDERS,
   type WalletAdapter,
   type WalletProvider,
 } from "../../lib/wallet/index.js"
 import { readInput } from "./read-input.js"
+import { WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 
 interface AuthOptions {
   body?: string
@@ -32,10 +32,7 @@ export const authCommand = new Command("auth")
   )
   .argument("<url>", "Tool endpoint URL")
   .option("--body <json>", "JSON body (inline string or @path/to/file.json)")
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option(
     "--bankr-key <api-key>",
     "Bankr API key for agent wallet signing (defaults to BANKR_API_KEY env var)",

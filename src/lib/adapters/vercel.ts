@@ -22,30 +22,25 @@ export function toVercelHandler(
   handler: WebHandler,
 ): (req: VercelRequest, res: VercelResponse) => Promise<void> {
   return async (req, res) => {
-    const forwardedProto = req.headers["x-forwarded-proto"] as string | undefined
+    const forwardedProto = req.headers["x-forwarded-proto"] as
+      | string
+      | undefined
     const protocol = forwardedProto ?? "https"
-    const host =
-      (req.headers.host as string | undefined) ?? "localhost"
+    const host = (req.headers.host as string | undefined) ?? "localhost"
     const url = `${protocol}://${host}${req.url ?? "/"}`
 
     const headers = new Headers()
     for (const [key, value] of Object.entries(req.headers)) {
       if (value) {
-        headers.set(
-          key,
-          Array.isArray(value) ? value.join(", ") : value,
-        )
+        headers.set(key, Array.isArray(value) ? value.join(", ") : value)
       }
     }
 
-    const hasBody =
-      req.method !== "GET" && req.method !== "HEAD"
+    const hasBody = req.method !== "GET" && req.method !== "HEAD"
     const webRequest = new Request(url, {
       method: req.method,
       headers,
-      body: hasBody
-        ? JSON.stringify(req.body)
-        : undefined,
+      body: hasBody ? JSON.stringify(req.body) : undefined,
     })
 
     const webResponse = await handler(webRequest)

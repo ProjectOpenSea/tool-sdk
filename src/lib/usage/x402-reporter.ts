@@ -49,9 +49,7 @@ const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/
 
 function validateX402Config(config: X402UsageReporterConfig): void {
   if (!config.toolRegistryAddress) {
-    throw new Error(
-      `[tool-sdk] toolRegistryAddress must not be empty`,
-    )
+    throw new Error(`[tool-sdk] toolRegistryAddress must not be empty`)
   }
   const onchainId = config.toolOnchainId
   if (typeof onchainId === "number") {
@@ -65,10 +63,7 @@ function validateX402Config(config: X402UsageReporterConfig): void {
       `[tool-sdk] toolOnchainId must be a non-negative integer, got: ${onchainId}`,
     )
   }
-  if (
-    !Number.isInteger(config.toolChainId) ||
-    config.toolChainId <= 0
-  ) {
+  if (!Number.isInteger(config.toolChainId) || config.toolChainId <= 0) {
     throw new Error(
       `[tool-sdk] toolChainId must be a positive integer, got: ${config.toolChainId}`,
     )
@@ -94,9 +89,7 @@ export function createX402UsageReporter(
 
   return async (event: X402UsageEvent): Promise<void> => {
     if (!isAddress(event.callerAddress)) {
-      console.error(
-        `[tool-sdk] invalid callerAddress: ${event.callerAddress}`,
-      )
+      console.error(`[tool-sdk] invalid callerAddress: ${event.callerAddress}`)
       return
     }
     if (!TX_HASH_REGEX.test(event.txHash)) {

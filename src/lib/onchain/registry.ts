@@ -2,19 +2,19 @@ import {
   type Account,
   type Address,
   type Chain,
+  createPublicClient,
   type Hash,
   type Hex,
-  type Transport,
-  type WalletClient,
-  createPublicClient,
   http,
   parseEventLogs,
+  type Transport,
+  type WalletClient,
   zeroAddress,
 } from "viem"
 import { base } from "viem/chains"
-import { computeManifestHash } from "./hash.js"
 import { IToolRegistryABI, ToolRegisteredEvent } from "./abis.js"
-import { TOOL_REGISTRY, deploymentAddress } from "./chains.js"
+import { deploymentAddress, TOOL_REGISTRY } from "./chains.js"
+import { computeManifestHash } from "./hash.js"
 
 interface ToolConfig {
   creator: Address
@@ -139,9 +139,7 @@ export class ToolRegistryClient {
     accessPredicate?: Address
   }): Promise<{ toolId: bigint; txHash: Hash }> {
     if (!this.walletClient) {
-      throw new Error(
-        "walletClient required for write operations",
-      )
+      throw new Error("walletClient required for write operations")
     }
     validateMetadataURI(params.metadataURI)
     const manifestHash = computeManifestHash(params.manifest)
@@ -167,9 +165,7 @@ export class ToolRegistryClient {
     })
 
     if (logs.length === 0) {
-      throw new Error(
-        "ToolRegistered event not found in transaction receipt",
-      )
+      throw new Error("ToolRegistered event not found in transaction receipt")
     }
 
     return {
@@ -185,9 +181,7 @@ export class ToolRegistryClient {
     manifest: object,
   ): Promise<Hash> {
     if (!this.walletClient) {
-      throw new Error(
-        "walletClient required for write operations",
-      )
+      throw new Error("walletClient required for write operations")
     }
     validateMetadataURI(newURI)
     const manifestHash = computeManifestHash(manifest)
@@ -216,8 +210,7 @@ export class ToolRegistryClient {
   > {
     const toBlock = options?.toBlock ?? "latest"
     const fromBlock =
-      options?.fromBlock ??
-      (await this.publicClient.getBlockNumber()) - 10_000n
+      options?.fromBlock ?? (await this.publicClient.getBlockNumber()) - 10_000n
 
     const logs = await this.publicClient.getLogs({
       address: this.registryAddress,
@@ -227,7 +220,8 @@ export class ToolRegistryClient {
       toBlock,
     })
 
-    return logs.map((log) => ({
+    // biome-ignore-start lint/style/noNonNullAssertion: decoded ToolRegistered args and log metadata are always present on successfully matched logs
+    return logs.map(log => ({
       toolId: log.args.toolId!,
       accessPredicate: log.args.accessPredicate!,
       metadataURI: log.args.metadataURI!,
@@ -235,16 +229,12 @@ export class ToolRegistryClient {
       txHash: log.transactionHash!,
       blockNumber: log.blockNumber!,
     }))
+    // biome-ignore-end lint/style/noNonNullAssertion: end decoded-log assertions
   }
 
-  async setAccessPredicate(
-    toolId: bigint,
-    predicate: Address,
-  ): Promise<Hash> {
+  async setAccessPredicate(toolId: bigint, predicate: Address): Promise<Hash> {
     if (!this.walletClient) {
-      throw new Error(
-        "walletClient required for write operations",
-      )
+      throw new Error("walletClient required for write operations")
     }
     return this.walletClient.writeContract({
       chain: this.chain,

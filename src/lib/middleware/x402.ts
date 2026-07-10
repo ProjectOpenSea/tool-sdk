@@ -1,5 +1,5 @@
-import type { PricingEntry } from "../manifest/types.js"
 import type { GateMiddleware, ToolContext } from "../../types.js"
+import type { PricingEntry } from "../manifest/types.js"
 
 export interface X402GateConfig {
   pricing: PricingEntry[]
@@ -30,9 +30,7 @@ export function x402Gate(config: X402GateConfig): GateMiddleware {
             status: 402,
             headers: {
               "Content-Type": "application/json",
-              "X-Payment-Requirements": JSON.stringify(
-                config.pricing,
-              ),
+              "X-Payment-Requirements": JSON.stringify(config.pricing),
               "X-Accept-Payment": "x402",
             },
           },

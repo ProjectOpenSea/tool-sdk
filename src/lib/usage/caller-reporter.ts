@@ -101,9 +101,7 @@ const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/
  */
 function buildToolIdentity(
   event: CallerX402UsageEvent,
-):
-  | { fields: Record<string, unknown> }
-  | { error: string; detail: string } {
+): { fields: Record<string, unknown> } | { error: string; detail: string } {
   const hasAny =
     event.toolChainId !== undefined ||
     event.toolRegistryAddress !== undefined ||
@@ -208,7 +206,10 @@ async function handleResponse(res: Response): Promise<CallerUsageReportResult> {
   // settlement (same tx hash), in which case the aggregator rejects the
   // caller's report as a duplicate. From the caller's perspective the usage
   // IS reported, so this is a success, not an error worth logging.
-  if (res.status === 400 && /already reported|duplicate usage report/i.test(text)) {
+  if (
+    res.status === 400 &&
+    /already reported|duplicate usage report/i.test(text)
+  ) {
     return { outcome: "already-reported" }
   }
   console.error(
@@ -245,9 +246,7 @@ export async function reportCallerX402Usage(
   config: CallerUsageReporterConfig = {},
 ): Promise<CallerUsageReportResult> {
   if (!isAddress(event.callerAddress)) {
-    console.error(
-      `[tool-sdk] invalid callerAddress: ${event.callerAddress}`,
-    )
+    console.error(`[tool-sdk] invalid callerAddress: ${event.callerAddress}`)
     return { outcome: "skipped", detail: "invalid callerAddress" }
   }
   if (!TX_HASH_REGEX.test(event.txHash)) {
@@ -336,9 +335,7 @@ export async function reportCallerEip3009Usage(
   config: CallerUsageReporterConfig = {},
 ): Promise<CallerUsageReportResult> {
   if (!isAddress(event.callerAddress)) {
-    console.error(
-      `[tool-sdk] invalid callerAddress: ${event.callerAddress}`,
-    )
+    console.error(`[tool-sdk] invalid callerAddress: ${event.callerAddress}`)
     return { outcome: "skipped", detail: "invalid callerAddress" }
   }
   if (event.value !== "0") {

@@ -1,34 +1,46 @@
 import {
+  type Abi,
   type Account,
   type Address,
   type Chain,
-  type Hash,
-  type Transport,
-  type WalletClient,
+  type ContractFunctionArgs,
+  type ContractFunctionName,
   createPublicClient,
   encodeAbiParameters,
   getAddress,
+  type Hash,
   http,
+  type ReadContractParameters,
+  type ReadContractReturnType,
+  type Transport,
+  type WalletClient,
+  type WriteContractParameters,
 } from "viem"
-import type { Access } from "../manifest/types.js"
 import { base } from "viem/chains"
-import { ERC721_KIND, ERC1155_KIND, SUBSCRIPTION_KIND, ERC7496_TRAIT_KIND, ERC20_BALANCE_KIND } from "./access.js"
+import type { Access } from "../manifest/types.js"
 import {
+  CompositePredicateABI,
+  ERC20BalancePredicateABI,
   ERC721OwnerPredicateABI,
   ERC1155OwnerPredicateABI,
   SubscriptionPredicateABI,
-  CompositePredicateABI,
   TraitGatedPredicateABI,
-  ERC20BalancePredicateABI,
 } from "./abis.js"
 import {
+  ERC20_BALANCE_KIND,
+  ERC721_KIND,
+  ERC1155_KIND,
+  ERC7496_TRAIT_KIND,
+  SUBSCRIPTION_KIND,
+} from "./access.js"
+import {
   type Deployment,
+  deploymentAddress,
+  ERC20_BALANCE_PREDICATE,
   ERC721_OWNER_PREDICATE,
   ERC1155_OWNER_PREDICATE,
   SUBSCRIPTION_PREDICATE,
   TRAIT_GATED_PREDICATE,
-  ERC20_BALANCE_PREDICATE,
-  deploymentAddress,
 } from "./chains.js"
 
 export interface PredicateClientConfig {
@@ -38,17 +50,20 @@ export interface PredicateClientConfig {
   predicateAddress?: `0x${string}`
 }
 
-abstract class BasePredicateClient {
+abstract class BasePredicateClient<const TAbi extends Abi> {
   protected chain: Chain
   protected walletClient?: WalletClient<Transport, Chain, Account>
   protected predicateAddress: `0x${string}`
   protected publicClient: ReturnType<typeof createPublicClient>
+  protected abi: TAbi
 
   constructor(
     defaultDeployment: Deployment,
     contractName: string,
+    abi: TAbi,
     config: PredicateClientConfig = {},
   ) {
+    this.abi = abi
     this.chain = config.chain ?? base
     this.walletClient = config.walletClient
 
@@ -77,6 +92,40 @@ abstract class BasePredicateClient {
     return this.walletClient
   }
 
+  /** Read a view/pure function on this predicate at the resolved address. */
+  protected read<
+    fn extends ContractFunctionName<TAbi, "pure" | "view">,
+    const args extends ContractFunctionArgs<TAbi, "pure" | "view", fn>,
+  >(
+    functionName: fn,
+    args: args,
+  ): Promise<ReadContractReturnType<TAbi, fn, args>> {
+    return this.publicClient.readContract({
+      address: this.predicateAddress,
+      abi: this.abi,
+      functionName,
+      args,
+    } as ReadContractParameters<TAbi, fn, args>) as Promise<
+      ReadContractReturnType<TAbi, fn, args>
+    >
+  }
+
+  /** Send a state-changing transaction to this predicate; requires a wallet. */
+  protected write<
+    fn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+    const args extends ContractFunctionArgs<TAbi, "nonpayable" | "payable", fn>,
+  >(functionName: fn, args: args): Promise<Hash> {
+    const wallet = this.requireWalletClient()
+    return wallet.writeContract({
+      chain: this.chain,
+      account: wallet.account,
+      address: this.predicateAddress,
+      abi: this.abi,
+      functionName,
+      args,
+    } as WriteContractParameters<TAbi, fn, args, Chain, Account>)
+  }
+
   protected openSeaChainSegment(): string | undefined {
     const id = this.chain.id
     if (id === 8453) return "base"
@@ -84,36 +133,41 @@ abstract class BasePredicateClient {
     if (id === 137) return "matic"
     return undefined
   }
+
+  /**
+   * Build the `links` map for a manifest requirement pointing at an asset's
+   * OpenSea page, or `undefined` when the active chain has no OpenSea path.
+   */
+  protected openSeaAssetLinks(
+    collection: Address,
+  ): Record<string, string> | undefined {
+    const segment = this.openSeaChainSegment()
+    if (!segment) return undefined
+    return {
+      opensea: `https://opensea.io/assets/${segment}/${getAddress(collection)}`,
+    }
+  }
 }
 
-export class ERC721OwnerPredicateClient extends BasePredicateClient {
+export class ERC721OwnerPredicateClient extends BasePredicateClient<
+  typeof ERC721OwnerPredicateABI
+> {
   constructor(config: PredicateClientConfig = {}) {
-    super(ERC721_OWNER_PREDICATE, "ERC721OwnerPredicate", config)
+    super(
+      ERC721_OWNER_PREDICATE,
+      "ERC721OwnerPredicate",
+      ERC721OwnerPredicateABI,
+      config,
+    )
   }
 
   async getCollections(toolId: bigint): Promise<Address[]> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: ERC721OwnerPredicateABI,
-      functionName: "getCollections",
-      args: [toolId],
-    })
+    const result = await this.read("getCollections", [toolId])
     return [...result]
   }
 
-  async setCollections(
-    toolId: bigint,
-    collections: Address[],
-  ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: ERC721OwnerPredicateABI,
-      functionName: "setCollections",
-      args: [toolId, collections],
-    })
+  async setCollections(toolId: bigint, collections: Address[]): Promise<Hash> {
+    return this.write("setCollections", [toolId, collections])
   }
 
   /**
@@ -126,7 +180,7 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
    */
   async addCollection(toolId: bigint, collection: Address): Promise<Hash> {
     const current = await this.getCollections(toolId)
-    if (current.some((c) => c.toLowerCase() === collection.toLowerCase())) {
+    if (current.some(c => c.toLowerCase() === collection.toLowerCase())) {
       throw new Error(
         `Collection ${collection} is already in the list for tool ${toolId}`,
       )
@@ -145,7 +199,7 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
   async removeCollection(toolId: bigint, collection: Address): Promise<Hash> {
     const current = await this.getCollections(toolId)
     const lower = collection.toLowerCase()
-    const filtered = current.filter((c) => c.toLowerCase() !== lower)
+    const filtered = current.filter(c => c.toLowerCase() !== lower)
     if (filtered.length === current.length) {
       throw new Error(
         `Collection ${collection} not found in the list for tool ${toolId}`,
@@ -154,20 +208,10 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
     return this.setCollections(toolId, filtered)
   }
 
-  toManifestAccess(
-    collection: Address,
-    opts?: { label?: string },
-  ): Access {
-    const data = encodeAbiParameters(
-      [{ type: "address" }],
-      [collection],
-    )
+  toManifestAccess(collection: Address, opts?: { label?: string }): Access {
+    const data = encodeAbiParameters([{ type: "address" }], [collection])
     const label = opts?.label ?? "Hold any NFT from this collection"
-    const segment = this.openSeaChainSegment()
-    const normalized = getAddress(collection)
-    const links: Record<string, string> | undefined = segment
-      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
-      : undefined
+    const links = this.openSeaAssetLinks(collection)
     return {
       logic: "OR",
       requirements: [{ kind: ERC721_KIND, data, label, links }],
@@ -175,21 +219,23 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient {
   }
 }
 
-export class ERC1155OwnerPredicateClient extends BasePredicateClient {
+export class ERC1155OwnerPredicateClient extends BasePredicateClient<
+  typeof ERC1155OwnerPredicateABI
+> {
   constructor(config: PredicateClientConfig = {}) {
-    super(ERC1155_OWNER_PREDICATE, "ERC1155OwnerPredicate", config)
+    super(
+      ERC1155_OWNER_PREDICATE,
+      "ERC1155OwnerPredicate",
+      ERC1155OwnerPredicateABI,
+      config,
+    )
   }
 
   async getCollectionTokens(
     toolId: bigint,
   ): Promise<{ collection: Address; tokenIds: bigint[] }[]> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: ERC1155OwnerPredicateABI,
-      functionName: "getCollectionTokens",
-      args: [toolId],
-    })
-    return result.map((entry) => ({
+    const result = await this.read("getCollectionTokens", [toolId])
+    return result.map(entry => ({
       collection: entry.collection,
       tokenIds: [...entry.tokenIds],
     }))
@@ -199,15 +245,7 @@ export class ERC1155OwnerPredicateClient extends BasePredicateClient {
     toolId: bigint,
     entries: { collection: Address; tokenIds: bigint[] }[],
   ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: ERC1155OwnerPredicateABI,
-      functionName: "setCollectionTokens",
-      args: [toolId, entries],
-    })
+    return this.write("setCollectionTokens", [toolId, entries])
   }
 
   toManifestAccess(
@@ -219,13 +257,8 @@ export class ERC1155OwnerPredicateClient extends BasePredicateClient {
       [{ type: "address" }, { type: "uint256" }],
       [collection, tokenId],
     )
-    const label =
-      opts?.label ?? `Hold token #${tokenId} from this collection`
-    const segment = this.openSeaChainSegment()
-    const normalized = getAddress(collection)
-    const links: Record<string, string> | undefined = segment
-      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
-      : undefined
+    const label = opts?.label ?? `Hold token #${tokenId} from this collection`
+    const links = this.openSeaAssetLinks(collection)
     return {
       logic: "OR",
       requirements: [{ kind: ERC1155_KIND, data, label, links }],
@@ -242,20 +275,22 @@ const NO_CANONICAL_DEPLOYMENT: Deployment = {
   chains: [],
 }
 
-export class SubscriptionPredicateClient extends BasePredicateClient {
+export class SubscriptionPredicateClient extends BasePredicateClient<
+  typeof SubscriptionPredicateABI
+> {
   constructor(config: PredicateClientConfig = {}) {
-    super(SUBSCRIPTION_PREDICATE, "SubscriptionPredicate", config)
+    super(
+      SUBSCRIPTION_PREDICATE,
+      "SubscriptionPredicate",
+      SubscriptionPredicateABI,
+      config,
+    )
   }
 
   async getToolGatingConfig(
     toolId: bigint,
   ): Promise<{ collection: Address; minTier: number }> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: SubscriptionPredicateABI,
-      functionName: "getToolGatingConfig",
-      args: [toolId],
-    })
+    const result = await this.read("getToolGatingConfig", [toolId])
     return { collection: result.collection, minTier: result.minTier }
   }
 
@@ -264,15 +299,7 @@ export class SubscriptionPredicateClient extends BasePredicateClient {
     collection: Address,
     minTier: number,
   ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: SubscriptionPredicateABI,
-      functionName: "configureToolGating",
-      args: [toolId, collection, minTier],
-    })
+    return this.write("configureToolGating", [toolId, collection, minTier])
   }
 
   async getSubscriptionStatus(
@@ -285,12 +312,7 @@ export class SubscriptionPredicateClient extends BasePredicateClient {
     expiration: bigint
     active: boolean
   }> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: SubscriptionPredicateABI,
-      functionName: "getSubscriptionStatus",
-      args: [toolId, account],
-    })
+    const result = await this.read("getSubscriptionStatus", [toolId, account])
     return {
       hasNft: result[0],
       tier: result[1],
@@ -314,11 +336,7 @@ export class SubscriptionPredicateClient extends BasePredicateClient {
       (minTier > 0
         ? `Active subscription (tier ${minTier}+)`
         : "Active subscription")
-    const segment = this.openSeaChainSegment()
-    const normalized = getAddress(collection)
-    const links: Record<string, string> | undefined = segment
-      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
-      : undefined
+    const links = this.openSeaAssetLinks(collection)
     return {
       logic: "AND",
       requirements: [{ kind: SUBSCRIPTION_KIND, data, label, links }],
@@ -326,25 +344,25 @@ export class SubscriptionPredicateClient extends BasePredicateClient {
   }
 }
 
-export class TraitGatedPredicateClient extends BasePredicateClient {
+export class TraitGatedPredicateClient extends BasePredicateClient<
+  typeof TraitGatedPredicateABI
+> {
   constructor(config: PredicateClientConfig = {}) {
-    super(TRAIT_GATED_PREDICATE, "TraitGatedPredicate", config)
+    super(
+      TRAIT_GATED_PREDICATE,
+      "TraitGatedPredicate",
+      TraitGatedPredicateABI,
+      config,
+    )
   }
 
-  async getToolTraitConfig(
-    toolId: bigint,
-  ): Promise<{
+  async getToolTraitConfig(toolId: bigint): Promise<{
     collection: Address
     traitsContract: Address
     traitKey: `0x${string}`
     allowedValues: readonly `0x${string}`[]
   }> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: TraitGatedPredicateABI,
-      functionName: "getToolTraitConfig",
-      args: [toolId],
-    })
+    const result = await this.read("getToolTraitConfig", [toolId])
     return {
       collection: result.collection,
       traitsContract: result.traitsContract,
@@ -360,15 +378,13 @@ export class TraitGatedPredicateClient extends BasePredicateClient {
     traitKey: `0x${string}`,
     allowedValues: `0x${string}`[],
   ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: TraitGatedPredicateABI,
-      functionName: "configureToolTrait",
-      args: [toolId, collection, traitsContract, traitKey, allowedValues],
-    })
+    return this.write("configureToolTrait", [
+      toolId,
+      collection,
+      traitsContract,
+      traitKey,
+      allowedValues,
+    ])
   }
 
   toManifestAccess(
@@ -388,11 +404,7 @@ export class TraitGatedPredicateClient extends BasePredicateClient {
       [collection, traitsContract, traitKey, allowedValues],
     )
     const label = opts?.label ?? "Hold an NFT with a matching trait"
-    const segment = this.openSeaChainSegment()
-    const normalized = getAddress(collection)
-    const links: Record<string, string> | undefined = segment
-      ? { opensea: `https://opensea.io/assets/${segment}/${normalized}` }
-      : undefined
+    const links = this.openSeaAssetLinks(collection)
     return {
       logic: "AND",
       requirements: [{ kind: ERC7496_TRAIT_KIND, data, label, links }],
@@ -400,20 +412,22 @@ export class TraitGatedPredicateClient extends BasePredicateClient {
   }
 }
 
-export class ERC20BalancePredicateClient extends BasePredicateClient {
+export class ERC20BalancePredicateClient extends BasePredicateClient<
+  typeof ERC20BalancePredicateABI
+> {
   constructor(config: PredicateClientConfig = {}) {
-    super(ERC20_BALANCE_PREDICATE, "ERC20BalancePredicate", config)
+    super(
+      ERC20_BALANCE_PREDICATE,
+      "ERC20BalancePredicate",
+      ERC20BalancePredicateABI,
+      config,
+    )
   }
 
   async getToolERC20Config(
     toolId: bigint,
   ): Promise<{ token: Address; minBalance: bigint }> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: ERC20BalancePredicateABI,
-      functionName: "getToolERC20Config",
-      args: [toolId],
-    })
+    const result = await this.read("getToolERC20Config", [toolId])
     return {
       token: result.token,
       minBalance: result.minBalance,
@@ -425,15 +439,7 @@ export class ERC20BalancePredicateClient extends BasePredicateClient {
     token: Address,
     minBalance: bigint,
   ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: ERC20BalancePredicateABI,
-      functionName: "configureToolERC20",
-      args: [toolId, token, minBalance],
-    })
+    return this.write("configureToolERC20", [toolId, token, minBalance])
   }
 
   /**
@@ -452,8 +458,7 @@ export class ERC20BalancePredicateClient extends BasePredicateClient {
       [{ type: "address" }, { type: "uint256" }],
       [token, minBalance],
     )
-    const label =
-      opts?.label ?? `Hold at least ${minBalance} of this token`
+    const label = opts?.label ?? `Hold at least ${minBalance} of this token`
     return {
       logic: "AND",
       requirements: [{ kind: ERC20_BALANCE_KIND, data, label }],
@@ -471,31 +476,28 @@ export interface CompositeTerm {
   negate: boolean
 }
 
-export class CompositePredicateClient extends BasePredicateClient {
+export class CompositePredicateClient extends BasePredicateClient<
+  typeof CompositePredicateABI
+> {
   constructor(
     config: PredicateClientConfig & { predicateAddress: `0x${string}` },
   ) {
-    super(NO_CANONICAL_DEPLOYMENT, "CompositePredicate", config)
+    super(
+      NO_CANONICAL_DEPLOYMENT,
+      "CompositePredicate",
+      CompositePredicateABI,
+      config,
+    )
   }
 
   async getOp(toolId: bigint): Promise<CompositeOp> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: CompositePredicateABI,
-      functionName: "getOp",
-      args: [toolId],
-    })
+    const result = await this.read("getOp", [toolId])
     return result as CompositeOp
   }
 
   async getTerms(toolId: bigint): Promise<CompositeTerm[]> {
-    const result = await this.publicClient.readContract({
-      address: this.predicateAddress,
-      abi: CompositePredicateABI,
-      functionName: "getTerms",
-      args: [toolId],
-    })
-    return result.map((t) => ({
+    const result = await this.read("getTerms", [toolId])
+    return result.map(t => ({
       predicate: t.predicate,
       negate: t.negate,
     }))
@@ -506,21 +508,13 @@ export class CompositePredicateClient extends BasePredicateClient {
     op: CompositeOp,
     terms: CompositeTerm[],
   ): Promise<Hash> {
-    const wallet = this.requireWalletClient()
-    return wallet.writeContract({
-      chain: this.chain,
-      account: wallet.account,
-      address: this.predicateAddress,
-      abi: CompositePredicateABI,
-      functionName: "setComposition",
-      args: [
-        toolId,
-        op,
-        terms.map((t) => ({
-          predicate: t.predicate,
-          negate: t.negate,
-        })),
-      ],
-    })
+    return this.write("setComposition", [
+      toolId,
+      op,
+      terms.map(t => ({
+        predicate: t.predicate,
+        negate: t.negate,
+      })),
+    ])
   }
 }

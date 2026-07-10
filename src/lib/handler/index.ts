@@ -33,15 +33,13 @@ type WaitUntil = (promise: Promise<unknown>) => void
  */
 function detectPlatformWaitUntil(): WaitUntil | undefined {
   try {
-    const store = (
-      globalThis as Record<symbol, unknown>
-    )[Symbol.for("@vercel/request-context")] as
-      | { get?: () => { waitUntil?: WaitUntil } | undefined }
-      | undefined
+    const store = (globalThis as Record<symbol, unknown>)[
+      Symbol.for("@vercel/request-context")
+    ] as { get?: () => { waitUntil?: WaitUntil } | undefined } | undefined
     const ctx = store?.get?.()
     if (typeof ctx?.waitUntil === "function") {
       // Call through `ctx` to preserve `this` binding.
-      return (promise) => ctx.waitUntil?.(promise)
+      return promise => ctx.waitUntil?.(promise)
     }
   } catch {
     // Detection is best-effort; fall back to awaiting the report.
@@ -98,25 +96,21 @@ export function createToolHandler<TIn, TOut>(
   return async (request: Request): Promise<Response> => {
     try {
       if (request.method !== "POST") {
-        return Response.json(
-          { error: "Method not allowed" },
-          { status: 405 },
-        )
+        return Response.json({ error: "Method not allowed" }, { status: 405 })
       }
 
       const resolvedManifest = resolveManifest(
         config.manifest,
-        config.env ?? (globalThis.process?.env as Record<string, string | undefined> ?? {}),
+        config.env ??
+          (globalThis.process?.env as Record<string, string | undefined>) ??
+          {},
       )
 
       let body: unknown
       try {
         body = await request.json()
       } catch {
-        return Response.json(
-          { error: "Invalid JSON body" },
-          { status: 400 },
-        )
+        return Response.json({ error: "Invalid JSON body" }, { status: 400 })
       }
 
       const inputResult = config.inputSchema.safeParse(body)
@@ -153,10 +147,7 @@ export function createToolHandler<TIn, TOut>(
           "[tool-sdk] output schema validation failed:",
           outputResult.error,
         )
-        return Response.json(
-          { error: "Internal tool error" },
-          { status: 500 },
-        )
+        return Response.json({ error: "Internal tool error" }, { status: 500 })
       }
 
       // Run gates' settle() hooks. These move money or record state. The
@@ -212,7 +203,7 @@ export function createToolHandler<TIn, TOut>(
       // frozen runtime a fire-and-forget report would be killed at flush and
       // never arrive.
       if (usageReporter) {
-        const reportPromise = usageReporter(event).catch((err) => {
+        const reportPromise = usageReporter(event).catch(err => {
           console.error("[tool-sdk] usageReporting failed:", err)
         })
         const waitUntil = config.waitUntil ?? detectPlatformWaitUntil()
@@ -245,16 +236,10 @@ export function createToolHandler<TIn, TOut>(
     } catch (error) {
       if (error instanceof ToolHandlerError) {
         console.error("[tool-sdk] tool handler error:", error)
-        return Response.json(
-          { error: error.message },
-          { status: error.status },
-        )
+        return Response.json({ error: error.message }, { status: error.status })
       }
       console.error("[tool-sdk] unhandled error in tool handler:", error)
-      return Response.json(
-        { error: "Internal tool error" },
-        { status: 500 },
-      )
+      return Response.json({ error: "Internal tool error" }, { status: 500 })
     }
   }
 }

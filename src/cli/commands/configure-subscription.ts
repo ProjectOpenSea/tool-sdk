@@ -9,11 +9,11 @@ import { SubscriptionPredicateClient } from "../../lib/onchain/predicate-clients
 import {
   createWalletForProvider,
   createWalletFromEnv,
-  WALLET_PROVIDERS,
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 
 interface ConfigureSubscriptionOptions {
   network: string
@@ -33,10 +33,7 @@ export const configureSubscriptionCommand = new Command(
   .argument("<collection>", "Subscription NFT collection address")
   .option("--min-tier <tier>", "Minimum subscription tier (uint8, 0-255)", "0")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option("--rpc-url <url>", "RPC endpoint")
   .option("--dry-run", "Print summary without transacting")
   .action(
@@ -45,14 +42,7 @@ export const configureSubscriptionCommand = new Command(
       collectionRaw: string,
       options: ConfigureSubscriptionOptions,
     ) => {
-      let toolId: bigint
-      try {
-        toolId = BigInt(toolIdRaw)
-      } catch {
-        console.error(pc.red("Error: toolId must be a valid integer"))
-        process.exit(1)
-        return
-      }
+      const toolId = parseToolId(toolIdRaw)
 
       const chain = getChain(options.network)
 

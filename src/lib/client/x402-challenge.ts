@@ -12,9 +12,9 @@ import type { PaymentRequirements } from "./x402-payment.js"
  * broader x402 ecosystem (`eip155:8453`, `8453`). Returns `undefined` for
  * unsupported networks so callers can throw a descriptive error.
  */
-export function resolveNetwork(network: string):
-  | { chainId: number; usdc: string; canonical: X402Network }
-  | undefined {
+export function resolveNetwork(
+  network: string,
+): { chainId: number; usdc: string; canonical: X402Network } | undefined {
   switch (network) {
     case "base":
     case "eip155:8453":
@@ -96,8 +96,7 @@ export async function parseX402Challenge(
   res: globalThis.Response,
 ): Promise<ParsedChallenge> {
   const header =
-    res.headers.get("payment-required") ??
-    res.headers.get("x-payment-required")
+    res.headers.get("payment-required") ?? res.headers.get("x-payment-required")
 
   let challenge: RawChallenge
   if (header) {
@@ -134,7 +133,11 @@ export async function parseX402Challenge(
   // Fail fast on a malformed challenge rather than signing an authorization
   // with an empty `payTo`/`asset` (which would later fail with a confusing
   // viem error) or a missing amount.
-  if (!raw.payTo || !raw.asset || (raw.maxAmountRequired == null && raw.amount == null)) {
+  if (
+    !raw.payTo ||
+    !raw.asset ||
+    (raw.maxAmountRequired == null && raw.amount == null)
+  ) {
     return {
       ok: false,
       reason:

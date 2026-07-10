@@ -6,11 +6,11 @@ import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
-  WALLET_PROVIDERS,
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 
 interface UpdateMetadataOptions {
   toolId: string
@@ -27,10 +27,7 @@ export const updateMetadataCommand = new Command("update-metadata")
   .option("--tool-id <id>", "Numeric tool ID (required)")
   .option("--metadata <url>", "New metadata URI (required)")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option("--rpc-url <url>", "RPC endpoint for gas estimation and tx broadcast")
   .option("--dry-run", "Print summary without transacting")
   .option("-y, --yes", "Skip confirmation prompt")
@@ -45,13 +42,10 @@ export const updateMetadataCommand = new Command("update-metadata")
       process.exit(1)
     }
 
-    let toolId: bigint
-    try {
-      toolId = BigInt(options.toolId)
-    } catch {
-      console.error(pc.red("Error: --tool-id must be a numeric value"))
-      process.exit(1)
-    }
+    const toolId = parseToolId(
+      options.toolId,
+      "Error: --tool-id must be a numeric value",
+    )
 
     console.log(pc.cyan("Fetching manifest..."))
 

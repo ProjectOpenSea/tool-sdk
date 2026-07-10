@@ -30,15 +30,11 @@ export function toExpressHandler(
     const headers = new Headers()
     for (const [key, value] of Object.entries(req.headers)) {
       if (value) {
-        headers.set(
-          key,
-          Array.isArray(value) ? value.join(", ") : value,
-        )
+        headers.set(key, Array.isArray(value) ? value.join(", ") : value)
       }
     }
 
-    const hasBody =
-      req.method !== "GET" && req.method !== "HEAD"
+    const hasBody = req.method !== "GET" && req.method !== "HEAD"
     const webRequest = new Request(url, {
       method: req.method,
       headers,

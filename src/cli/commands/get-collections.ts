@@ -8,6 +8,7 @@ import {
 import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { parseToolId } from "./shared.js"
 
 interface GetCollectionsOptions {
   network: string
@@ -20,14 +21,7 @@ export const getCollectionsCommand = new Command("get-collections")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--rpc-url <url>", "RPC endpoint")
   .action(async (toolIdRaw: string, options: GetCollectionsOptions) => {
-    let toolId: bigint
-    try {
-      toolId = BigInt(toolIdRaw)
-    } catch {
-      console.error(pc.red("Error: toolId must be a valid integer"))
-      process.exit(1)
-      return
-    }
+    const toolId = parseToolId(toolIdRaw)
     const chain = getChain(options.network)
 
     const registry = new ToolRegistryClient({

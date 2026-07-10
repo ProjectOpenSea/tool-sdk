@@ -6,6 +6,7 @@ import { validateManifest } from "../../lib/manifest/index.js"
 import { predicateGate } from "../../lib/middleware/predicate-gate.js"
 import { loadManifest } from "./load-manifest.js"
 import { readInput } from "./read-input.js"
+import { parseToolId } from "./shared.js"
 
 interface DryRunPredicateGateOptions {
   manifest: string
@@ -57,15 +58,10 @@ export const dryRunPredicateGateCommand = new Command("dry-run-predicate-gate")
     const manifest = result.data
 
     const toolIdRaw = options.toolId ?? "0"
-    let toolId: bigint
-    try {
-      toolId = BigInt(toolIdRaw)
-    } catch {
-      console.error(
-        pc.red(`Error: --tool-id must be a valid integer (got ${toolIdRaw})`),
-      )
-      process.exit(1)
-    }
+    const toolId = parseToolId(
+      toolIdRaw,
+      `Error: --tool-id must be a valid integer (got ${toolIdRaw})`,
+    )
 
     if (toolId < 0n) {
       console.error(

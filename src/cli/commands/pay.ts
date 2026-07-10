@@ -19,6 +19,7 @@ import {
   type WalletProvider,
 } from "../../lib/wallet/index.js"
 import { readInput } from "./read-input.js"
+import { WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 
 interface PayOptions {
   body?: string
@@ -100,10 +101,7 @@ export const payCommand = new Command("pay")
     "--method <verb>",
     "HTTP method (GET, POST, PUT, PATCH, DELETE). Defaults to POST; falls back to GET automatically if a POST probe 404/405s.",
   )
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option(
     "--max-amount <baseUnits>",
     `Reject challenges that charge more than this (token base units). Pass "unlimited" to disable. Defaults to ${DEFAULT_MAX_AMOUNT} (10 USDC).`,

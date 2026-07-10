@@ -30,11 +30,11 @@ import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import {
   createWalletForProvider,
   createWalletFromEnv,
-  WALLET_PROVIDERS,
   type WalletProvider,
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
+import { WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
 import { warnBareExtensionKeys } from "./warn-bare-extensions.js"
 
 interface RegisterOptions {
@@ -72,10 +72,7 @@ export const registerCommand = new Command("register")
     "--predicate-config <json>",
     'JSON config for the access predicate (e.g. \'{"collections":["0x..."]}\')',
   )
-  .option(
-    "--wallet-provider <provider>",
-    `Wallet provider: ${WALLET_PROVIDERS.join(", ")}`,
-  )
+  .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
   .option("--rpc-url <url>", "RPC endpoint for gas estimation and tx broadcast")
   .option("--dry-run", "Print summary without transacting")
   .option("-y, --yes", "Skip confirmation prompt")

@@ -33,8 +33,6 @@ const REJECTED_ADDRESSES = new Set([
   "0x000000000000000000000000000000000000dead",
 ])
 
-
-
 /**
  * Combined predicate-gate + x402-paid fetch. Handles multiple 402
  * challenges (predicate gate's zero-value challenge, then x402's real
@@ -83,9 +81,7 @@ export async function paidAuthenticatedFetch(
     // in the PAYMENT-REQUIRED header, signed payload in PAYMENT-SIGNATURE).
     const parsed = await parseX402Challenge(res)
     if (!parsed.ok) {
-      throw new Error(
-        `${parsed.reason} (attempt ${i + 1}/${MAX_402_RETRIES})`,
-      )
+      throw new Error(`${parsed.reason} (attempt ${i + 1}/${MAX_402_RETRIES})`)
     }
     const { requirements, x402Version, raw, resource } = parsed
 
@@ -95,7 +91,11 @@ export async function paidAuthenticatedFetch(
       allowedAssets,
     })
 
-    const client = createX402Client(paymentSigner, requirements.network, x402Version)
+    const client = createX402Client(
+      paymentSigner,
+      requirements.network,
+      x402Version,
+    )
     const httpClient = new x402HTTPClient(client)
 
     const paymentRequired = toX402PaymentRequired({
@@ -157,7 +157,7 @@ function validatePaymentSafety(
   }
 
   if (opts.allowedRecipients) {
-    const allowed = new Set(opts.allowedRecipients.map((a) => a.toLowerCase()))
+    const allowed = new Set(opts.allowedRecipients.map(a => a.toLowerCase()))
     if (!allowed.has(payToLower)) {
       throw new Error(
         `x402: payTo address ${reqs.payTo} is not in allowedRecipients`,
@@ -175,11 +175,9 @@ function validatePaymentSafety(
 
   const assetLower = reqs.asset.toLowerCase()
   if (opts.allowedAssets) {
-    const allowed = new Set(opts.allowedAssets.map((a) => a.toLowerCase()))
+    const allowed = new Set(opts.allowedAssets.map(a => a.toLowerCase()))
     if (!allowed.has(assetLower)) {
-      throw new Error(
-        `x402: asset ${reqs.asset} is not in allowedAssets`,
-      )
+      throw new Error(`x402: asset ${reqs.asset} is not in allowedAssets`)
     }
   } else {
     const expectedUsdc = resolveNetwork(reqs.network)?.usdc
