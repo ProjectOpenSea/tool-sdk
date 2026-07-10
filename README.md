@@ -601,9 +601,12 @@ they need to satisfy.
 
 Preferred auth mechanism: `X-Payment` header (zero-value EIP-3009 `TransferWithAuthorization` via the 402 challenge flow). Also accepts `Authorization: EIP-3009 <base64url(json)>` and deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility.
 
-> **Note:** The gate enforces a short-lived `validBefore` window (the SDK
-> defaults to 5 minutes). Each authorization includes a random nonce bound
-> into the signature. The gate does not track nonces server-side.
+> **Note:** The gate bounds the `validBefore` window server-side: the
+> authorization must not be expired and must be at most 1 hour in the future
+> (SDK clients sign a much shorter window — 5 min zero-value / 10 min paid).
+> Each authorization includes a random nonce bound into the signature, but the
+> gate does **not** deduplicate nonces server-side, so an `X-Payment` header is
+> replayable within its validity window. See [Replay protection](#replay-protection) if you need single-use semantics.
 
 #### Delegated agent access (delegate.xyz)
 
@@ -1027,11 +1030,17 @@ Recommended approaches by platform:
 
 You can also implement a custom `GateMiddleware` that performs rate-limit checks in the `check()` hook and returns a 429 response when limits are exceeded.
 
+### Replay protection
+
+The `X-Payment` identity proof is a stateless bearer token: `predicateGate` verifies the EIP-3009 signature and fields but does **not** record which authorizations it has already accepted. The SDK bounds the replay window server-side — an authorization must not be expired and must be at most 1 hour in the future — but a captured header remains replayable until its `validBefore`. On the paid path this is limited further because the facilitator settling the onchain `TransferWithAuthorization` consumes the nonce, so a real payment can't be double-settled; the residual surface is identity/access on the free gate (the onchain predicate still gates who is allowed).
+
+The SDK deliberately does not ship server-side nonce tracking — single-use semantics require a shared, TTL'd store, and mandating one (e.g. Redis) would tie tool creators to a specific data store and break serverless/multi-instance deployments. If your tool needs stronger-than-window replay protection, implement it yourself in a custom `GateMiddleware`: on each request, read the authorization's `nonce` (bytes32), reject (401) if it is already present in your store, otherwise record it with a TTL equal to your `validBefore` window. Use whatever store fits your deployment (Cloudflare Durable Objects / KV, Upstash Redis on Vercel, DynamoDB, etc.).
+
 ### Sensitive Data Handling
 
 - **Private keys** are never handled directly by the SDK runtime. They flow through `@opensea/wallet-adapters`, which supports Privy, Turnkey, Fireblocks, and local key signing. The SDK accepts a `WalletAdapter` interface — it never reads or stores raw key material.
 - **Environment variables** — the `deploy` command detects sensitive env vars (names ending in `_KEY`, `_SECRET`, `_TOKEN`, `_PASSWORD`, `_PRIVATE`) and masks their values during interactive prompts.
-- **EIP-3009 auth** — the `predicateGate` middleware verifies EIP-3009 zero-value authorizations via `ecrecover` (no RPC call needed). The SDK defaults to a 5-minute `validBefore` window to limit replay.
+- **EIP-3009 auth** — the `predicateGate` middleware verifies EIP-3009 zero-value authorizations via `ecrecover` (no RPC call needed). It rejects a non-zero `value` on the free identity gate, pins the authorization to the gate's configured chain, and caps `validBefore` to at most 1 hour ahead to limit replay. See [Replay protection](#replay-protection) for nonce-dedupe guidance.
 - **x402 payments** — the `paidFetch` client validates payment parameters before signing: `maxAmount` caps the spend, `allowedRecipients` restricts payees, and `allowedAssets` defaults to the canonical USDC contract for the network. These guard against malicious 402 responses.
 
 ## Tips

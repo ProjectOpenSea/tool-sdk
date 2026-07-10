@@ -1,5 +1,25 @@
 # @opensea/tool-sdk
 
+## 0.28.2
+
+### Patch Changes
+
+- 1c2df8f: Fix four lower-severity tool-sdk audit findings:
+
+  - Pin EIP-712 domain name/version to canonical USDC for canonical assets.
+  - Document and surface the default 10,000-block registry lookup window.
+  - Cache resolved manifests in `createToolHandler` after the first success.
+  - Decouple shared caller API-key provisioning from each request's abort signal.
+
+- 8e1b0dc: Validate `metadataURI` before fetching in `inspect` (SSRF): require http(s) and reject private/internal hosts. Harden the shared `isPrivateHostname` guard to numerically parse IP literals, closing alternate-encoding bypasses (decimal/octal/hex/partial dotted IPv4 and IPv4-mapped/compatible IPv6), and broaden the rejected ranges (0.0.0.0/8, 169.254.0.0/16 link-local, CGNAT 100.64.0.0/10, IPv6 unique-local fc00::/7). Thanks to @Nexory for reporting this SSRF (tool-sdk#12).
+- 83b406a: Security fix: `paidAuthenticatedFetch` now enforces `maxAmount` as a per-invocation spending cap. At most one nonzero payment authorization may be signed per call — a second 402 after a paid authorization is rejected instead of signed — and cumulative authorized value may never exceed `maxAmount`. Previously a malicious tool could return two paid x402 challenges, each individually under `maxAmount`, and obtain two independently-settleable EIP-3009 authorizations (up to 2x the configured cap). The legacy zero-value predicate-gate → paid challenge flow keeps working.
+- c7907d4: Security fix: harden `verifyXPaymentAuth` (used by `predicateGate` and `paidPredicateGate`) against replay/misuse of the EIP-3009 X-Payment identity proof:
+
+  - The free identity-only `predicateGate` now rejects (401) any X-Payment authorization with a non-zero `value` — a non-zero `TransferWithAuthorization` is a live, executable USDC pull the operator should never receive on a free gate. `paidPredicateGate` still accepts non-zero values (the facilitator settles them).
+  - `validBefore` is now capped to at most 1 hour (3600s) in the future (401 otherwise), so a captured X-Payment header can't act as a long-lived bearer token. Well-behaved clients sign now+300s/now+600s, so this is non-breaking.
+  - The authorization's resolved chainId is now pinned to the gate's configured chain (401 on mismatch), so e.g. a base-sepolia-signed authorization can't authenticate to a mainnet gate.
+  - The `to` (operator recipient) check is now unconditional and fails closed (500) when no operator address is configured, closing an unauthenticated-recipient hole.
+
 ## 0.28.1
 
 ### Patch Changes

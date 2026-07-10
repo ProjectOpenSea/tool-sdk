@@ -76,6 +76,13 @@ export async function paidAuthenticatedFetch(
   const MAX_402_RETRIES = 2
   let res = await fetch(url, { ...fetchOptions, headers: baseHeaders })
 
+  // maxAmount is a per-invocation spending cap. The two-challenge loop only
+  // exists for the legacy predicate-gate flow (zero-value challenge, then the
+  // real paid challenge) — so at most one nonzero authorization may be signed
+  // per invocation, and cumulative authorized value may never exceed maxAmount.
+  let cumulativeAuthorized = 0n
+  let nonzeroAuthorizationSigned = false
+
   for (let i = 0; i < MAX_402_RETRIES && res.status === 402; i++) {
     // Handles both x402 wire formats: v1 (challenge in body) and v2 (challenge
     // in the PAYMENT-REQUIRED header, signed payload in PAYMENT-SIGNATURE).
@@ -91,6 +98,23 @@ export async function paidAuthenticatedFetch(
       allowedAssets,
     })
 
+    const requestedAmount = BigInt(requirements.maxAmountRequired)
+
+    if (nonzeroAuthorizationSigned) {
+      throw new Error(
+        "x402: refusing to sign another challenge after a payment authorization was already signed in this call",
+      )
+    }
+
+    if (
+      maxAmount !== undefined &&
+      cumulativeAuthorized + requestedAmount > BigInt(maxAmount)
+    ) {
+      throw new Error(
+        `x402: cumulative authorized amount ${cumulativeAuthorized + requestedAmount} would exceed maxAmount ${maxAmount}`,
+      )
+    }
+
     const client = createX402Client(
       paymentSigner,
       requirements.network,
@@ -105,6 +129,10 @@ export async function paidAuthenticatedFetch(
       resource,
     })
     const paymentPayload = await client.createPaymentPayload(paymentRequired)
+    cumulativeAuthorized += requestedAmount
+    if (requestedAmount > 0n) {
+      nonzeroAuthorizationSigned = true
+    }
     const paymentHeaders =
       httpClient.encodePaymentSignatureHeader(paymentPayload)
 

@@ -220,7 +220,7 @@ describe("paidAuthenticatedFetch", () => {
   })
 
   it("returns final 402 when MAX_402_RETRIES exhausted", async () => {
-    const accepts = [baseRequirements]
+    const accepts = [{ ...baseRequirements, maxAmountRequired: "0" }]
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ accepts }), { status: 402 }),
     )
@@ -294,6 +294,124 @@ describe("paidAuthenticatedFetch", () => {
     // Third call: X-Payment for x402 paywall
     const h2 = new Headers(capturedInits[2].headers)
     expect(h2.get("X-Payment")).toBeTruthy()
+  })
+
+  it("refuses to sign a second nonzero challenge in one invocation", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepts: [baseRequirements] }), {
+          status: 402,
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    await expect(
+      paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+        maxAmount: "10000",
+      }),
+    ).rejects.toThrow(
+      "refusing to sign another challenge after a payment authorization",
+    )
+    // 1 initial + 1 retry after the first (allowed) authorization
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("refuses a second nonzero challenge even without maxAmount configured", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepts: [baseRequirements] }), {
+          status: 402,
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    await expect(
+      paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+      }),
+    ).rejects.toThrow(
+      "refusing to sign another challenge after a payment authorization",
+    )
+  })
+
+  it("enforces maxAmount as a cumulative per-invocation cap", async () => {
+    let callCount = 0
+    const fetchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            accepts: [{ ...baseRequirements, maxAmountRequired: "6000" }],
+          }),
+          { status: 402 },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          accepts: [{ ...baseRequirements, maxAmountRequired: "6000" }],
+        }),
+        { status: 402 },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    // Each challenge (6000) is under maxAmount (10000), but the second one is
+    // rejected before validating the cumulative total because a nonzero
+    // authorization was already signed.
+    await expect(
+      paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+        maxAmount: "10000",
+      }),
+    ).rejects.toThrow(
+      "refusing to sign another challenge after a payment authorization",
+    )
+  })
+
+  it("rejects when zero-value gate is followed by a challenge exceeding maxAmount", async () => {
+    let callCount = 0
+    const fetchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            accepts: [{ ...baseRequirements, maxAmountRequired: "0" }],
+          }),
+          { status: 402 },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          accepts: [{ ...baseRequirements, maxAmountRequired: "50000" }],
+        }),
+        { status: 402 },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+
+    await expect(
+      paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+        account,
+        maxAmount: "10000",
+      }),
+    ).rejects.toThrow("server requested 50000 but maxAmount is 10000")
   })
 
   it("throws when maxAmount is exceeded", async () => {

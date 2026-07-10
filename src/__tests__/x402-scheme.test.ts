@@ -170,14 +170,36 @@ describe("signEip3009Authorization", () => {
     ).rejects.toThrow("does not support signTypedData")
   })
 
-  it("uses extra.name and extra.version in the EIP-712 domain", async () => {
-    const defaultResult = await signEip3009Authorization(signer, {
-      network: "base",
-      payTo: baseRequirements.payTo,
-      asset: baseRequirements.asset,
-      amount: "10000",
-    })
-    const customResult = await signEip3009Authorization(signer, {
+  it("pins the canonical USDC domain name and version even when extra overrides are present", async () => {
+    let capturedDomain:
+      | { name: string; version: string; chainId: number }
+      | undefined
+    const adapter: WalletAdapter = {
+      name: "mock",
+      capabilities: {
+        signMessage: true,
+        signTypedData: true,
+        managedGas: false,
+        managedNonce: false,
+      },
+      getAddress: async () => "0xAbCdEf1234567890abcdef1234567890AbCdEf12",
+      sendTransaction: async () => ({ hash: "0x" }),
+      signTypedData: async args => {
+        const domain = args.domain as {
+          name: string
+          version: string
+          chainId: number
+        }
+        capturedDomain = {
+          name: domain.name,
+          version: domain.version,
+          chainId: domain.chainId,
+        }
+        return `0x${"ab".repeat(32)}${"cd".repeat(32)}1b`
+      },
+    }
+
+    await signEip3009Authorization(adapter, {
       network: "base",
       payTo: baseRequirements.payTo,
       asset: baseRequirements.asset,
@@ -185,7 +207,50 @@ describe("signEip3009Authorization", () => {
       extra: { name: "Bridged USDC", version: "1" },
     })
 
-    expect(defaultResult.signature).not.toBe(customResult.signature)
+    expect(capturedDomain).toEqual({
+      name: "USD Coin",
+      version: "2",
+      chainId: 8453,
+    })
+  })
+
+  it("keeps server-provided domain overrides for non-canonical assets", async () => {
+    let capturedDomain: { name: string; version: string } | undefined
+    const adapter: WalletAdapter = {
+      name: "mock",
+      capabilities: {
+        signMessage: true,
+        signTypedData: true,
+        managedGas: false,
+        managedNonce: false,
+      },
+      getAddress: async () => "0xAbCdEf1234567890abcdef1234567890AbCdEf12",
+      sendTransaction: async () => ({ hash: "0x" }),
+      signTypedData: async args => {
+        const domain = args.domain as {
+          name: string
+          version: string
+        }
+        capturedDomain = {
+          name: domain.name,
+          version: domain.version,
+        }
+        return `0x${"ab".repeat(32)}${"cd".repeat(32)}1b`
+      },
+    }
+
+    await signEip3009Authorization(adapter, {
+      network: "base",
+      payTo: baseRequirements.payTo,
+      asset: "0x1111111111111111111111111111111111111111",
+      amount: "10000",
+      extra: { name: "Bridged USDC", version: "1" },
+    })
+
+    expect(capturedDomain).toEqual({
+      name: "Bridged USDC",
+      version: "1",
+    })
   })
 })
 

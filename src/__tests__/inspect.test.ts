@@ -148,6 +148,48 @@ describe("inspect command", () => {
     errorSpy.mockRestore()
   })
 
+  it("refuses to fetch a metadata URI that points to a private address", async () => {
+    // metadataURI is read from the permissionlessly-writable onchain registry.
+    // A hostile entry pointing at the cloud-metadata endpoint must never be
+    // fetched from the machine/CI runner that runs `inspect`.
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      metadataURI:
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+      manifestHash: MANIFEST_HASH,
+      accessPredicate: "0x0000000000000000000000000000000000000000",
+    })
+
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    try {
+      await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+    } catch {
+      // expected process.exit
+    }
+
+    // The link-local metadata address must never be fetched.
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("private/internal address")
+
+    exitSpy.mockRestore()
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
   it("shows predicate name and ERC-721 collections for non-zero predicate", async () => {
     const predicateAddress = "0x1111111111111111111111111111111111111111"
     const collectionA = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"

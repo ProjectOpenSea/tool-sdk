@@ -151,7 +151,11 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
         return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
       }
 
-      const result = await verifyXPaymentAuth(paymentHeader, config)
+      const result = await verifyXPaymentAuth(paymentHeader, {
+        operatorAddress: config.operatorAddress,
+        expectedChainId: chain.id,
+        requireZeroValue: true,
+      })
       if (result.error) {
         return Response.json({ error: result.error }, { status: result.status })
       }
@@ -293,14 +297,58 @@ interface AuthResult {
   status: number
 }
 
+/**
+ * Maximum future window (seconds) allowed for an X-Payment authorization's
+ * `validBefore`. The X-Payment identity proof is a stateless bearer token, so
+ * a client-chosen far-future expiry would make a captured header replayable
+ * for its whole lifetime. Well-behaved clients sign now+300s
+ * (`signZeroValueAuthorization`) or now+600s (`signEip3009Authorization`), so
+ * this 1-hour cap is non-breaking. Mirrors the deprecated SIWE path's 60-min
+ * expiration cap.
+ */
+const MAX_VALID_BEFORE_WINDOW_SECONDS = 3600
+
+interface VerifyXPaymentOptions {
+  /**
+   * Expected payment recipient. The authorization's `to` field must match.
+   * Required — verification fails closed (500) when unset so an authorization
+   * signed for an arbitrary recipient can never authenticate.
+   */
+  operatorAddress: `0x${string}`
+  /**
+   * Chain id the gate is configured for. The resolved chainId of the
+   * client-declared `network` must match, so an authorization signed for a
+   * different chain (e.g. base-sepolia) cannot authenticate to this gate.
+   */
+  expectedChainId: number
+  /**
+   * When true (free identity-only `predicateGate`), reject any authorization
+   * whose `value` is non-zero — a non-zero `TransferWithAuthorization` is a
+   * live, executable USDC pull the operator must never receive on a free gate.
+   * The paid `paidPredicateGate` sets this false because the facilitator
+   * legitimately settles the non-zero value.
+   */
+  requireZeroValue: boolean
+}
+
 // ---------------------------------------------------------------------------
 // X-Payment verification (unified x402 flow for free + paid tools)
 // ---------------------------------------------------------------------------
 
 async function verifyXPaymentAuth(
   paymentHeader: string,
-  config: Pick<PredicateGateConfig, "operatorAddress">,
+  options: VerifyXPaymentOptions,
 ): Promise<AuthResult> {
+  // Fail closed: an authorization signed for an arbitrary recipient must never
+  // authenticate. Both gate configs type operatorAddress as required, so a
+  // missing value here is a server misconfiguration (500), not a client error.
+  if (!options.operatorAddress) {
+    return {
+      error:
+        "Predicate gate: operator address is not configured (cannot verify X-Payment recipient)",
+      status: 500,
+    }
+  }
   let decoded: string
   try {
     decoded = Buffer.from(paymentHeader, "base64").toString("utf-8")
@@ -354,12 +402,20 @@ async function verifyXPaymentAuth(
     }
   }
 
-  if (
-    config.operatorAddress &&
-    auth.to.toLowerCase() !== config.operatorAddress.toLowerCase()
-  ) {
+  if (auth.to.toLowerCase() !== options.operatorAddress.toLowerCase()) {
     return {
-      error: `Predicate gate: X-Payment 'to' address mismatch (expected ${config.operatorAddress})`,
+      error: `Predicate gate: X-Payment 'to' address mismatch (expected ${options.operatorAddress})`,
+      status: 401,
+    }
+  }
+
+  // On the free identity gate, a non-zero value is an executable USDC pull
+  // authorization the operator should never receive — reject it. The paid gate
+  // legitimately receives non-zero values (settled by the facilitator).
+  if (options.requireZeroValue && (auth.value ?? "0") !== "0") {
+    return {
+      error:
+        "Predicate gate: X-Payment authorization must be zero-value on this identity gate",
       status: 401,
     }
   }
@@ -380,6 +436,17 @@ async function verifyXPaymentAuth(
   const chainId = resolved.chainId
   const tokenAddress = resolved.usdc as `0x${string}`
 
+  // Pin the authorization to the gate's configured chain. The EIP-712 domain
+  // used for signature recovery comes from the client-declared network, so
+  // without this an authorization signed for a different chain (e.g.
+  // base-sepolia) would authenticate to a mainnet gate.
+  if (chainId !== options.expectedChainId) {
+    return {
+      error: `Predicate gate: X-Payment network mismatch (expected chainId ${options.expectedChainId}, got ${chainId})`,
+      status: 401,
+    }
+  }
+
   // validBefore is required above, so it is always present here
   {
     const validBefore = BigInt(auth.validBefore)
@@ -387,6 +454,14 @@ async function verifyXPaymentAuth(
     if (nowSec >= validBefore) {
       return {
         error: "Predicate gate: X-Payment authorization expired",
+        status: 401,
+      }
+    }
+    // Cap how far in the future validBefore may be so a captured X-Payment
+    // header cannot act as a long-lived bearer token.
+    if (validBefore > nowSec + BigInt(MAX_VALID_BEFORE_WINDOW_SECONDS)) {
+      return {
+        error: `Predicate gate: X-Payment authorization validBefore is too far in the future (max ${MAX_VALID_BEFORE_WINDOW_SECONDS}s)`,
         status: 401,
       }
     }
@@ -716,6 +791,8 @@ export function paidPredicateGate(
       // --- Identity verification (X-Payment signature) ---
       const authResult = await verifyXPaymentAuth(paymentHeader, {
         operatorAddress: config.operatorAddress,
+        expectedChainId: chain.id,
+        requireZeroValue: false,
       })
       if (authResult.error) {
         return Response.json(

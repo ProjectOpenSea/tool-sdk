@@ -85,6 +85,7 @@ describe("listToolsByCreator", () => {
   it("defaults fromBlock to latestBlock - 10_000", async () => {
     mockGetBlockNumber.mockResolvedValue(50_000n)
     mockGetLogs.mockResolvedValue([])
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
 
     const { ToolRegistryClient } = await import("../lib/onchain/registry.js")
     const client = new ToolRegistryClient({ rpcUrl: "http://localhost:8545" })
@@ -97,6 +98,10 @@ describe("listToolsByCreator", () => {
         args: { creator },
       }),
     )
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[tool-sdk] showing registrations from the last 10,000 blocks; pass fromBlock to search further back",
+    )
+    warnSpy.mockRestore()
   })
 
   it("uses explicit fromBlock and toBlock when provided", async () => {

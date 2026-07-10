@@ -208,6 +208,83 @@ describe("paidPredicateGate", () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
+  it("accepts a non-zero-value authorization (paid gate must not enforce zero-value)", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      // Explicit non-zero value — the identity-gate zero-value rule must NOT
+      // apply here since the facilitator settles the payment.
+      headers: { "X-Payment": makeXPaymentHeader({ value: "1000000" }) },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.gates?.x402).toEqual({ paid: true, payer: TEST_CALLER })
+  })
+
+  it("returns 401 when X-Payment is signed for a different chain", async () => {
+    const { baseSepolia } = await import("viem/chains")
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    // Gate configured for base-sepolia; authorization declares base mainnet.
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      chain: baseSepolia,
+      network: "base-sepolia",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/network mismatch/i)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("fails closed with 500 when operatorAddress is unset", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    // The paid gate shares verifyXPaymentAuth (requireZeroValue: false), so the
+    // fail-closed operator guard must also apply here.
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: undefined as unknown as `0x${string}`,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(500)
+    const body = await response?.json()
+    expect(body.error).toMatch(/operator address is not configured/i)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   it("returns 502 when facilitator /verify is unreachable", async () => {
     const { paidPredicateGate } = await import(
       "../lib/middleware/predicate-gate.js"

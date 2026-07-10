@@ -601,4 +601,120 @@ describe("predicateGate", () => {
     const body = await response?.json()
     expect(body.error).toMatch(/signer does not match/i)
   })
+
+  // -------------------------------------------------------------------------
+  // Security hardening (audit findings)
+  // -------------------------------------------------------------------------
+
+  it("X-Payment: rejects a non-zero-value authorization on the free identity gate", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeAuthorizedRequest({ value: "1000000" }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/zero-value/i)
+    expect(ctx.callerAddress).toBeUndefined()
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+  })
+
+  it("X-Payment: rejects a validBefore more than 1 hour in the future", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeAuthorizedRequest({
+        validBefore: String(Math.floor(Date.now() / 1000) + 7200),
+      }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/too far in the future/i)
+    expect(ctx.callerAddress).toBeUndefined()
+  })
+
+  it("X-Payment: accepts a validBefore exactly at the 1 hour boundary", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    // Exactly now + 3600s must pass (the cap rejects only when strictly greater).
+    const response = await gate.check(
+      makeAuthorizedRequest({
+        validBefore: String(Math.floor(Date.now() / 1000) + 3600),
+      }),
+      ctx,
+    )
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+  })
+
+  it("X-Payment: rejects an authorization signed for a different chain", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    // Gate defaults to Base mainnet (8453); authorization declares base-sepolia.
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader({}, "base-sepolia") },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/network mismatch/i)
+    expect(ctx.callerAddress).toBeUndefined()
+  })
+
+  it("X-Payment: fails closed with 500 when operatorAddress is unset", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      // Simulate a misconfiguration that reaches verification at runtime.
+      operatorAddress: undefined as unknown as `0x${string}`,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeAuthorizedRequest({ to: TEST_OPERATOR }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(500)
+    const body = await response?.json()
+    expect(body.error).toMatch(/operator address is not configured/i)
+    expect(ctx.callerAddress).toBeUndefined()
+  })
 })

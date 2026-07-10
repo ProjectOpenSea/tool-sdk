@@ -86,7 +86,7 @@ The middleware (`src/lib/middleware/predicate-gate.ts`) does the following on ea
 1. Checks for an `X-Payment` header (preferred) or `Authorization: EIP-3009 <token>` header (also accepts deprecated `Authorization: SIWE <token>` for backward compatibility)
 2. If no auth is present and `operatorAddress` is configured, returns 402 with `PaymentRequirements` (`payTo`=operator, `maxAmountRequired`=`"0"`, `scheme`=`"exact"`)
 3. Decodes and validates the authorization (from `X-Payment` or `Authorization` header)
-4. Checks `validBefore` (must be in the future) and `validAfter` (must be in the past)
+4. Checks `validBefore` (must be in the future, and at most 1 hour ahead) and `validAfter` (must be in the past)
 5. Recovers the signer via `ecrecover` on the EIP-712 typed data — no RPC call needed
 6. Calls `registry.tryHasAccess(toolId, recoveredAddress, data)` — a staticcall to the onchain `ToolRegistry`
 7. If `(ok=true, granted=true)`, sets `ctx.callerAddress` and `ctx.gates.predicate.granted = true`
@@ -104,7 +104,7 @@ Status code mapping:
 
 The `predicate` field in the 403 body is the registered access predicate's address, so callers can self-diagnose what they need to satisfy.
 
-The gate enforces a short-lived `validBefore` window (the SDK defaults to 5 minutes). Each EIP-3009 authorization includes a random `nonce` bound into the signature — the gate does not track nonces server-side, so callers should keep `validBefore` short to limit the replay window.
+The gate bounds the `validBefore` window server-side: the authorization must not be expired and must be at most 1 hour in the future (SDK clients sign a much shorter window — 5 min zero-value / 10 min paid). Each EIP-3009 authorization includes a random `nonce` bound into the signature, but the gate does **not** deduplicate nonces server-side, so the `X-Payment` header stays replayable within its validity window. The SDK does not mandate a nonce store (that would tie creators to a specific data store and break serverless deployments); if you need single-use semantics, dedupe the `nonce` in a custom `GateMiddleware` backed by whatever store fits your deployment. See the "Replay protection" section of the [tool-sdk README](../README.md#replay-protection).
 
 ## Step 2: Register with `--access-predicate`
 
@@ -176,11 +176,12 @@ The `X-Payment` header carries a base64-encoded JSON payload containing an EIP-3
 
 Key constraints enforced by the middleware:
 
-- **`validBefore`** must be in the future (the SDK defaults to `now + 5 minutes`)
+- **`validBefore`** must be in the future and at most 1 hour ahead (SDK clients default to `now + 5 minutes`)
 - **`validAfter`** must be in the past (typically `0`)
-- **`value`** must be `"0"` (zero-value transfer — used for identity proof, not payment)
+- **`value`** must be exactly the string `"0"` (zero-value transfer — used for identity proof, not payment; the free `predicateGate` rejects any non-`"0"` value, so third-party clients must emit the canonical `"0"`, not e.g. `"0x0"` or `"00"`)
 - **`from`** is recovered via `ecrecover` and used as the caller address
 - **`to`** must match the gate's `operatorAddress` (the 402 challenge advertises this as `payTo`)
+- the authorization's resolved **chainId** (from its declared `network`) must match the gate's configured chain
 
 ### Example client code (SDK)
 

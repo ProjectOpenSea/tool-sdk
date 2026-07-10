@@ -39,6 +39,27 @@ function makeHandler(gates?: GateMiddleware[]) {
   })
 }
 
+function makeDynamicManifest(options: {
+  callCount: { value: number }
+  failFirst?: boolean
+}): ManifestDefinition {
+  return {
+    type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
+    name: "dynamic-tool",
+    description: "A tool with dynamic manifest fields",
+    endpoint: env => {
+      options.callCount.value++
+      if (options.failFirst && options.callCount.value === 1) {
+        throw new Error("manifest resolution failed")
+      }
+      return env.TOOL_ENDPOINT ?? "https://dynamic.example.com"
+    },
+    inputs: {},
+    outputs: {},
+    creatorAddress: "0xabcdefabcdef1234567890abcdefabcdef123456",
+  }
+}
+
 describe("createToolHandler", () => {
   it("should return 405 for non-POST", async () => {
     const handler = makeHandler()
@@ -90,6 +111,60 @@ describe("createToolHandler", () => {
     expect(response.status).toBe(200)
     const body = await response.json()
     expect(body.result).toBe("Echo: hello")
+  })
+
+  it("should cache a resolved manifest after the first successful request", async () => {
+    const callCount = { value: 0 }
+    const handler = createToolHandler({
+      manifest: makeDynamicManifest({ callCount }),
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({
+        result: `Echo: ${input.query}`,
+      }),
+    })
+    const makeRequest = () =>
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: "hello" }),
+      })
+
+    const first = await handler(makeRequest())
+    const second = await handler(makeRequest())
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(callCount.value).toBe(1)
+  })
+
+  it("should retry manifest resolution after a failure", async () => {
+    const callCount = { value: 0 }
+    const handler = createToolHandler({
+      manifest: makeDynamicManifest({ callCount, failFirst: true }),
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      handler: async input => ({
+        result: `Echo: ${input.query}`,
+      }),
+    })
+    const makeRequest = () =>
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: "hello" }),
+      })
+
+    const first = await handler(makeRequest())
+    const second = await handler(makeRequest())
+
+    expect(first.status).toBe(500)
+    expect(second.status).toBe(200)
+    expect(callCount.value).toBe(2)
   })
 
   it("should run gates in order and short-circuit on response", async () => {

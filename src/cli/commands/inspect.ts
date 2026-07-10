@@ -19,7 +19,11 @@ import { decodeRequirement } from "../../lib/onchain/access.js"
 import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { printProbeResult, probeEndpoint } from "./probe-endpoint.js"
+import {
+  isPrivateHostname,
+  printProbeResult,
+  probeEndpoint,
+} from "./probe-endpoint.js"
 import { parseToolId } from "./shared.js"
 
 interface InspectOptions {
@@ -247,6 +251,36 @@ export const inspectCommand = new Command("inspect")
     }
 
     console.log(pc.cyan("\nFetching manifest from metadata URI..."))
+
+    // metadataURI comes from the (permissionlessly writable) onchain registry.
+    // Validate it before fetching so a hostile entry cannot point this fetch at
+    // an internal address (e.g. cloud metadata at 169.254.169.254) from the
+    // machine or CI runner that runs `inspect`.
+    let metadataUrl: URL
+    try {
+      metadataUrl = new URL(config.metadataURI)
+    } catch {
+      console.error(
+        pc.red(`Error: invalid metadata URI: ${config.metadataURI}`),
+      )
+      process.exit(1)
+    }
+    if (metadataUrl.protocol !== "http:" && metadataUrl.protocol !== "https:") {
+      console.error(
+        pc.red(
+          `Error: metadata URI must use http(s), got "${metadataUrl.protocol}"`,
+        ),
+      )
+      process.exit(1)
+    }
+    if (isPrivateHostname(metadataUrl.hostname)) {
+      console.error(
+        pc.red(
+          `Error: metadata URI host "${metadataUrl.hostname}" is a private/internal address; refusing to fetch`,
+        ),
+      )
+      process.exit(1)
+    }
 
     let response: globalThis.Response
     try {

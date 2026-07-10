@@ -308,6 +308,86 @@ describe("reportCallerX402Usage", () => {
     expect(reportOpts.headers["x-api-key"]).toBe("auto-key")
   })
 
+  it("does not abort shared API-key provisioning when one caller times out", async () => {
+    vi.useFakeTimers()
+    try {
+      const abortError = () => {
+        const err = new Error("aborted")
+        err.name = "AbortError"
+        return err
+      }
+
+      let resolveProvision = (_response: Response) => {}
+      fetchSpy.mockImplementation((input, init) => {
+        const url = String(input)
+        const signal = init?.signal as AbortSignal | undefined
+
+        if (url.endsWith("/api/v2/auth/keys")) {
+          return new Promise<Response>((resolve, reject) => {
+            if (signal?.aborted) {
+              reject(abortError())
+              return
+            }
+            const onAbort = () => reject(abortError())
+            signal?.addEventListener("abort", onAbort, { once: true })
+            resolveProvision = response => {
+              signal?.removeEventListener("abort", onAbort)
+              resolve(response)
+            }
+          })
+        }
+
+        if (signal?.aborted) {
+          return Promise.reject(abortError())
+        }
+
+        return new Promise<Response>((resolve, reject) => {
+          queueMicrotask(() => {
+            if (signal?.aborted) {
+              reject(abortError())
+              return
+            }
+            resolve(
+              new Response(JSON.stringify({ verified: true }), {
+                status: 200,
+              }),
+            )
+          })
+        })
+      })
+
+      const origin = "https://shared-provision.example"
+      const first = reportCallerX402Usage(
+        makeX402Event({ toolEndpoint: "https://tool.example/api" }),
+        makeConfig({
+          aggregatorUrl: `${origin}/api/v2/tools/usage`,
+          timeoutMs: 1,
+        }),
+      )
+      const second = reportCallerX402Usage(
+        makeX402Event({ toolEndpoint: "https://tool.example/api" }),
+        makeConfig({
+          aggregatorUrl: `${origin}/api/v2/tools/usage`,
+          timeoutMs: 1_000,
+        }),
+      )
+
+      await vi.advanceTimersByTimeAsync(1)
+      resolveProvision(
+        new Response(JSON.stringify({ api_key: "shared-key" }), {
+          status: 200,
+        }),
+      )
+
+      const [, secondResult] = await Promise.all([first, second])
+
+      expect(secondResult.outcome).toBe("reported")
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("skips report when auto-provisioning fails", async () => {
     fetchSpy.mockResolvedValueOnce(new Response("error", { status: 500 }))
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})

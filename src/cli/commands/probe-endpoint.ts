@@ -6,10 +6,142 @@ export interface ProbeResult {
   message: string
 }
 
+// Static private/internal-host guard. Hostnames that parse as IP literals
+// (including alternate encodings: decimal `2130706433`, octal `0177.0.0.1`,
+// hex `0x7f.0.0.1`, partial dotted forms like `127.1`, and IPv4-mapped IPv6
+// like `::ffff:169.254.169.254` / `::ffff:a9fe:a9a9`) are numerically
+// range-checked; other names fall back to a literal-name regex. This guard
+// does not resolve DNS, so names that resolve to private IPs (and DNS
+// rebinding) require a resolve-and-check / pinned connection and are tracked
+// as follow-up hardening.
+//
+// Rejected ranges:
+//   - 0.0.0.0/8               unspecified / "this network"
+//   - 127.0.0.0/8             loopback
+//   - 10.0.0.0/8              private
+//   - 100.64.0.0/10           CGNAT (second octet 64-127)
+//   - 172.16.0.0/12           private (second octet 16-31)
+//   - 192.168.0.0/16          private
+//   - 169.254.0.0/16          link-local (contains the 169.254.169.254 cloud-metadata endpoint)
+//   - ::                      IPv6 unspecified
+//   - ::1                     IPv6 loopback
+//   - ::ffff:0:0/96, ::/96    IPv4-mapped / IPv4-compatible (checked as IPv4)
+//   - fc00::/7                IPv6 unique-local (first hextet fc00-fdff)
+//   - fe80::/10               IPv6 link-local
 const PRIVATE_HOSTNAME_RE =
-  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|\[?::1\]?|\[?fe80:)/i
+  /^(localhost|0\.0\.0\.0|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|169\.254\.\d+\.\d+|\[?::1\]?|\[?f[cd][0-9a-f]{2}:|\[?fe80:)/i
+
+// inet_aton-style IPv4 part: hex (0x..), octal (leading 0), or decimal.
+const IPV4_PART_RE = /^(0x[0-9a-f]+|0[0-7]*|[1-9]\d*)$/i
+
+// Parses an IPv4 literal in any inet_aton encoding (dotted decimal/octal/hex
+// with 1-4 parts, e.g. `2130706433`, `0177.0.0.1`, `0x7f.0.0.1`, `127.1`)
+// into its 32-bit value. Returns null if not an IPv4 literal.
+function parseIpv4(hostname: string): number | null {
+  const parts = hostname.split(".")
+  if (parts.length === 0 || parts.length > 4) return null
+  const nums: number[] = []
+  for (const part of parts) {
+    if (!IPV4_PART_RE.test(part)) return null
+    const value = /^0x/i.test(part)
+      ? Number.parseInt(part.slice(2), 16)
+      : part.length > 1 && part.startsWith("0")
+        ? Number.parseInt(part, 8)
+        : Number.parseInt(part, 10)
+    if (!Number.isSafeInteger(value)) return null
+    nums.push(value)
+  }
+  const last = nums[nums.length - 1]
+  const prefix = nums.slice(0, -1)
+  if (prefix.some(n => n > 255)) return null
+  if (last >= 256 ** (4 - prefix.length)) return null
+  let value = 0
+  for (const n of prefix) value = value * 256 + n
+  return value * 256 ** (4 - prefix.length) + last
+}
+
+function isPrivateIpv4(value: number): boolean {
+  const a = Math.floor(value / 0x1000000) % 256
+  const b = Math.floor(value / 0x10000) % 256
+  return (
+    a === 0 || // 0.0.0.0/8 unspecified / "this network"
+    a === 127 || // loopback
+    a === 10 || // private
+    (a === 100 && b >= 64 && b <= 127) || // CGNAT 100.64.0.0/10
+    (a === 172 && b >= 16 && b <= 31) || // private 172.16.0.0/12
+    (a === 192 && b === 168) || // private
+    (a === 169 && b === 254) // link-local (cloud metadata)
+  )
+}
+
+// Parses an IPv6 literal (optionally bracketed, with optional zone id and an
+// optional embedded dotted-quad IPv4 tail) into its 8 hextets. Returns null
+// if not a valid IPv6 literal.
+function parseIpv6(hostname: string): number[] | null {
+  let h = hostname.toLowerCase()
+  if (h.startsWith("[") && h.endsWith("]")) h = h.slice(1, -1)
+  const pct = h.indexOf("%")
+  if (pct !== -1) h = h.slice(0, pct)
+  if (!h.includes(":")) return null
+  if (h.includes(".")) {
+    const idx = h.lastIndexOf(":")
+    const v4Parts = h.slice(idx + 1).split(".")
+    if (v4Parts.length !== 4) return null
+    const bytes: number[] = []
+    for (const p of v4Parts) {
+      if (!/^\d{1,3}$/.test(p)) return null
+      const n = Number.parseInt(p, 10)
+      if (n > 255) return null
+      bytes.push(n)
+    }
+    const hi = (bytes[0] * 256 + bytes[1]).toString(16)
+    const lo = (bytes[2] * 256 + bytes[3]).toString(16)
+    h = `${h.slice(0, idx + 1)}${hi}:${lo}`
+  }
+  const parseGroups = (s: string): number[] | null => {
+    if (s === "") return []
+    const out: number[] = []
+    for (const g of s.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null
+      out.push(Number.parseInt(g, 16))
+    }
+    return out
+  }
+  const doubleIdx = h.indexOf("::")
+  if (doubleIdx !== -1) {
+    if (doubleIdx !== h.lastIndexOf("::")) return null
+    const left = parseGroups(h.slice(0, doubleIdx))
+    const right = parseGroups(h.slice(doubleIdx + 2))
+    if (!left || !right || left.length + right.length > 7) return null
+    return [...left, ...Array(8 - left.length - right.length).fill(0), ...right]
+  }
+  const groups = parseGroups(h)
+  return groups && groups.length === 8 ? groups : null
+}
+
+function isPrivateIpv6(groups: number[]): boolean {
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0) {
+    // ::ffff:0:0/96 IPv4-mapped and ::/96 IPv4-compatible/unspecified/loopback
+    if (g5 === 0xffff || g5 === 0) {
+      const v4 = g6 * 0x10000 + g7
+      if (g5 === 0 && (v4 === 0 || v4 === 1)) return true // :: and ::1
+      return isPrivateIpv4(v4)
+    }
+  }
+  if ((g0 & 0xfe00) === 0xfc00) return true // fc00::/7 unique-local
+  if ((g0 & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
+  return false
+}
 
 export function isPrivateHostname(hostname: string): boolean {
+  if (hostname.includes(":") || hostname.startsWith("[")) {
+    const groups = parseIpv6(hostname)
+    if (groups) return isPrivateIpv6(groups)
+    return PRIVATE_HOSTNAME_RE.test(hostname)
+  }
+  const ipv4 = parseIpv4(hostname)
+  if (ipv4 !== null) return isPrivateIpv4(ipv4)
   return PRIVATE_HOSTNAME_RE.test(hostname)
 }
 

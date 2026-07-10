@@ -195,6 +195,13 @@ export class ToolRegistryClient {
     })
   }
 
+  /**
+   * Lists tools registered by a creator.
+   *
+   * When `fromBlock` is omitted, the query scans only the last 10,000
+   * blocks to avoid unbounded `getLogs` calls on public RPC endpoints.
+   * Pass `fromBlock` to search further back.
+   */
   async listToolsByCreator(
     creator: Address,
     options?: { fromBlock?: bigint; toBlock?: bigint },
@@ -209,8 +216,16 @@ export class ToolRegistryClient {
     }[]
   > {
     const toBlock = options?.toBlock ?? "latest"
-    const fromBlock =
-      options?.fromBlock ?? (await this.publicClient.getBlockNumber()) - 10_000n
+    const usingDefaultWindow = options?.fromBlock === undefined
+    const fromBlock = usingDefaultWindow
+      ? (await this.publicClient.getBlockNumber()) - 10_000n
+      : options.fromBlock
+
+    if (usingDefaultWindow) {
+      console.warn(
+        "[tool-sdk] showing registrations from the last 10,000 blocks; pass fromBlock to search further back",
+      )
+    }
 
     const logs = await this.publicClient.getLogs({
       address: this.registryAddress,

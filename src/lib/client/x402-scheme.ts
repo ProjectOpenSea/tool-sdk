@@ -130,6 +130,8 @@ export async function signEip3009Authorization(
   const validBefore = String(Math.floor(Date.now() / 1000) + 600)
 
   const value = reqs.amount ?? reqs.maxAmountRequired ?? "0"
+  const canonicalAsset =
+    resolved.usdc.toLowerCase() === reqs.asset.toLowerCase()
 
   const authorization = {
     from: address as `0x${string}`,
@@ -141,8 +143,10 @@ export async function signEip3009Authorization(
   } as const
 
   const domain = {
-    name: (reqs.extra?.name as string) ?? "USD Coin",
-    version: (reqs.extra?.version as string) ?? "2",
+    name: canonicalAsset
+      ? "USD Coin"
+      : ((reqs.extra?.name as string) ?? "USD Coin"),
+    version: canonicalAsset ? "2" : ((reqs.extra?.version as string) ?? "2"),
     chainId,
     verifyingContract: reqs.asset as `0x${string}`,
   }

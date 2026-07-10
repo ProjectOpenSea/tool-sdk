@@ -92,6 +92,9 @@ export function createToolHandler<TIn, TOut>(
   const usageReporter = config.usageReporting
     ? createEip3009UsageReporter(config.usageReporting)
     : undefined
+  let resolvedManifest: ReturnType<typeof resolveManifest> | undefined
+  let resolvedManifestEnv: Record<string, string | undefined> | undefined
+  const fallbackEnv: Record<string, string | undefined> = {}
 
   return async (request: Request): Promise<Response> => {
     try {
@@ -99,12 +102,14 @@ export function createToolHandler<TIn, TOut>(
         return Response.json({ error: "Method not allowed" }, { status: 405 })
       }
 
-      const resolvedManifest = resolveManifest(
-        config.manifest,
+      const env =
         config.env ??
-          (globalThis.process?.env as Record<string, string | undefined>) ??
-          {},
-      )
+        (globalThis.process?.env as Record<string, string | undefined>) ??
+        fallbackEnv
+      if (!resolvedManifest || resolvedManifestEnv !== env) {
+        resolvedManifest = resolveManifest(config.manifest, env)
+        resolvedManifestEnv = env
+      }
 
       let body: unknown
       try {

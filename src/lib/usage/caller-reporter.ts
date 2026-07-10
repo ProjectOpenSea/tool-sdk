@@ -163,7 +163,6 @@ const pendingProvisions = new Map<string, Promise<string | undefined>>()
 
 async function provisionApiKey(
   aggregatorUrl: string,
-  signal: AbortSignal,
 ): Promise<string | undefined> {
   const origin = new URL(aggregatorUrl).origin
   const cached = apiKeyCache.get(origin)
@@ -173,12 +172,14 @@ async function provisionApiKey(
   if (pending) return pending
 
   const promise = (async (): Promise<string | undefined> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
     try {
       const res = await fetch(`${origin}/api/v2/auth/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
-        signal,
+        signal: controller.signal,
       })
       if (res.ok) {
         const data = (await res.json()) as { api_key?: string }
@@ -190,6 +191,7 @@ async function provisionApiKey(
     } catch {
       // Auto-provisioning failed; caller will be warned below.
     } finally {
+      clearTimeout(timer)
       pendingProvisions.delete(origin)
     }
     return undefined
@@ -276,8 +278,7 @@ export async function reportCallerX402Usage(
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const apiKey =
-      config.apiKey ?? (await provisionApiKey(aggregatorUrl, controller.signal))
+    const apiKey = config.apiKey ?? (await provisionApiKey(aggregatorUrl))
     if (!apiKey) {
       console.warn(
         "[tool-sdk] no API key available and auto-provisioning failed — skipping caller usage report",
@@ -356,8 +357,7 @@ export async function reportCallerEip3009Usage(
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const apiKey =
-      config.apiKey ?? (await provisionApiKey(aggregatorUrl, controller.signal))
+    const apiKey = config.apiKey ?? (await provisionApiKey(aggregatorUrl))
     if (!apiKey) {
       console.warn(
         "[tool-sdk] no API key available and auto-provisioning failed — skipping caller usage report",
