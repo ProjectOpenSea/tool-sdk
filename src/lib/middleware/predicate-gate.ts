@@ -98,7 +98,10 @@ export interface PredicateGateConfig {
  */
 export function predicateGate(config: PredicateGateConfig): GateMiddleware {
   const chain = config.chain ?? base
-  const rpcUrl = config.rpcUrl ?? "https://mainnet.base.org"
+  // Leave rpcUrl undefined when unset so reads follow the configured chain's
+  // default RPC (viem), instead of silently reading Base for a non-Base chain.
+  const rpcUrl = config.rpcUrl
+  const identityChainId = x402IdentityChainId(chain.id)
 
   const publicClient = createPublicClient({
     chain,
@@ -148,12 +151,15 @@ export function predicateGate(config: PredicateGateConfig): GateMiddleware {
       const paymentHeader = request.headers.get("X-Payment")
 
       if (!paymentHeader) {
-        return buildPredicateChallengeResponse(config.operatorAddress, chain.id)
+        return buildPredicateChallengeResponse(
+          config.operatorAddress,
+          identityChainId,
+        )
       }
 
       const result = await verifyXPaymentAuth(paymentHeader, {
         operatorAddress: config.operatorAddress,
-        expectedChainId: chain.id,
+        expectedChainId: identityChainId,
         requireZeroValue: true,
       })
       if (result.error) {
@@ -316,9 +322,10 @@ interface VerifyXPaymentOptions {
    */
   operatorAddress: `0x${string}`
   /**
-   * Chain id the gate is configured for. The resolved chainId of the
-   * client-declared `network` must match, so an authorization signed for a
-   * different chain (e.g. base-sepolia) cannot authenticate to this gate.
+   * ChainId of the x402 payment network the identity proof must be signed for
+   * (Base / Base-Sepolia), independent of the registry chain. The resolved
+   * chainId of the client-declared `network` must match, so an authorization
+   * signed for a different chain (e.g. base-sepolia) cannot authenticate here.
    */
   expectedChainId: number
   /**
@@ -436,10 +443,10 @@ async function verifyXPaymentAuth(
   const chainId = resolved.chainId
   const tokenAddress = resolved.usdc as `0x${string}`
 
-  // Pin the authorization to the gate's configured chain. The EIP-712 domain
-  // used for signature recovery comes from the client-declared network, so
-  // without this an authorization signed for a different chain (e.g.
-  // base-sepolia) would authenticate to a mainnet gate.
+  // Pin the authorization to the gate's x402 payment network. The EIP-712
+  // domain used for signature recovery comes from the client-declared network,
+  // so without this an authorization signed for a different chain (e.g.
+  // base-sepolia) would authenticate to a mainnet-payment gate.
   if (chainId !== options.expectedChainId) {
     return {
       error: `Predicate gate: X-Payment network mismatch (expected chainId ${options.expectedChainId}, got ${chainId})`,
@@ -533,6 +540,25 @@ async function verifyXPaymentAuth(
 const CHAIN_ID_TO_NETWORK: Record<number, string> = {
   8453: "base",
   84532: "base-sepolia",
+}
+
+const BASE_CHAIN_ID = 8453
+
+/**
+ * The chainId the x402 identity/payment authorization must be signed for.
+ *
+ * The X-Payment proof is an EIP-3009 USDC authorization that only exists on
+ * supported x402 networks (Base / Base-Sepolia); it is independent of the
+ * chain the `ToolRegistry` is read from. A registry chain that is itself a
+ * supported x402 network verifies identity against that network; any other
+ * registry chain (e.g. mainnet, Monad) verifies against Base — matching the
+ * `network=base` the 402 challenge advertises. Without this decoupling, a
+ * non-Base registry chain would pin identity to a chainId no USDC
+ * authorization is ever signed for, so every caller fails closed and the only
+ * working configuration is the Base default (which reads the wrong registry).
+ */
+function x402IdentityChainId(registryChainId: number): number {
+  return CHAIN_ID_TO_NETWORK[registryChainId] ? registryChainId : BASE_CHAIN_ID
 }
 
 function buildPredicateChallengeResponse(
@@ -677,8 +703,13 @@ export function paidPredicateGate(
   }
 
   const chain = config.chain ?? base
-  const rpcUrl = config.rpcUrl ?? "https://mainnet.base.org"
+  // Leave rpcUrl undefined when unset so reads follow the configured chain's
+  // default RPC (viem), instead of silently reading Base for a non-Base chain.
+  const rpcUrl = config.rpcUrl
   const network = config.network ?? "base"
+  // Identity/payment rides on the x402 payment network (advertised in the 402
+  // and used to sign the X-Payment authorization), not the registry chain.
+  const identityChainId = resolveNetwork(network)?.chainId ?? BASE_CHAIN_ID
   const facilitatorUrl =
     config.facilitatorUrl ??
     (config.facilitator === "cdp"
@@ -791,7 +822,7 @@ export function paidPredicateGate(
       // --- Identity verification (X-Payment signature) ---
       const authResult = await verifyXPaymentAuth(paymentHeader, {
         operatorAddress: config.operatorAddress,
-        expectedChainId: chain.id,
+        expectedChainId: identityChainId,
         requireZeroValue: false,
       })
       if (authResult.error) {

@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.28.3
+
+### Patch Changes
+
+- Scope predicate gate reads to the configured registry chain. `predicateGate`/`paidPredicateGate` no longer force reads to the Base RPC when `rpcUrl` is unset, so a non-Base registry chain is actually queried, and the x402 identity/payment chain is decoupled from the registry chain so non-Base gating no longer fails closed.
+
 ## 0.28.2
 
 ### Patch Changes

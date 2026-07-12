@@ -696,6 +696,53 @@ describe("predicateGate", () => {
     expect(ctx.callerAddress).toBeUndefined()
   })
 
+  it("verifies a Base-signed identity against a non-Base registry chain", async () => {
+    mockTryHasAccess.mockResolvedValueOnce({ ok: true, granted: true })
+    const { mainnet } = await import("viem/chains")
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    // Registry on Ethereum mainnet, identity proof on Base USDC. The identity
+    // chain must not be pinned to the registry chain, or every caller fails
+    // closed and operators fall back to the leaky Base default.
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      chain: mainnet,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(makeAuthorizedRequest(), ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    // Reads follow the configured chain (undefined rpcUrl → viem chain default),
+    // not a hardcoded Base RPC.
+    expect(mockConstructorArgs).toHaveBeenCalledWith(
+      expect.objectContaining({ chain: mainnet, rpcUrl: undefined }),
+    )
+  })
+
+  it("advertises network=base in the 402 challenge for a non-Base registry chain", async () => {
+    const { mainnet } = await import("viem/chains")
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      chain: mainnet,
+    })
+    const request = new Request("https://example.com/api", { method: "POST" })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(402)
+    const body = await response?.json()
+    expect(body.accepts[0].network).toBe("base")
+  })
+
   it("X-Payment: fails closed with 500 when operatorAddress is unset", async () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"

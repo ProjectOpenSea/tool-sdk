@@ -260,6 +260,35 @@ describe("paidPredicateGate", () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
+  it("verifies a Base payment against a non-Base registry chain", async () => {
+    const { mainnet } = await import("viem/chains")
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    // Registry on Ethereum mainnet, payment on Base USDC. Identity must pin to
+    // the x402 payment network (base), not the registry chain, otherwise every
+    // caller fails closed with a network mismatch.
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      chain: mainnet,
+      network: "base",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(ctx.callerAddress).toBe(TEST_CALLER)
+    expect(ctx.gates?.x402).toEqual({ paid: true, payer: TEST_CALLER })
+  })
+
   it("fails closed with 500 when operatorAddress is unset", async () => {
     const { paidPredicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
