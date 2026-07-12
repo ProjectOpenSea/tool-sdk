@@ -27,12 +27,17 @@ const mockRecoverTypedDataAddress = vi
   .fn()
   .mockResolvedValue(TEST_CALLER as `0x${string}`)
 
+// Shared stub for the delegate.xyz DelegateRegistry `checkDelegateForAll`
+// staticcall. Defaults to `true` so non-delegation tests are unaffected;
+// delegation tests override it per-case.
+const mockReadContract = vi.fn().mockResolvedValue(true)
+
 vi.mock("viem", async importOriginal => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     createPublicClient: () => ({
-      readContract: vi.fn().mockResolvedValue(true),
+      readContract: (...args: unknown[]) => mockReadContract(...args),
     }),
     recoverTypedDataAddress: (...args: unknown[]) =>
       mockRecoverTypedDataAddress(...args),
@@ -53,6 +58,8 @@ beforeEach(() => {
   })
   mockRecoverTypedDataAddress.mockReset()
   mockRecoverTypedDataAddress.mockResolvedValue(TEST_CALLER as `0x${string}`)
+  mockReadContract.mockReset()
+  mockReadContract.mockResolvedValue(true)
   mockFetch.mockReset()
   vi.stubGlobal("fetch", mockFetch)
 })
@@ -526,6 +533,347 @@ describe("paidPredicateGate", () => {
 
     // Predicate denied → 403, facilitator never called
     expect(response?.status).toBe(403)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("returns 502 when the predicate misbehaves (tryHasAccess ok=false)", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockTryHasAccess.mockResolvedValueOnce({ ok: false, granted: false })
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(502)
+    const body = await response?.json()
+    expect(body.error).toMatch(/predicate misbehaved/i)
+    // Payment must never be settled when the predicate result is untrusted.
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("returns 502 when facilitator /verify responds with a non-2xx status", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFetch.mockResolvedValueOnce(
+      new Response("upstream boom", { status: 500 }),
+    )
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(502)
+    const body = await response?.json()
+    expect(body.error).toMatch(/facilitator unreachable/i)
+  })
+
+  // -------------------------------------------------------------------------
+  // amountUsdc validation (throws at construction)
+  // -------------------------------------------------------------------------
+
+  it("throws at construction for a non-numeric amountUsdc", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    expect(() =>
+      paidPredicateGate({
+        toolId: TEST_TOOL_ID,
+        operatorAddress: TEST_OPERATOR,
+        amountUsdc: "not-a-number",
+      }),
+    ).toThrow(/invalid amountusdc/i)
+  })
+
+  it("throws at construction when amountUsdc has more than 6 decimals", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    expect(() =>
+      paidPredicateGate({
+        toolId: TEST_TOOL_ID,
+        operatorAddress: TEST_OPERATOR,
+        amountUsdc: "1.1234567",
+      }),
+    ).toThrow(/more than 6 decimals/i)
+  })
+
+  // -------------------------------------------------------------------------
+  // CDP facilitator auth headers
+  // -------------------------------------------------------------------------
+
+  it("passes createAuthHeaders output to the facilitator /verify request", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    const createAuthHeaders = vi
+      .fn()
+      .mockResolvedValue({ Authorization: "Bearer cdp-token" })
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      facilitator: "cdp",
+      createAuthHeaders,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(createAuthHeaders).toHaveBeenCalledOnce()
+    const verifyCall = mockFetch.mock.calls[0]
+    expect(verifyCall[0]).toContain("/verify")
+    expect(
+      (verifyCall[1] as { headers: Record<string, string> }).headers
+        .Authorization,
+    ).toBe("Bearer cdp-token")
+  })
+
+  it("returns 502 when createAuthHeaders throws before /verify", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const createAuthHeaders = vi
+      .fn()
+      .mockRejectedValue(new Error("cdp auth failed"))
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      facilitator: "cdp",
+      createAuthHeaders,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(502)
+    const body = await response?.json()
+    expect(body.error).toMatch(/facilitator unreachable/i)
+    // /verify must not be attempted when we can't authenticate to the facilitator.
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // settle() failure handling
+  // -------------------------------------------------------------------------
+
+  it("settle() throws when facilitator /settle responds non-2xx", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    expect(await gate.check(request, ctx)).toBeNull()
+
+    mockFetch.mockResolvedValueOnce(new Response("nope", { status: 500 }))
+    await expect(gate.settle!(ctx as ToolContext)).rejects.toThrow(
+      /settle returned 500/i,
+    )
+  })
+
+  it("settle() throws when facilitator reports success=false", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    expect(await gate.check(request, ctx)).toBeNull()
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ success: false, errorReason: "settlement_failed" }),
+        { status: 200 },
+      ),
+    )
+    await expect(gate.settle!(ctx as ToolContext)).rejects.toThrow(
+      /settlement_failed/i,
+    )
+  })
+
+  it("settle() is a no-op when check() never stashed a payment", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    // No prior check() → nothing stashed → settle() returns without any fetch.
+    await expect(gate.settle!(ctx as ToolContext)).resolves.toBeUndefined()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // Delegated agent access (X-Delegate-For)
+  // -------------------------------------------------------------------------
+
+  const TEST_HOLDER =
+    "0x1111111111111111111111111111111111111111" as `0x${string}`
+
+  it("delegation: checks predicate against holder, sets agentAddress, and settles payment", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockReadContract.mockResolvedValueOnce(true)
+    mockFacilitatorVerifySuccess()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    expect(mockTryHasAccess).toHaveBeenCalledWith(
+      TEST_TOOL_ID,
+      TEST_HOLDER,
+      "0x",
+    )
+    expect(ctx.callerAddress).toBe(TEST_HOLDER)
+    expect(ctx.agentAddress).toBe(TEST_CALLER)
+  })
+
+  it("delegation: returns 400 for a malformed X-Delegate-For header", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": "0xnothex",
+      },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(400)
+    const body = await response?.json()
+    expect(body.error).toMatch(/invalid x-delegate-for/i)
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("delegation: returns 403 when the holder has not delegated to the agent", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockReadContract.mockResolvedValueOnce(false)
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(403)
+    const body = await response?.json()
+    expect(body.error).toMatch(/delegation not found/i)
+    // No payment when delegation is missing.
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("delegation: returns 502 when the delegate registry call fails", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockReadContract.mockRejectedValueOnce(new Error("rpc down"))
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(502)
+    const body = await response?.json()
+    expect(body.error).toMatch(/delegate registry call failed/i)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })

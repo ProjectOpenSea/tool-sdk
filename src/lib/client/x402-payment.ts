@@ -4,6 +4,7 @@ import type { Account } from "viem"
 import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
 import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import {
+  parseBaseUnitAmount,
   parseX402Challenge,
   type RawRequirements,
   resolveNetwork,
@@ -386,8 +387,17 @@ export function validatePaymentRequirements(
     }
   }
 
+  // Parse as an unsigned integer first: a negative or malformed amount must
+  // never reach the signed cap comparison (a negative value would slip under
+  // a positive cap) or the EIP-3009 signer (where it would wrap into a huge
+  // positive uint256). Validate unconditionally, even when no cap is set.
+  const requested = parseBaseUnitAmount(
+    reqs.maxAmountRequired,
+    "maxAmountRequired",
+  )
   if (opts.maxAmount !== undefined) {
-    if (BigInt(reqs.maxAmountRequired) > BigInt(opts.maxAmount)) {
+    const cap = parseBaseUnitAmount(opts.maxAmount, "maxAmount")
+    if (requested > cap) {
       throw new Error(
         `x402: server requested ${reqs.maxAmountRequired} but maxAmount is ${opts.maxAmount}`,
       )

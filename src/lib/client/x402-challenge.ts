@@ -33,6 +33,31 @@ export function resolveNetwork(
   }
 }
 
+/**
+ * Parse an x402 amount (in the token's smallest unit) into a `bigint`,
+ * rejecting anything that is not a canonical non-negative integer.
+ *
+ * x402 amounts are unsigned `uint256` values. A negative or otherwise
+ * malformed amount must be rejected before it is compared against a
+ * spending cap or encoded into an EIP-3009 authorization: a signed
+ * comparison would let a negative value slip under a positive `maxAmount`
+ * cap, and the EIP-712 `uint256` encoder wraps a negative value into a huge
+ * positive integer via two's complement — producing an authorization far
+ * larger than the caller intended.
+ *
+ * Only plain decimal digit strings are accepted (`"0"`, `"10000"`).
+ * Signs, decimals, hex (`0x…`), scientific notation, whitespace, and empty
+ * strings all throw.
+ */
+export function parseBaseUnitAmount(value: string, label = "amount"): bigint {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error(
+      `x402: ${label} "${value}" is not a valid non-negative integer amount (token base units)`,
+    )
+  }
+  return BigInt(value)
+}
+
 export type ParsedChallenge =
   | {
       ok: true

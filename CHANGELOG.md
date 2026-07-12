@@ -1,5 +1,14 @@
 # @opensea/tool-sdk
 
+## 0.28.4
+
+### Patch Changes
+
+- a541527: Reject negative and malformed x402 payment amounts. A negative `maxAmountRequired` previously slipped under the signed-BigInt `maxAmount` cap check and, when signed, wrapped into a huge positive `uint256` EIP-3009 authorization — bypassing the caller's spending limit. Amounts are now validated as canonical non-negative integers in `validatePaymentRequirements` (unconditionally, even without a cap) and again in the EIP-3009 signer as defense-in-depth for direct `signX402Payment` callers.
+- Updated dependencies [569fd4f]
+- Updated dependencies [a541527]
+  - @opensea/wallet-adapters@0.3.3
+
 ## 0.28.3
 
 ### Patch Changes

@@ -7,8 +7,8 @@ import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
   createX402Client,
   extractSettlementTxHash,
-  type PaymentRequirements,
   rejectServerErrorAfterPayment,
+  validatePaymentRequirements,
 } from "./x402-payment.js"
 import { toX402PaymentRequired } from "./x402-scheme.js"
 
@@ -26,12 +26,6 @@ export interface PaidAuthenticatedFetchOptions extends RequestInit {
    */
   reportCallerUsage?: CallerUsageReporterConfig | boolean
 }
-
-// Keep in sync with REJECTED_ADDRESSES in x402-payment.ts
-const REJECTED_ADDRESSES = new Set([
-  "0x0000000000000000000000000000000000000000",
-  "0x000000000000000000000000000000000000dead",
-])
 
 /**
  * Combined predicate-gate + x402-paid fetch. Handles multiple 402
@@ -92,7 +86,7 @@ export async function paidAuthenticatedFetch(
     }
     const { requirements, x402Version, raw, resource } = parsed
 
-    validatePaymentSafety(requirements, {
+    validatePaymentRequirements(requirements, {
       maxAmount,
       allowedRecipients,
       allowedAssets,
@@ -166,53 +160,4 @@ export async function paidAuthenticatedFetch(
   }
 
   return res
-}
-
-function validatePaymentSafety(
-  reqs: PaymentRequirements,
-  opts: {
-    maxAmount?: string
-    allowedRecipients?: string[]
-    allowedAssets?: string[]
-  },
-): void {
-  const payToLower = reqs.payTo.toLowerCase()
-
-  if (REJECTED_ADDRESSES.has(payToLower)) {
-    throw new Error(
-      `x402: payTo address ${reqs.payTo} is a burn/zero address — refusing to sign`,
-    )
-  }
-
-  if (opts.allowedRecipients) {
-    const allowed = new Set(opts.allowedRecipients.map(a => a.toLowerCase()))
-    if (!allowed.has(payToLower)) {
-      throw new Error(
-        `x402: payTo address ${reqs.payTo} is not in allowedRecipients`,
-      )
-    }
-  }
-
-  if (opts.maxAmount !== undefined) {
-    if (BigInt(reqs.maxAmountRequired) > BigInt(opts.maxAmount)) {
-      throw new Error(
-        `x402: server requested ${reqs.maxAmountRequired} but maxAmount is ${opts.maxAmount}`,
-      )
-    }
-  }
-
-  const assetLower = reqs.asset.toLowerCase()
-  if (opts.allowedAssets) {
-    const allowed = new Set(opts.allowedAssets.map(a => a.toLowerCase()))
-    if (!allowed.has(assetLower)) {
-      throw new Error(`x402: asset ${reqs.asset} is not in allowedAssets`)
-    }
-  } else {
-    const expectedUsdc = resolveNetwork(reqs.network)?.usdc
-    if (expectedUsdc && assetLower !== expectedUsdc.toLowerCase()) {
-      throw new Error(
-        `x402: asset ${reqs.asset} does not match expected USDC address for ${reqs.network} (${expectedUsdc})`,
-      )
-    }
-  }
 }

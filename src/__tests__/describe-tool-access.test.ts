@@ -171,6 +171,70 @@ describe("describeToolAccess bounds enforcement", () => {
     ])
   })
 
+  it("reports open access when the tool has no predicate (zero address)", async () => {
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: getAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+      metadataURI: "https://example.com/manifest.json",
+      manifestHash:
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const,
+      accessPredicate:
+        "0x0000000000000000000000000000000000000000" as `0x${string}`,
+    })
+    const { describeToolAccess } = await import("../lib/onchain/access.js")
+
+    const result = await describeToolAccess({ toolId: TEST_TOOL_ID })
+
+    expect(result).toEqual({
+      openAccess: true,
+      predicateAddress: null,
+      predicateName: null,
+      requirements: [],
+      logic: "AND",
+    })
+    // Open-access tools must not staticcall the (nonexistent) predicate.
+    expect(mockReadContract).not.toHaveBeenCalled()
+  })
+
+  it("degrades predicateName to null when name() reverts", async () => {
+    mockReadContract.mockImplementation((args: { functionName: string }) => {
+      if (args.functionName === "name") {
+        return Promise.reject(new Error("execution reverted"))
+      }
+      return Promise.resolve([[goodRequirement], 0])
+    })
+    const { describeToolAccess } = await import("../lib/onchain/access.js")
+
+    const result = await describeToolAccess({ toolId: TEST_TOOL_ID })
+
+    expect(result.predicateName).toBeNull()
+    expect(result.requirements).toEqual([goodRequirement])
+  })
+
+  it("degrades to empty requirements when getRequirements() reverts", async () => {
+    mockReadContract.mockImplementation((args: { functionName: string }) => {
+      if (args.functionName === "name") {
+        return Promise.resolve("MyPredicate")
+      }
+      return Promise.reject(new Error("execution reverted"))
+    })
+    const { describeToolAccess } = await import("../lib/onchain/access.js")
+
+    const result = await describeToolAccess({ toolId: TEST_TOOL_ID })
+
+    expect(result.predicateName).toBe("MyPredicate")
+    expect(result.requirements).toEqual([])
+    expect(result.logic).toBe("AND")
+  })
+
+  it("maps a logic value of 1 to OR", async () => {
+    routeReadContract({ requirements: [goodRequirement], logic: 1 })
+    const { describeToolAccess } = await import("../lib/onchain/access.js")
+
+    const result = await describeToolAccess({ toolId: TEST_TOOL_ID })
+
+    expect(result.logic).toBe("OR")
+  })
+
   it("accepts entries exactly at the data and label caps", async () => {
     const dataAtCap = `0x${"00".repeat(4096)}` as `0x${string}`
     const labelAtCap = "x".repeat(256)

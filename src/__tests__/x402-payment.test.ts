@@ -162,6 +162,18 @@ describe("signX402Payment", () => {
     expect(parsed.payload.authorization.value).toBe("10000")
   })
 
+  it("rejects a negative amount instead of signing a wrapped uint256", async () => {
+    await expect(
+      signX402Payment({
+        signer,
+        paymentRequirements: {
+          ...baseRequirements,
+          maxAmountRequired: "-1000",
+        },
+      }),
+    ).rejects.toThrow("not a valid non-negative integer amount")
+  })
+
   it("throws when WalletAdapter lacks signTypedData", async () => {
     const mockAdapter: WalletAdapter = {
       name: "no-typed-data",
@@ -371,6 +383,38 @@ describe("paidFetch", () => {
         maxAmount: "10000",
       }),
     ).rejects.toThrow("server requested 50000 but maxAmount is 10000")
+  })
+
+  it("rejects a negative maxAmountRequired that would slip under the cap", async () => {
+    const accepts = [{ ...baseRequirements, maxAmountRequired: "-1000" }]
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ accepts }), { status: 402 }),
+      ),
+    )
+
+    await expect(
+      paidFetch("https://tool.example.com/api", {
+        method: "POST",
+        signer,
+        maxAmount: "1",
+      }),
+    ).rejects.toThrow("not a valid non-negative integer amount")
+  })
+
+  it("rejects a negative maxAmountRequired even when no cap is set", async () => {
+    const accepts = [{ ...baseRequirements, maxAmountRequired: "-1000" }]
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify({ accepts }), { status: 402 }),
+      ),
+    )
+
+    await expect(
+      paidFetch("https://tool.example.com/api", { method: "POST", signer }),
+    ).rejects.toThrow("not a valid non-negative integer amount")
   })
 
   it("allows amount within maxAmount", async () => {

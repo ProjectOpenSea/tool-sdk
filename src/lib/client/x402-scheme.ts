@@ -8,7 +8,7 @@ import type {
 } from "@x402/core/types"
 import type { Account } from "viem"
 import { toHex } from "viem"
-import { resolveNetwork } from "./x402-challenge.js"
+import { parseBaseUnitAmount, resolveNetwork } from "./x402-challenge.js"
 import type { PaymentRequirements } from "./x402-payment.js"
 
 /**
@@ -129,7 +129,13 @@ export async function signEip3009Authorization(
   const validAfter = "0"
   const validBefore = String(Math.floor(Date.now() / 1000) + 600)
 
+  // Reject a negative or malformed amount before signing. The EIP-712
+  // `uint256` encoder wraps a negative value into a huge positive integer
+  // via two's complement, so an unvalidated negative amount would produce an
+  // authorization far larger than intended. This guards direct callers of
+  // this signer (e.g. `signX402Payment`) that bypass `validatePaymentRequirements`.
   const value = reqs.amount ?? reqs.maxAmountRequired ?? "0"
+  parseBaseUnitAmount(value)
   const canonicalAsset =
     resolved.usdc.toLowerCase() === reqs.asset.toLowerCase()
 

@@ -32,12 +32,17 @@ const mockRecoverTypedDataAddress = vi
   .fn()
   .mockResolvedValue(TEST_CALLER as `0x${string}`)
 
+// Shared stub for the delegate.xyz DelegateRegistry `checkDelegateForAll`
+// staticcall. Defaults to `true` so non-delegation tests are unaffected;
+// delegation tests override it per-case.
+const mockReadContract = vi.fn().mockResolvedValue(true)
+
 vi.mock("viem", async importOriginal => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     createPublicClient: () => ({
-      readContract: vi.fn().mockResolvedValue(true),
+      readContract: (...args: unknown[]) => mockReadContract(...args),
     }),
     recoverTypedDataAddress: (...args: unknown[]) =>
       mockRecoverTypedDataAddress(...args),
@@ -57,6 +62,8 @@ beforeEach(() => {
   mockConstructorArgs.mockReset()
   mockRecoverTypedDataAddress.mockReset()
   mockRecoverTypedDataAddress.mockResolvedValue(TEST_CALLER as `0x${string}`)
+  mockReadContract.mockReset()
+  mockReadContract.mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -628,6 +635,28 @@ describe("predicateGate", () => {
     expect(mockTryHasAccess).not.toHaveBeenCalled()
   })
 
+  it("X-Payment: rejects a negative-value authorization before signature recovery", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const response = await gate.check(
+      makeAuthorizedRequest({ value: "-1" }),
+      ctx,
+    )
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/zero-value/i)
+    expect(ctx.callerAddress).toBeUndefined()
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+  })
+
   it("X-Payment: rejects a validBefore more than 1 hour in the future", async () => {
     const { predicateGate } = await import(
       "../lib/middleware/predicate-gate.js"
@@ -763,5 +792,155 @@ describe("predicateGate", () => {
     const body = await response?.json()
     expect(body.error).toMatch(/operator address is not configured/i)
     expect(ctx.callerAddress).toBeUndefined()
+  })
+
+  // -------------------------------------------------------------------------
+  // Malformed X-Payment payloads
+  // -------------------------------------------------------------------------
+
+  it("X-Payment: returns 401 when the header does not decode to valid JSON", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    // Base64 of a non-JSON string — decodes cleanly but JSON.parse throws.
+    const header = Buffer.from("not-json-at-all").toString("base64")
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": header },
+    })
+
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(401)
+    const body = await response?.json()
+    expect(body.error).toMatch(/bad json/i)
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // Delegated agent access (X-Delegate-For)
+  // -------------------------------------------------------------------------
+
+  const TEST_HOLDER =
+    "0x1111111111111111111111111111111111111111" as `0x${string}`
+
+  it("delegation: checks the predicate against the holder and sets agentAddress", async () => {
+    mockReadContract.mockResolvedValueOnce(true)
+    mockTryHasAccess.mockResolvedValueOnce({ ok: true, granted: true })
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response).toBeNull()
+    // Predicate runs against the holder; the recovered signer is the agent.
+    expect(mockTryHasAccess).toHaveBeenCalledWith(
+      TEST_TOOL_ID,
+      TEST_HOLDER,
+      "0x",
+    )
+    expect(ctx.callerAddress).toBe(TEST_HOLDER)
+    expect(ctx.agentAddress).toBe(TEST_CALLER)
+    expect(ctx.gates?.predicate).toEqual({ granted: true })
+  })
+
+  it("delegation: returns 400 for a malformed X-Delegate-For header", async () => {
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": "not-an-address",
+      },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(400)
+    const body = await response?.json()
+    expect(body.error).toMatch(/invalid x-delegate-for/i)
+    // Neither the delegate registry nor the predicate should be consulted.
+    expect(mockReadContract).not.toHaveBeenCalled()
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+  })
+
+  it("delegation: returns 403 when the holder has not delegated to the agent", async () => {
+    mockReadContract.mockResolvedValueOnce(false)
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(403)
+    const body = await response?.json()
+    expect(body.error).toMatch(/delegation not found/i)
+    // A missing delegation must not fall through to the predicate.
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
+    expect(ctx.callerAddress).toBeUndefined()
+  })
+
+  it("delegation: returns 502 when the delegate registry call fails", async () => {
+    mockReadContract.mockRejectedValueOnce(new Error("rpc down"))
+    const { predicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    const gate = predicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: {
+        "X-Payment": makeXPaymentHeader(),
+        "X-Delegate-For": TEST_HOLDER,
+      },
+    })
+    const response = await gate.check(request, ctx)
+
+    expect(response?.status).toBe(502)
+    const body = await response?.json()
+    expect(body.error).toMatch(/delegate registry call failed/i)
+    expect(mockTryHasAccess).not.toHaveBeenCalled()
   })
 })

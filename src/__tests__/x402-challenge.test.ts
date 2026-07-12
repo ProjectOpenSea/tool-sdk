@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest"
 import {
+  parseBaseUnitAmount,
   parseX402Challenge,
   resolveNetwork,
 } from "../lib/client/x402-challenge.js"
 
 const USDC_BASE = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+
+describe("parseBaseUnitAmount", () => {
+  it("parses canonical non-negative integer strings", () => {
+    expect(parseBaseUnitAmount("0")).toBe(0n)
+    expect(parseBaseUnitAmount("10000")).toBe(10000n)
+  })
+
+  it("rejects negative amounts", () => {
+    expect(() => parseBaseUnitAmount("-1")).toThrow(
+      "not a valid non-negative integer amount",
+    )
+    expect(() => parseBaseUnitAmount("-1000", "maxAmountRequired")).toThrow(
+      'maxAmountRequired "-1000"',
+    )
+  })
+
+  it("rejects non-integer, hex, empty, and whitespace forms", () => {
+    for (const bad of ["", " 10 ", "1.5", "0x10", "1e3", "abc", "+5"]) {
+      expect(() => parseBaseUnitAmount(bad)).toThrow(
+        "not a valid non-negative integer amount",
+      )
+    }
+  })
+})
 
 describe("resolveNetwork", () => {
   it("resolves short names", () => {

@@ -408,6 +408,59 @@ describe("createToolHandler", () => {
     expect(reportSettled).toHaveBeenCalledOnce()
   })
 
+  it("auto-detects the Vercel request-context waitUntil when none is configured", async () => {
+    let releaseReport: () => void = () => {}
+    const reportSettled = vi.fn()
+    const pendingReport = new Promise<void>(resolve => {
+      releaseReport = () => {
+        reportSettled()
+        resolve()
+      }
+    })
+    vi.mocked(createEip3009UsageReporter).mockReturnValueOnce(
+      vi.fn().mockReturnValue(pendingReport),
+    )
+
+    // Simulate the Vercel runtime by populating the request-context global the
+    // handler reads (the same one `@vercel/functions` uses). No `waitUntil`
+    // config is passed, so the handler must discover this one on its own.
+    const registered: Promise<unknown>[] = []
+    const vercelWaitUntil = vi.fn((p: Promise<unknown>) => {
+      registered.push(p)
+    })
+    const contextSymbol = Symbol.for("@vercel/request-context")
+    ;(globalThis as Record<symbol, unknown>)[contextSymbol] = {
+      get: () => ({ waitUntil: vercelWaitUntil }),
+    }
+
+    try {
+      const handler = createToolHandler({
+        manifest: testManifest,
+        inputSchema: InputSchema,
+        outputSchema: OutputSchema,
+        usageReporting: {} as Eip3009UsageReporterConfig,
+        handler: async input => ({ result: `Echo: ${input.query}` }),
+      })
+      const request = new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "test" }),
+      })
+
+      const response = await handler(request)
+
+      expect(response.status).toBe(200)
+      expect(vercelWaitUntil).toHaveBeenCalledOnce()
+      expect(reportSettled).not.toHaveBeenCalled()
+
+      releaseReport()
+      await registered[0]
+      expect(reportSettled).toHaveBeenCalledOnce()
+    } finally {
+      ;(globalThis as Record<symbol, unknown>)[contextSymbol] = undefined
+    }
+  })
+
   it("does not call settle() when a gate short-circuits with a response", async () => {
     const settle = vi.fn()
     const gate: GateMiddleware = {
