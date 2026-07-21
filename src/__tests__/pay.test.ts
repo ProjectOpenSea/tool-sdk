@@ -32,28 +32,38 @@ describe("parseToolRef", () => {
     })
   })
 
-  it("parses an x402:bazaar registry whose name contains a colon", async () => {
+  it("normalizes an x402:bazaar registry to the public source token", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
     expect(parseToolRef("8453,x402:bazaar,8679018179619845322")).toEqual({
       toolChainId: 8453,
-      toolRegistryAddress: "x402:bazaar",
+      toolRegistryAddress: "x402_bazaar",
       toolOnchainId: "8679018179619845322",
     })
   })
 
-  it("parses an x402:bankr registry", async () => {
+  it("normalizes x402 registry names case-insensitively", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
-    expect(parseToolRef("8453,x402:bankr,5311379622895099236")).toEqual({
+    expect(parseToolRef("8453,X402:BANKR,5311379622895099236")).toEqual({
       toolChainId: 8453,
-      toolRegistryAddress: "x402:bankr",
+      toolRegistryAddress: "x402_bankr",
       toolOnchainId: "5311379622895099236",
     })
+  })
+
+  it("preserves canonical x402 source tokens", async () => {
+    const { parseToolRef } = await import("../cli/commands/pay.js")
+    expect(parseToolRef("8453,x402_bazaar,123").toolRegistryAddress).toBe(
+      "x402_bazaar",
+    )
+    expect(parseToolRef("8453,x402_bankr,123").toolRegistryAddress).toBe(
+      "x402_bankr",
+    )
   })
 
   it("preserves an onchain id beyond Number.MAX_SAFE_INTEGER as a string", async () => {
     const { parseToolRef } = await import("../cli/commands/pay.js")
     const big = "9007199254740993" // 2^53 + 1, not representable as a JS number
-    expect(parseToolRef(`8453,x402:bazaar,${big}`).toolOnchainId).toBe(big)
+    expect(parseToolRef(`8453,x402_bazaar,${big}`).toolOnchainId).toBe(big)
   })
 
   it("accepts onchain id 0", async () => {

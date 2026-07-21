@@ -125,7 +125,7 @@ describe("reportCallerX402Usage", () => {
     })
   })
 
-  it("sends x402:bazaar registry and string onchainId in the composite key", async () => {
+  it("normalizes x402:bazaar registry in the composite key", async () => {
     const result = await reportCallerX402Usage(
       makeX402Event({
         toolChainId: 8453,
@@ -138,7 +138,7 @@ describe("reportCallerX402Usage", () => {
 
     const body = JSON.parse(fetchSpy.mock.calls[0]![1].body)
     expect(body.tool_chain_id).toBe(8453)
-    expect(body.tool_registry_address).toBe("x402:bazaar")
+    expect(body.tool_registry_address).toBe("x402_bazaar")
     expect(body.tool_onchain_id).toBe("8679018179619845322")
     expect(body.tool_endpoint).toBeUndefined()
   })

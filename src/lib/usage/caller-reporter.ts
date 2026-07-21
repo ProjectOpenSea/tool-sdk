@@ -1,4 +1,5 @@
 import { isAddress } from "viem"
+import { normalizeToolRegistryAddress } from "./tool-registry.js"
 
 const NUMERIC_STRING_RE = /^\d+$/
 
@@ -151,7 +152,9 @@ function buildToolIdentity(
   return {
     fields: {
       tool_chain_id: event.toolChainId,
-      tool_registry_address: event.toolRegistryAddress,
+      tool_registry_address: normalizeToolRegistryAddress(
+        event.toolRegistryAddress,
+      ),
       tool_onchain_id: event.toolOnchainId,
     },
   }

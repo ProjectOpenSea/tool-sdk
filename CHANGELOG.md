@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.28.5
+
+### Patch Changes
+
+- f324c6d: Normalize x402 registry references to the public usage-reporting source tokens.
+
 ## 0.28.4
 
 ### Patch Changes
