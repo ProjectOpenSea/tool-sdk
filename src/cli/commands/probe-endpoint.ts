@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises"
 import pc from "picocolors"
 
 export interface ProbeResult {
@@ -11,9 +12,13 @@ export interface ProbeResult {
 // hex `0x7f.0.0.1`, partial dotted forms like `127.1`, and IPv4-mapped IPv6
 // like `::ffff:169.254.169.254` / `::ffff:a9fe:a9a9`) are numerically
 // range-checked; other names fall back to a literal-name regex. This guard
-// does not resolve DNS, so names that resolve to private IPs (and DNS
-// rebinding) require a resolve-and-check / pinned connection and are tracked
-// as follow-up hardening.
+// alone does not resolve DNS, so a hostname that itself looks public but
+// resolves to a private/internal address (or is rebound to one) would slip
+// past it — see `isPrivateResolvedAddress` below, which is applied in
+// addition to this check before the endpoint is ever fetched. A fully
+// connect-time-pinned request (resolve once, dial the validated IP
+// directly) would close the remaining DNS-rebinding TOCTOU window and is
+// tracked as further hardening.
 //
 // Rejected ranges:
 //   - 0.0.0.0/8               unspecified / "this network"
@@ -145,6 +150,26 @@ export function isPrivateHostname(hostname: string): boolean {
   return PRIVATE_HOSTNAME_RE.test(hostname)
 }
 
+// Resolves `hostname` and reports whether any returned address is
+// private/internal. This closes the gap left by `isPrivateHostname` alone:
+// a public-looking DNS name can still resolve inward (misconfiguration or
+// deliberate DNS rebinding), and the actual fetch connects to whatever the
+// resolver returns, not to the string that was checked. Resolution failures
+// are not treated as private here — the subsequent `fetch` call will
+// surface the real network error with better context.
+export async function isPrivateResolvedAddress(
+  hostname: string,
+): Promise<boolean> {
+  let addresses: string[]
+  try {
+    const results = await lookup(hostname, { all: true, verbatim: true })
+    addresses = results.map(r => r.address)
+  } catch {
+    return false
+  }
+  return addresses.some(address => isPrivateHostname(address))
+}
+
 export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
   const hostname = new URL(endpoint).hostname
   if (isPrivateHostname(hostname)) {
@@ -152,6 +177,14 @@ export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
       status: 0,
       level: "warn",
       message: `Endpoint hostname "${hostname}" appears to be a private/internal address`,
+    }
+  }
+
+  if (await isPrivateResolvedAddress(hostname)) {
+    return {
+      status: 0,
+      level: "warn",
+      message: `Endpoint hostname "${hostname}" resolves to a private/internal address`,
     }
   }
 
