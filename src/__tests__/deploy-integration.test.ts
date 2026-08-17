@@ -547,4 +547,76 @@ describe("deploy command (mocked shell)", () => {
       }
     }
   })
+
+  function setupUnlinkedTestDir(name: string, packageName: string) {
+    const testDir = join(fixturesDir, name)
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(
+      join(testDir, "package.json"),
+      JSON.stringify({ name: packageName }),
+    )
+    return testDir
+  }
+
+  it("should not pass a package.json name with shell metacharacters into the link command (CWE-78)", async () => {
+    vi.spyOn(process, "exit").mockImplementation(code => {
+      throw new ExitError(code as number)
+    })
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const maliciousName = '"; touch /tmp/pwned; echo "'
+    const testDir = setupUnlinkedTestDir("malicious-name", maliciousName)
+
+    setupExecMock({
+      "vercel --version": "Vercel CLI 33.0.0",
+      "vercel whoami": "test-user",
+      "vercel deploy --prod": new Error("stop after link"),
+    })
+
+    process.chdir(testDir)
+
+    const { deployCommand } = await import("../cli/commands/deploy.js")
+    await expect(
+      deployCommand.parseAsync(["--host", "vercel"], { from: "user" }),
+    ).rejects.toThrow(ExitError)
+
+    for (const call of execSyncMock.mock.calls) {
+      expect(String(call[0])).not.toContain(maliciousName)
+      expect(String(call[0])).not.toContain("touch /tmp/pwned")
+    }
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("not a valid Vercel project name"),
+    )
+  })
+
+  it("should pass a valid package.json name through to the link command", async () => {
+    vi.spyOn(process, "exit").mockImplementation(code => {
+      throw new ExitError(code as number)
+    })
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const testDir = setupUnlinkedTestDir("valid-name", "@scope/my-tool")
+
+    setupExecMock({
+      "vercel --version": "Vercel CLI 33.0.0",
+      "vercel whoami": "test-user",
+      "vercel link": "",
+      "vercel deploy --prod": new Error("stop after link"),
+    })
+
+    process.chdir(testDir)
+
+    const { deployCommand } = await import("../cli/commands/deploy.js")
+    await expect(
+      deployCommand.parseAsync(["--host", "vercel"], { from: "user" }),
+    ).rejects.toThrow(ExitError)
+
+    expect(execSyncMock).toHaveBeenCalledWith(
+      expect.stringContaining("--project=my-tool"),
+      expect.anything(),
+    )
+  })
 })

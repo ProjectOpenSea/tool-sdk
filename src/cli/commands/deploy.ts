@@ -78,6 +78,15 @@ export function isSensitiveEnvVar(name: string): boolean {
   return SENSITIVE_PATTERN.test(name)
 }
 
+// Vercel project names may only contain lowercase letters, numbers, ".", "_"
+// and "-" (max 100 chars). Anything outside this set must never reach a
+// shell-interpolated command string (execCmd runs via execSync/"sh -c").
+const VERCEL_PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/
+
+export function isValidVercelProjectName(name: string): boolean {
+  return VERCEL_PROJECT_NAME_PATTERN.test(name)
+}
+
 export function extractDeploymentUrl(output: string): string | undefined {
   for (const line of output.split("\n")) {
     const match = line.match(/https:\/\/[\w-]+\.vercel\.app/)
@@ -219,7 +228,16 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
           name?: string
         }
         if (pkg.name) {
-          projectName = pkg.name.replace(/^@[^/]+\//, "")
+          const candidate = pkg.name.replace(/^@[^/]+\//, "")
+          if (isValidVercelProjectName(candidate)) {
+            projectName = candidate
+          } else {
+            console.log(
+              pc.yellow(
+                `  Warning: package.json name "${pkg.name}" is not a valid Vercel project name — omitting --project flag`,
+              ),
+            )
+          }
         }
       }
     } catch {
