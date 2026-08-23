@@ -510,7 +510,7 @@ describe("createToolHandler", () => {
     errorSpy.mockRestore()
   })
 
-  it("logs but does not bubble settle() errors — response stays 200", async () => {
+  it("logs and withholds the output when settle() fails and no policy is set", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     const gate: GateMiddleware = {
       async check() {
@@ -528,13 +528,188 @@ describe("createToolHandler", () => {
         body: JSON.stringify({ query: "hello" }),
       }),
     )
-    expect(response.status).toBe(200)
+    // `settlement` defaults to "required": the caller was never charged.
+    expect(response.status).toBe(502)
     const body = await response.json()
-    expect(body.result).toBe("Echo: hello")
+    expect(body.result).toBeUndefined()
     expect(errorSpy).toHaveBeenCalledWith(
       "[tool-sdk] gate.settle failed:",
       expect.any(Error),
     )
+    errorSpy.mockRestore()
+  })
+
+  it("withholds the output with a 502 when settle() fails under an explicit settlement: required", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const gate: GateMiddleware = {
+      async check() {
+        return null
+      },
+      async settle() {
+        throw new Error("facilitator down")
+      },
+    }
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [gate],
+      settlement: "required",
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(502)
+    const body = await response.json()
+    expect(body).toEqual({ error: "Payment settlement failed" })
+    expect(body.result).toBeUndefined()
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[tool-sdk] gate.settle failed:",
+      expect.any(Error),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("still emits the invocation event when settlement fails under settlement: required", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const events: InvocationEvent[] = []
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [
+        {
+          async check() {
+            return null
+          },
+          async settle() {
+            throw new Error("facilitator down")
+          },
+        },
+      ],
+      onInvocation: event => {
+        events.push(event)
+      },
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+
+    // A caller can be charged by an ambiguous failure, so the operator needs
+    // the event even though the response is a 502.
+    expect(response.status).toBe(502)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.settlementFailed).toBe(true)
+    errorSpy.mockRestore()
+  })
+
+  it("does not mark the invocation event when settlement succeeds", async () => {
+    const events: InvocationEvent[] = []
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [
+        {
+          async check() {
+            return null
+          },
+          async settle() {},
+        },
+      ],
+      onInvocation: event => {
+        events.push(event)
+      },
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(events[0]?.settlementFailed).toBeUndefined()
+  })
+
+  it("does not run later gates' settle() once one fails under settlement: required", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const secondSettle = vi.fn()
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [
+        {
+          async check() {
+            return null
+          },
+          async settle() {
+            throw new Error("facilitator down")
+          },
+        },
+        {
+          async check() {
+            return null
+          },
+          settle: secondSettle,
+        },
+      ],
+      settlement: "required",
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(secondSettle).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it("returns 200 with the output when settle() fails under settlement: best-effort", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const handler = createToolHandler({
+      manifest: testManifest,
+      inputSchema: InputSchema,
+      outputSchema: OutputSchema,
+      gates: [
+        {
+          async check() {
+            return null
+          },
+          async settle() {
+            throw new Error("facilitator down")
+          },
+        },
+      ],
+      settlement: "best-effort",
+      handler: async input => ({ result: `Echo: ${input.query}` }),
+    })
+    const response = await handler(
+      new Request("https://test.example.com/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "hello" }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect((await response.json()).result).toBe("Echo: hello")
     errorSpy.mockRestore()
   })
 

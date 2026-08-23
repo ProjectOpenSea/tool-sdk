@@ -1,5 +1,32 @@
 # @opensea/tool-sdk
 
+## 0.29.0
+
+### Minor Changes
+
+- 0ab2976: CLI: resolve `RPC_URL` env var as a universal RPC fallback for all wallet providers (previously only the private-key adapter read it), print a warning when falling back to the network's default public RPC, and share a single `--rpc-url` option description across commands. Fixes commands like `update-metadata` appearing to hang on "Verifying ownership..." when the default public RPC is slow or unreachable (e.g. when using a Bankr wallet, which provides no RPC endpoint).
+- f0e52a0: **Breaking:** a paid tool whose settlement fails now returns 502 without the output instead of 200 with the result. `createToolHandler` gains `settlement`, defaulting to `"required"`. A gate's `settle()` failure is still logged, but the caller was never charged, so the paid output is withheld. Set `settlement: "best-effort"` to restore the previous behavior, which is only appropriate if you reconcile failed settlements out-of-band and can absorb the ones you never recover.
+
+  Also adds `replayGuard` to the hosted x402 gates (`payaiX402Gate`, `cdpX402Gate`, `defineToolPaywall`) and `paidPredicateGate`: an optional atomic single-use claim over each payment authorization's `(payer, nonce)` pair, so concurrent replays of one signed authorization are rejected with 402 before the handler runs rather than each consuming your handler. It is off by default because it needs storage shared across instances, which the SDK cannot provide portably. See `skill/references/x402.md` for the risk and a Redis-backed recipe.
+
+  `InvocationEvent` gains `settlementFailed`, set when a gate's `settle()` threw, so a call that returns 502 is still observable through `onInvocation` for reconciliation.
+
+### Patch Changes
+
+- f1882a8: CLI: run the `vercel link` and `vercel env add` commands by argv instead of building a shell string. `deploy` interpolated the working directory's `package.json` name, variable names parsed from `.env.local.example`, and `vercel whoami` output into a string passed to `execSync`, so shell metacharacters in a `package.json` name executed during `tool-sdk deploy` with no interaction. Project and environment variable names are validated as well, since argv does not protect a value that would be read as a flag. Thanks to @ygd58 and @bilguunbicktivism (ProjectOpenSea/tool-sdk#18, #14).
+- f1882a8: CLI: resolve a hostname and re-check the returned addresses before fetching, in both `probe-endpoint` and `inspect`. The existing guard was lexical, so a public name whose A record points at a private address (`localtest.me` resolving to `127.0.0.1`) passed it and was fetched. This matters most for `inspect`, whose `metadataURI` comes from a permissionlessly writable onchain registry. A DNS-rebinding window remains, since `fetch` re-resolves independently. Thanks to @ygd58 and @bilguunbicktivism (ProjectOpenSea/tool-sdk#19, #13).
+- 93f028c: `type-check` now covers this package's `test/` directory, through a `tsconfig.check.json` matching
+  the one sdk and api-types already use. It previously compiled `src/` only, so nothing typechecked
+  its test files.
+
+  Split out of the cli changeset for the same change: tool-sdk is held out of that release, and a
+  shared changeset would have dragged its pending major into it.
+
+- c7342f6: Usage reporters: apply the https requirement on `aggregatorUrl` in all three reporters, not just the caller-side one. `reportCallerX402Usage` has always refused to POST over plaintext http because the report carries an `x-api-key` header, but `createX402UsageReporter` and `createEip3009UsageReporter` send the same header to the same configurable field and did not check. The EIP-3009 branch also forwards the caller's signed authorization. The check moves to `lib/usage/aggregator-url.ts` so there is one copy. `http://localhost` and `http://127.0.0.1` are still allowed for local development. Behavior change: a reporter configured with a plaintext non-loopback `aggregatorUrl` now logs and skips instead of sending.
+- Updated dependencies [f1882a8]
+- Updated dependencies [93f028c]
+  - @opensea/wallet-adapters@0.3.5
+
 ## 0.28.5
 
 ### Patch Changes

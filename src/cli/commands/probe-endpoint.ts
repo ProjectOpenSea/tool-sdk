@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises"
 import pc from "picocolors"
 
 export interface ProbeResult {
@@ -11,9 +12,13 @@ export interface ProbeResult {
 // hex `0x7f.0.0.1`, partial dotted forms like `127.1`, and IPv4-mapped IPv6
 // like `::ffff:169.254.169.254` / `::ffff:a9fe:a9a9`) are numerically
 // range-checked; other names fall back to a literal-name regex. This guard
-// does not resolve DNS, so names that resolve to private IPs (and DNS
-// rebinding) require a resolve-and-check / pinned connection and are tracked
-// as follow-up hardening.
+// alone does not resolve DNS, so a hostname that itself looks public but
+// resolves to a private/internal address (or is rebound to one) would slip
+// past it -- see `classifyResolvedHostname` below, which every caller applies
+// in addition to this check before anything is fetched. A fully
+// connect-time-pinned request (resolve once, dial the validated IP directly)
+// would close the remaining DNS-rebinding TOCTOU window and is tracked as
+// further hardening.
 //
 // Rejected ranges:
 //   - 0.0.0.0/8               unspecified / "this network"
@@ -145,6 +150,48 @@ export function isPrivateHostname(hostname: string): boolean {
   return PRIVATE_HOSTNAME_RE.test(hostname)
 }
 
+export type ResolvedHostnameClass = "private" | "public" | "unresolved"
+
+/**
+ * Resolves `hostname` and classifies what came back.
+ *
+ * This closes the gap left by `isPrivateHostname` alone: a public-looking DNS
+ * name can still resolve inward (misconfiguration or deliberate rebinding),
+ * and the fetch connects to whatever the resolver returns rather than to the
+ * string that was checked.
+ *
+ * "unresolved" is reported separately rather than folded into "public",
+ * because the safe answer differs by caller. `fetch` resolves independently of
+ * this lookup, so a name whose authoritative server answers SERVFAIL here and
+ * returns a private A record there would slip past a check that treats a
+ * failed lookup as safe. That matters where the hostname is untrusted and not
+ * where it is the operator's own.
+ */
+export async function classifyResolvedHostname(
+  hostname: string,
+): Promise<ResolvedHostnameClass> {
+  let addresses: string[]
+  try {
+    const results = await lookup(hostname, { all: true, verbatim: true })
+    addresses = results.map(r => r.address)
+  } catch {
+    return "unresolved"
+  }
+  if (addresses.length === 0) {
+    return "unresolved"
+  }
+  return addresses.some(address => isPrivateHostname(address))
+    ? "private"
+    : "public"
+}
+
+/** Convenience for callers that only care whether resolution went inward. */
+export async function isPrivateResolvedAddress(
+  hostname: string,
+): Promise<boolean> {
+  return (await classifyResolvedHostname(hostname)) === "private"
+}
+
 export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
   const hostname = new URL(endpoint).hostname
   if (isPrivateHostname(hostname)) {
@@ -152,6 +199,18 @@ export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
       status: 0,
       level: "warn",
       message: `Endpoint hostname "${hostname}" appears to be a private/internal address`,
+    }
+  }
+
+  // Only "private" blocks here. The endpoint being probed is the operator's
+  // own declared manifest endpoint, so a failed lookup is far more likely to
+  // be a typo or an outage than an attack, and letting fetch report the real
+  // network error is what makes this command useful.
+  if ((await classifyResolvedHostname(hostname)) === "private") {
+    return {
+      status: 0,
+      level: "warn",
+      message: `Endpoint hostname "${hostname}" resolves to a private/internal address`,
     }
   }
 

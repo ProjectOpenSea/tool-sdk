@@ -1,4 +1,5 @@
 import { isAddress } from "viem"
+import { isSecureAggregatorUrl } from "./aggregator-url.js"
 import { normalizeToolRegistryAddress } from "./tool-registry.js"
 
 const NUMERIC_STRING_RE = /^\d+$/
@@ -221,24 +222,6 @@ async function handleResponse(res: Response): Promise<CallerUsageReportResult> {
     `[tool-sdk] caller usage report failed (${res.status}): ${text}`,
   )
   return { outcome: "failed", detail: `HTTP ${res.status}` }
-}
-
-/**
- * The report carries an API key and payment attestation data, so it must
- * never travel in plaintext. Require `https`, allowing `http://localhost`
- * (and `127.0.0.1`) only for local development.
- */
-function isSecureAggregatorUrl(aggregatorUrl: string): boolean {
-  try {
-    const url = new URL(aggregatorUrl)
-    if (url.protocol === "https:") return true
-    return (
-      url.protocol === "http:" &&
-      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
-    )
-  } catch {
-    return false
-  }
 }
 
 /**

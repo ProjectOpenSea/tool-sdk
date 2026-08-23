@@ -1,4 +1,5 @@
 import { isAddress } from "viem"
+import { isSecureAggregatorUrl } from "./aggregator-url.js"
 
 const NUMERIC_STRING_RE = /^\d+$/
 
@@ -88,6 +89,15 @@ export function createX402UsageReporter(
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
   return async (event: X402UsageEvent): Promise<void> => {
+    // Same check the caller-side reporter applies to the same config field:
+    // the POST below carries `x-api-key`, so it must not go out over plaintext
+    // http.
+    if (!isSecureAggregatorUrl(aggregatorUrl)) {
+      console.error(
+        `[tool-sdk] refusing to send x402 usage report over insecure aggregatorUrl (https required): ${aggregatorUrl}`,
+      )
+      return
+    }
     if (!isAddress(event.callerAddress)) {
       console.error(`[tool-sdk] invalid callerAddress: ${event.callerAddress}`)
       return

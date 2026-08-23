@@ -1,8 +1,31 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  classifyResolvedHostname,
   isPrivateHostname,
+  isPrivateResolvedAddress,
   probeEndpoint,
 } from "../cli/commands/probe-endpoint.js"
+
+vi.mock("node:dns/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:dns/promises")>()
+  return { ...actual, lookup: vi.fn() }
+})
+
+async function mockResolves(addresses: string[]) {
+  const dns = await import("node:dns/promises")
+  ;(dns.lookup as ReturnType<typeof vi.fn>).mockResolvedValue(
+    addresses.map(address => ({
+      address,
+      family: address.includes(":") ? 6 : 4,
+    })),
+  )
+}
+
+beforeEach(async () => {
+  // Default: hostnames resolve to a public address, so tests that predate the
+  // resolve-and-check do not need to know about DNS at all.
+  await mockResolves(["93.184.216.34"])
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -344,5 +367,114 @@ describe("isPrivateHostname", () => {
     expect(isPrivateHostname("2606:4700::1")).toBe(false)
     // fe00:: is reserved-but-not-link-local prefix; must not match fc/fd/fe80
     expect(isPrivateHostname("fe00::1")).toBe(false)
+  })
+})
+
+describe("isPrivateResolvedAddress", () => {
+  it("returns false when every resolved address is public", async () => {
+    await mockResolves(["93.184.216.34"])
+    expect(await isPrivateResolvedAddress("example.com")).toBe(false)
+  })
+
+  it("returns true when any resolved address is private", async () => {
+    await mockResolves(["93.184.216.34", "10.0.0.5"])
+    expect(await isPrivateResolvedAddress("example.com")).toBe(true)
+  })
+
+  it("catches a public name whose A record points at loopback (localtest.me)", async () => {
+    await mockResolves(["127.0.0.1"])
+    expect(await isPrivateResolvedAddress("localtest.me")).toBe(true)
+  })
+
+  it("catches cloud metadata reached through a public name", async () => {
+    await mockResolves(["169.254.169.254"])
+    expect(await isPrivateResolvedAddress("metadata.example")).toBe(true)
+  })
+
+  it("returns false when resolution fails, letting fetch surface the real error", async () => {
+    const dns = await import("node:dns/promises")
+    ;(dns.lookup as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("ENOTFOUND"),
+    )
+    expect(await isPrivateResolvedAddress("nonexistent.example")).toBe(false)
+  })
+})
+
+describe("probeEndpoint resolve-and-check", () => {
+  it("warns without fetching when a public-looking hostname resolves inward", async () => {
+    await mockResolves(["127.0.0.1"])
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+
+    const result = await probeEndpoint(
+      "https://attacker-controlled.example/api",
+    )
+    expect(result.level).toBe("warn")
+    expect(result.message).toContain("resolves to a private/internal address")
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it("warns when a metadata address appears among several A records", async () => {
+    await mockResolves(["93.184.216.34", "169.254.169.254"])
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+
+    const result = await probeEndpoint("https://multi-homed.example/api")
+    expect(result.level).toBe("warn")
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it("still fetches when resolution fails", async () => {
+    const dns = await import("node:dns/promises")
+    ;(dns.lookup as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("ENOTFOUND"),
+    )
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    )
+
+    const result = await probeEndpoint("https://nonexistent.example/api")
+    expect(result.level).toBe("pass")
+    expect(result.status).toBe(401)
+  })
+})
+
+describe("classifyResolvedHostname", () => {
+  it("separates a failed lookup from a public one", async () => {
+    const dns = await import("node:dns/promises")
+    ;(dns.lookup as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("SERVFAIL"),
+    )
+    expect(await classifyResolvedHostname("broken.example")).toBe("unresolved")
+  })
+
+  it("treats an empty answer as unresolved rather than public", async () => {
+    await mockResolves([])
+    expect(await classifyResolvedHostname("empty.example")).toBe("unresolved")
+  })
+
+  it("reports public and private answers distinctly", async () => {
+    await mockResolves(["93.184.216.34"])
+    expect(await classifyResolvedHostname("example.com")).toBe("public")
+    await mockResolves(["10.0.0.5"])
+    expect(await classifyResolvedHostname("internal.example")).toBe("private")
+  })
+})
+
+describe("resolve-and-check covers IPv6", () => {
+  it("treats a unique-local IPv6 answer as private", async () => {
+    await mockResolves(["fc00::1"])
+    expect(await isPrivateResolvedAddress("v6.example")).toBe(true)
+  })
+
+  it("treats IPv6 loopback as private", async () => {
+    await mockResolves(["::1"])
+    expect(await isPrivateResolvedAddress("v6loop.example")).toBe(true)
+  })
+
+  it("treats a public IPv6 answer as public", async () => {
+    await mockResolves(["2606:2800:220:1:248:1893:25c8:1946"])
+    expect(await classifyResolvedHostname("v6pub.example")).toBe("public")
   })
 })

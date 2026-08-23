@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { z } from "zod/v4"
+import { createToolHandler } from "../lib/handler/index.js"
+import type { ManifestDefinition } from "../lib/manifest/index.js"
 import {
   CDP_X402_FACILITATOR_URL,
   cdpX402Gate,
@@ -626,6 +629,500 @@ describe("hostedX402Gate — settle()", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("hostedX402Gate replayGuard", () => {
+  const verifyOnlyFetch = () =>
+    vi.fn(async (url: string): Promise<Response> => {
+      if (url.endsWith("/verify")) {
+        return new Response(JSON.stringify({ isValid: true }), { status: 200 })
+      }
+      throw new Error(`unexpected url: ${url}`)
+    })
+
+  const paidRequest = (payload: unknown = examplePayload) =>
+    new Request("https://tool.example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": headerFor(payload) },
+    })
+
+  it("reserves the (payer, nonce) pair scoped by network and asset", async () => {
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const reserve = vi.fn().mockResolvedValue(true)
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: { reserve },
+    })
+
+    const response = await gate.check(paidRequest(), { gates: {} })
+
+    expect(response).toBeNull()
+    expect(reserve).toHaveBeenCalledWith(
+      `x402:base:${USDC_BASE_ADDRESS}:${examplePayload.payload.authorization.from}:${examplePayload.payload.authorization.nonce}`,
+    )
+  })
+
+  it("returns 402 without running the handler when the authorization is already claimed", async () => {
+    const fetchMock = verifyOnlyFetch()
+    vi.stubGlobal("fetch", fetchMock)
+    // A shared store: the first concurrent replay wins, the rest are rejected.
+    const claimed = new Set<string>()
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: {
+        reserve: async key => {
+          if (claimed.has(key)) return false
+          claimed.add(key)
+          return true
+        },
+      },
+    })
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => gate.check(paidRequest(), { gates: {} })),
+    )
+
+    const passed = results.filter(r => r === null)
+    const rejected = results.filter((r): r is Response => r !== null)
+    expect(passed).toHaveLength(1)
+    expect(rejected).toHaveLength(7)
+    for (const response of rejected) {
+      expect(response.status).toBe(402)
+      expect((await response.json()).error).toBe(
+        "payment_authorization_already_used",
+      )
+    }
+  })
+
+  it("fails closed with 402 when the authorization is malformed", async () => {
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const reserve = vi.fn().mockResolvedValue(true)
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: { reserve },
+    })
+    // A key derived from junk can never collide with a real authorization, so
+    // reserving it would report success while guarding nothing.
+    const malformed = [
+      { from: "0x", nonce: `0x${"00".repeat(32)}` },
+      { from: "not-an-address", nonce: `0x${"00".repeat(32)}` },
+      { from: "0x1111111111111111111111111111111111111111", nonce: "0x00" },
+    ]
+
+    for (const authorization of malformed) {
+      const response = await gate.check(
+        paidRequest({
+          ...examplePayload,
+          payload: { signature: "0xdead", authorization },
+        }),
+        { gates: {} },
+      )
+      expect(response?.status).toBe(402)
+      expect((await response?.json())?.error).toBe("invalid_payload")
+    }
+    expect(reserve).not.toHaveBeenCalled()
+  })
+
+  it("fails closed with 402 when reserve() throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: {
+        reserve: async () => {
+          throw new Error("redis unreachable")
+        },
+      },
+    })
+
+    // A store outage is indistinguishable from a replay, so deny rather than
+    // 500 or run the handler unguarded.
+    const response = await gate.check(paidRequest(), { gates: {} })
+
+    expect(response?.status).toBe(402)
+    expect((await response?.json())?.error).toBe(
+      "payment_authorization_already_used",
+    )
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[tool-sdk] replayGuard.reserve failed:",
+      expect.any(Error),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("fails closed with 402 when reserve() hangs", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    vi.useFakeTimers()
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      // A store that never answers must not hang the response.
+      replayGuard: { reserve: () => new Promise<boolean>(() => {}) },
+    })
+
+    try {
+      const pending = gate.check(paidRequest(), { gates: {} })
+      await vi.advanceTimersByTimeAsync(2_000)
+      const response = await pending
+
+      expect(response?.status).toBe(402)
+      expect((await response?.json())?.error).toBe(
+        "payment_authorization_already_used",
+      )
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[tool-sdk] replayGuard.reserve failed:",
+        expect.objectContaining({
+          message: expect.stringMatching(/timed out/),
+        }),
+      )
+    } finally {
+      vi.useRealTimers()
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("does not leak an unhandled rejection when reserve() rejects after timing out", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const rejectionSpy = vi.fn()
+    process.on("unhandledRejection", rejectionSpy)
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    let failLate: (err: Error) => void = () => {}
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: {
+        reserve: () =>
+          new Promise<boolean>((_resolve, reject) => {
+            failLate = reject
+          }),
+      },
+    })
+
+    try {
+      vi.useFakeTimers()
+      const pending = gate.check(paidRequest(), { gates: {} })
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect((await pending)?.status).toBe(402)
+      vi.useRealTimers()
+
+      // The losing side of the race settles after nothing is awaiting it.
+      // `Promise.race` still holds a reaction on it, so this must stay quiet
+      // even if the timeout is later rewritten without a race.
+      failLate(new Error("store answered too late"))
+      await new Promise(resolve => setImmediate(resolve))
+
+      expect(rejectionSpy).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      process.off("unhandledRejection", rejectionSpy)
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("fails closed with 402 when the payload carries no identifiable authorization", async () => {
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const reserve = vi.fn().mockResolvedValue(true)
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: { reserve },
+    })
+
+    const response = await gate.check(
+      paidRequest({ ...examplePayload, payload: { signature: "0xdead" } }),
+      { gates: {} },
+    )
+
+    expect(response?.status).toBe(402)
+    expect((await response?.json())?.error).toBe("invalid_payload")
+    expect(reserve).not.toHaveBeenCalled()
+  })
+
+  it("does not reserve anything when no guard is configured", async () => {
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const gate = payaiX402Gate({ recipient: RECIPIENT, amountUsdc: "0.01" })
+
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () => gate.check(paidRequest(), { gates: {} })),
+    )
+
+    // Documents the unguarded default: every replay passes verification.
+    expect(results.every(r => r === null)).toBe(true)
+  })
+
+  const gateWithSettleOutcome = (
+    settleOutcome: () => Promise<Response>,
+    release: (key: string) => Promise<void>,
+  ) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string): Promise<Response> => {
+        if (url.endsWith("/verify")) {
+          return new Response(JSON.stringify({ isValid: true }), {
+            status: 200,
+          })
+        }
+        if (url.endsWith("/settle")) return settleOutcome()
+        throw new Error(`unexpected url: ${url}`)
+      }),
+    )
+    return payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: { reserve: async () => true, release },
+    })
+  }
+
+  const expectedKey = () =>
+    `x402:base:${USDC_BASE_ADDRESS}:${examplePayload.payload.authorization.from}:${examplePayload.payload.authorization.nonce}`
+
+  it("keeps the reservation when settlement fails ambiguously", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    // A transport error can just as easily mean the response was lost after
+    // the facilitator broadcast. Releasing would let a replay claim the key
+    // while that transaction is still pending.
+    const gate = gateWithSettleOutcome(async () => {
+      throw new Error("network unreachable")
+    }, release)
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /network unreachable/,
+    )
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it("keeps the reservation when the facilitator returns a 5xx", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    const gate = gateWithSettleOutcome(
+      async () => new Response("boom", { status: 500 }),
+      release,
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /\/settle returned 500/,
+    )
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it("keeps the reservation when the facilitator rejects the authorization", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    // The nonce is spent, so no retry can ever settle it. Releasing would
+    // only let another replay claim the key and fail again.
+    const gate = gateWithSettleOutcome(
+      async () =>
+        new Response(JSON.stringify({ success: false, error: "nonce used" }), {
+          status: 200,
+        }),
+      release,
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /reported failure/,
+    )
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it("releases the reservation when the facilitator returns a 429", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    // Throttling means the authorization was never looked at, so it is still
+    // settleable and the caller should be able to retry with it.
+    const gate = gateWithSettleOutcome(
+      async () => new Response("slow down", { status: 429 }),
+      release,
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /\/settle returned 429/,
+    )
+
+    expect(release).toHaveBeenCalledWith(expectedKey())
+  })
+
+  it("keeps the reservation when the facilitator returns a 4xx", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    const gate = gateWithSettleOutcome(
+      async () => new Response("already spent", { status: 400 }),
+      release,
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /\/settle returned 400/,
+    )
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it("keeps the reservation when settlement succeeds", async () => {
+    const release = vi.fn().mockResolvedValue(undefined)
+    const gate = gateWithSettleOutcome(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            transaction: "0xabc",
+            network: "base",
+          }),
+          { status: 200 },
+        ),
+      release,
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+
+    await gate.check(ctx.request, ctx as never)
+    await gate.settle?.(ctx as never)
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it("surfaces the settlement error without waiting on a hung release()", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const gate = gateWithSettleOutcome(
+      async () => new Response("slow down", { status: 429 }),
+      // A store that never answers must not stall the response after the
+      // handler has already run.
+      () => new Promise<void>(() => {}),
+    )
+    const ctx = { gates: {}, request: paidRequest() }
+    await gate.check(ctx.request, ctx as never)
+    vi.useFakeTimers()
+
+    try {
+      const settling = gate.settle?.(ctx as never)
+      const assertion = expect(settling).rejects.toThrow(
+        /\/settle returned 429/,
+      )
+      await vi.advanceTimersByTimeAsync(2_000)
+      await assertion
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[tool-sdk] replayGuard.release failed:",
+        expect.objectContaining({
+          message: expect.stringMatching(/timed out/),
+        }),
+      )
+    } finally {
+      vi.useRealTimers()
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("surfaces the settlement error even when release() throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string): Promise<Response> => {
+        if (url.endsWith("/verify")) {
+          return new Response(JSON.stringify({ isValid: true }), {
+            status: 200,
+          })
+        }
+        return new Response("slow down", { status: 429 })
+      }),
+    )
+    const gate = payaiX402Gate({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: {
+        reserve: async () => true,
+        release: async () => {
+          throw new Error("store unreachable")
+        },
+      },
+    })
+    const ctx = { gates: {}, request: paidRequest() }
+    await gate.check(ctx.request, ctx as never)
+
+    await expect(gate.settle?.(ctx as never)).rejects.toThrow(
+      /\/settle returned 429/,
+    )
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[tool-sdk] replayGuard.release failed:",
+      expect.any(Error),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("keeps the reservation when the tool handler throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const release = vi.fn().mockResolvedValue(undefined)
+    // Releasing here would let a caller who can force the handler to fail
+    // reuse one authorization for unlimited handler runs.
+    const handler = createToolHandler({
+      manifest: {
+        type: "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
+        name: "paid-tool",
+        description: "A paid tool",
+        endpoint: "https://tool.example.com",
+        inputs: {},
+        outputs: {},
+        creatorAddress: RECIPIENT,
+      } as ManifestDefinition,
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ result: z.string() }),
+      gates: [
+        payaiX402Gate({
+          recipient: RECIPIENT,
+          amountUsdc: "0.01",
+          replayGuard: { reserve: async () => true, release },
+        }),
+      ],
+      handler: async () => {
+        throw new Error("upstream API down")
+      },
+    })
+
+    const response = await handler(
+      new Request("https://tool.example.com/api", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PAYMENT": headerFor(examplePayload),
+        },
+        body: JSON.stringify({ query: "test" }),
+      }),
+    )
+
+    expect(response.status).toBe(500)
+    expect(release).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it("threads defineToolPaywall's replayGuard through to the inner gate", async () => {
+    vi.stubGlobal("fetch", verifyOnlyFetch())
+    const reserve = vi.fn().mockResolvedValue(false)
+    const { gate } = defineToolPaywall({
+      recipient: RECIPIENT,
+      amountUsdc: "0.01",
+      replayGuard: { reserve },
+    })
+
+    const response = await gate.check(paidRequest(), { gates: {} })
+
+    expect(reserve).toHaveBeenCalledOnce()
+    expect(response?.status).toBe(402)
+    expect((await response?.json())?.error).toBe(
+      "payment_authorization_already_used",
+    )
   })
 })
 

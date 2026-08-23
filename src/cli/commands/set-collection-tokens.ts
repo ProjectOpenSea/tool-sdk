@@ -13,7 +13,12 @@ import {
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+  WALLET_PROVIDER_OPTION_DESCRIPTION,
+} from "./shared.js"
 
 interface SetCollectionTokensOptions {
   network: string
@@ -31,7 +36,7 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
   .argument("<tokenIds...>", "Token IDs to gate on")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
-  .option("--rpc-url <url>", "RPC endpoint")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .option("--dry-run", "Print encoded calldata without transacting")
   .action(
     async (
@@ -88,17 +93,14 @@ export const setCollectionTokensCommand = new Command("set-collection-tokens")
           )
         : await createWalletFromEnv()
 
-      const walletClient = await walletAdapterToClient(
-        adapter,
-        chain,
-        options.rpcUrl,
-      )
+      const rpcUrl = resolveRpcUrl(options.rpcUrl, adapter, chain)
+      const walletClient = await walletAdapterToClient(adapter, chain, rpcUrl)
 
       const client = new ERC1155OwnerPredicateClient({
         chain,
         walletClient,
         predicateAddress: predicateAddr,
-        rpcUrl: options.rpcUrl,
+        rpcUrl,
       })
 
       try {

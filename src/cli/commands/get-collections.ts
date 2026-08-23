@@ -8,7 +8,11 @@ import {
 import { ERC721OwnerPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+} from "./shared.js"
 
 interface GetCollectionsOptions {
   network: string
@@ -19,14 +23,15 @@ export const getCollectionsCommand = new Command("get-collections")
   .description("Read the ERC-721 collection gate list for a registered tool")
   .argument("<toolId>", "Tool ID (uint256)")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
-  .option("--rpc-url <url>", "RPC endpoint")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .action(async (toolIdRaw: string, options: GetCollectionsOptions) => {
     const toolId = parseToolId(toolIdRaw)
     const chain = getChain(options.network)
+    const rpcUrl = resolveRpcUrl(options.rpcUrl, undefined, chain)
 
     const registry = new ToolRegistryClient({
       chain,
-      rpcUrl: options.rpcUrl,
+      rpcUrl,
     })
 
     const toolConfig = await registry.getToolConfig(toolId)
@@ -46,7 +51,7 @@ export const getCollectionsCommand = new Command("get-collections")
       const client = new ERC721OwnerPredicateClient({
         chain,
         predicateAddress: predicateAddr,
-        rpcUrl: options.rpcUrl,
+        rpcUrl,
       })
 
       const collections = await client.getCollections(toolId)

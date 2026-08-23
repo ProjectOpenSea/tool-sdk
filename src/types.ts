@@ -5,7 +5,9 @@ export type GateMiddleware = {
    * output validates against the schema. Gates that move money (like x402)
    * settle here. The hook runs synchronously before the response is returned,
    * so a slow `settle()` adds latency to the response. A `settle()` that
-   * throws is logged but does not change the response.
+   * throws is always logged; whether it also fails the response is decided by
+   * `ToolHandlerConfig.settlement` (`"required"`, the default, withholds the
+   * output; `"best-effort"` returns it anyway).
    */
   settle?(ctx: ToolContext): Promise<void>
 }
@@ -25,6 +27,13 @@ export interface InvocationEvent {
   settlementTxHash?: string
   /** Chain ID where the x402 settlement tx was mined. */
   settlementChainId?: number
+  /**
+   * Set when a gate's `settle()` threw. Under `settlement: "required"` the
+   * caller got a 502 with no output, but an ambiguous facilitator failure may
+   * still have moved money, so the event fires anyway: it is the record an
+   * operator needs to reconcile or refund.
+   */
+  settlementFailed?: boolean
   /** Resolved tool name from the manifest. */
   toolName?: string
   latencyMs: number

@@ -1,4 +1,5 @@
 import type { InvocationEvent } from "../../types.js"
+import { isSecureAggregatorUrl } from "./aggregator-url.js"
 
 const NUMERIC_STRING_RE = /^\d+$/
 
@@ -97,6 +98,16 @@ export function createEip3009UsageReporter(
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
   return async (event: InvocationEvent): Promise<void> => {
+    // Same check the caller-side reporter applies to the same config field:
+    // every POST below carries `x-api-key`, and the EIP-3009 branch also
+    // forwards the caller's signed authorization, so neither may go out over
+    // plaintext http.
+    if (!isSecureAggregatorUrl(aggregatorUrl)) {
+      console.error(
+        `[tool-sdk] refusing to send usage report over insecure aggregatorUrl (https required): ${aggregatorUrl}`,
+      )
+      return
+    }
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     timer = setTimeout(() => controller.abort(), timeoutMs)

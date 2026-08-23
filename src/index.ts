@@ -89,6 +89,7 @@ export type {
   HostedX402GateConfig,
   ToolPaywallConfig,
   X402Network,
+  X402ReplayGuard,
 } from "./lib/middleware/x402-facilitators.js"
 export {
   CDP_X402_FACILITATOR_URL,

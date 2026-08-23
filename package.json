@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.28.5",
+  "version": "0.29.0",
   "type": "module",
   "description": "SDK and CLI for building ERC-8257 compliant AI agent tools",
   "repository": {
@@ -36,11 +36,11 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc -p tsconfig.check.json"
   },
   "dependencies": {
     "@clack/prompts": "0.10.1",
-    "@opensea/wallet-adapters": "^0.3.3",
+    "@opensea/wallet-adapters": "^0.3.5",
     "@x402/core": "2.15.0",
     "@x402/fetch": "2.15.0",
     "canonicalize": "2.1.0",

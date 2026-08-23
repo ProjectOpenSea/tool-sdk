@@ -10,7 +10,12 @@ import {
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+  WALLET_PROVIDER_OPTION_DESCRIPTION,
+} from "./shared.js"
 
 interface UpdateMetadataOptions {
   toolId: string
@@ -28,7 +33,7 @@ export const updateMetadataCommand = new Command("update-metadata")
   .option("--metadata <url>", "New metadata URI (required)")
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
-  .option("--rpc-url <url>", "RPC endpoint for gas estimation and tx broadcast")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .option("--dry-run", "Print summary without transacting")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(async (options: UpdateMetadataOptions) => {
@@ -104,7 +109,7 @@ export const updateMetadataCommand = new Command("update-metadata")
       ? createWalletForProvider(options.walletProvider as WalletProvider)
       : createWalletFromEnv()
     const address = (await wallet.getAddress()).toLowerCase()
-    const rpcUrl = options.rpcUrl ?? wallet.getRpcUrl?.()
+    const rpcUrl = resolveRpcUrl(options.rpcUrl, wallet, chain)
 
     console.log(pc.cyan(`\nWallet: ${address} (${wallet.name})`))
     console.log(pc.cyan("Verifying ownership..."))

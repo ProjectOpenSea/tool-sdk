@@ -185,4 +185,30 @@ describe("createX402UsageReporter", () => {
     )
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  // The report carries `x-api-key`. reportCallerX402Usage has refused a
+  // plaintext aggregatorUrl since it was written; this reporter posts the same
+  // header to the same config field and did not.
+  it("refuses to send over an insecure http aggregatorUrl", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const report = createX402UsageReporter(
+      makeConfig({ aggregatorUrl: "http://evil.example/usage" }),
+    )
+    await report(makeEvent())
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("insecure aggregatorUrl"),
+    )
+  })
+
+  it("allows http://localhost for local dev", async () => {
+    const report = createX402UsageReporter(
+      makeConfig({ aggregatorUrl: "http://localhost:3000/usage" }),
+    )
+    await report(makeEvent())
+
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    expect(fetchSpy.mock.calls[0]![0]).toBe("http://localhost:3000/usage")
+  })
 })

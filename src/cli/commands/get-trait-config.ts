@@ -7,7 +7,11 @@ import {
 } from "../../lib/onchain/chains.js"
 import { TraitGatedPredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+} from "./shared.js"
 
 interface GetTraitConfigOptions {
   network: string
@@ -23,7 +27,7 @@ export const getTraitConfigCommand = new Command("get-trait-config")
     "--predicate-address <address>",
     "Override the canonical TraitGatedPredicate address",
   )
-  .option("--rpc-url <url>", "RPC endpoint")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .action(async (toolIdRaw: string, options: GetTraitConfigOptions) => {
     const toolId = parseToolId(toolIdRaw)
 
@@ -55,7 +59,7 @@ export const getTraitConfigCommand = new Command("get-trait-config")
     const client = new TraitGatedPredicateClient({
       chain,
       predicateAddress,
-      rpcUrl: options.rpcUrl,
+      rpcUrl: resolveRpcUrl(options.rpcUrl, undefined, chain),
     })
 
     const config = await client.getToolTraitConfig(toolId)

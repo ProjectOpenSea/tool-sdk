@@ -7,7 +7,11 @@ import {
 } from "../../lib/onchain/chains.js"
 import { ERC20BalancePredicateClient } from "../../lib/onchain/predicate-clients.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+} from "./shared.js"
 
 interface GetERC20ConfigOptions {
   network: string
@@ -25,7 +29,7 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
     "Override the canonical ERC20BalancePredicate address",
   )
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
-  .option("--rpc-url <url>", "RPC endpoint")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .action(async (toolIdRaw: string, options: GetERC20ConfigOptions) => {
     const toolId = parseToolId(toolIdRaw)
 
@@ -57,7 +61,7 @@ export const getERC20ConfigCommand = new Command("get-erc20-config")
     const client = new ERC20BalancePredicateClient({
       chain,
       predicateAddress,
-      rpcUrl: options.rpcUrl,
+      rpcUrl: resolveRpcUrl(options.rpcUrl, undefined, chain),
     })
 
     const config = await client.getToolERC20Config(toolId)

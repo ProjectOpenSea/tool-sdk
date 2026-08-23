@@ -46,6 +46,89 @@ const NETWORK_USDC = {
 
 export type X402Network = keyof typeof NETWORK_CHAIN_IDS
 
+/**
+ * Hard timeout for replay-guard storage calls. Both sit on the request's
+ * critical path, and the recommended backings (Cloudflare KV/D1, Postgres) can
+ * stall, so a hung store must not hang the response. Tighter than the
+ * facilitator budget: this is a single key read/write, not a chain interaction.
+ */
+const REPLAY_GUARD_TIMEOUT_MS = 2_000
+
+/**
+ * Reject if `promise` has not settled within {@link REPLAY_GUARD_TIMEOUT_MS}.
+ * Callers treat a rejection as store-unavailable, which fails closed on
+ * `reserve` and is logged and swallowed on `release`.
+ */
+export async function withReplayGuardTimeout<T>(
+  promise: Promise<T>,
+  operation: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `replayGuard.${operation} timed out after ${REPLAY_GUARD_TIMEOUT_MS}ms`,
+              ),
+            ),
+          REPLAY_GUARD_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * Single-use guard over payment authorizations, backed by storage you supply
+ * (Redis, Cloudflare KV, D1, Postgres...).
+ *
+ * Without one, nothing stops a caller replaying one signed authorization
+ * across N concurrent requests: the facilitator's `/verify` is stateless and
+ * only detects a spent nonce once it is onchain, so every concurrent verify
+ * passes, every handler runs, and only one settlement can ever land. The
+ * others fail, having already consumed your handler, and under
+ * `settlement: "best-effort"` they also return paid output.
+ *
+ * Must be backed by storage shared across every instance of your tool, and
+ * `reserve` must be atomic (e.g. Redis `SET NX`, KV compare-and-set). An
+ * in-process `Set` only protects a single instance and gives no protection on
+ * serverless, where concurrent requests land in separate isolates.
+ */
+export interface X402ReplayGuard {
+  /**
+   * Claim `key` for this request. Return `true` if the caller may proceed,
+   * `false` if the authorization is already claimed (the gate then returns
+   * 402 and the handler never runs).
+   *
+   * Back this with a TTL rather than growing the set forever, but the TTL must
+   * cover the longest `validBefore` window you accept: the token contract
+   * honors the authorization until then, so a key that expires first lets a
+   * late replay claim it again.
+   *
+   * A reservation is held for its full TTL if the handler itself throws or
+   * errors: the caller is not charged, but must sign a new authorization to
+   * retry. Releasing there would let a caller who can make the handler fail
+   * reuse one authorization to run it repeatedly, which is the amplification
+   * this guard exists to stop.
+   */
+  reserve(key: string): Promise<boolean>
+  /**
+   * Release a reservation when settlement failed in a way that left the nonce
+   * unspent (a network error, or a facilitator 5xx or 429), so the caller can retry
+   * with the same authorization. Not called when the facilitator answered
+   * authoritatively: a spent nonce will never settle, so the key is held until
+   * its TTL expires. Omit this and any failed settlement burns the
+   * authorization: the caller must sign a new one.
+   */
+  release?(key: string): Promise<void>
+}
+
 export interface HostedX402GateConfig {
   recipient: `0x${string}`
   /**
@@ -66,6 +149,13 @@ export interface HostedX402GateConfig {
    * this only if you are pinning to a specific facilitator instance.
    */
   facilitatorUrl?: string
+  /**
+   * Enforce that each payment authorization is used at most once. Strongly
+   * recommended for any tool whose handler is expensive to run, see
+   * {@link X402ReplayGuard}. Omitted by default because it needs storage the
+   * SDK cannot provide portably.
+   */
+  replayGuard?: X402ReplayGuard
 }
 
 export interface CdpX402GateConfig extends HostedX402GateConfig {
@@ -182,7 +272,11 @@ function hostedX402Gate(
   // settlement.
   const stashedByCtx = new WeakMap<
     Partial<ToolContext>,
-    { paymentPayload: PaymentPayload; requirements: PaymentRequirementsV1 }
+    {
+      paymentPayload: PaymentPayload
+      requirements: PaymentRequirementsV1
+      replayKey?: string
+    }
   >()
 
   return {
@@ -296,10 +390,51 @@ function hostedX402Gate(
         )
       }
 
+      // Claim before the handler runs so concurrent replays can't each
+      // produce paid output. After /verify: junk must not fill the store.
+      let replayKey: string | undefined
+      if (config.replayGuard) {
+        replayKey = authorizationReplayKey(paymentPayload, network, asset)
+        if (!replayKey) {
+          // Fail closed: an unidentifiable authorization can't be held to
+          // the single-use invariant the operator asked for.
+          return Response.json(
+            {
+              x402Version: 1,
+              error: "invalid_payload",
+              accepts: [requirements],
+            },
+            { status: 402 },
+          )
+        }
+        let reserved: boolean
+        try {
+          reserved = await withReplayGuardTimeout(
+            config.replayGuard.reserve(replayKey),
+            "reserve",
+          )
+        } catch (err) {
+          // Fail closed: a store outage is indistinguishable from a replay,
+          // and guessing "not a replay" is the expensive guess.
+          console.error("[tool-sdk] replayGuard.reserve failed:", err)
+          reserved = false
+        }
+        if (!reserved) {
+          return Response.json(
+            {
+              x402Version: 1,
+              error: "payment_authorization_already_used",
+              accepts: [requirements],
+            },
+            { status: 402 },
+          )
+        }
+      }
+
       if (ctx.gates) {
         ctx.gates.x402 = { paid: true, payer: data.payer }
       }
-      stashedByCtx.set(ctx, { paymentPayload, requirements })
+      stashedByCtx.set(ctx, { paymentPayload, requirements, replayKey })
       return null
     },
     async settle(ctx: ToolContext): Promise<void> {
@@ -315,8 +450,8 @@ function hostedX402Gate(
       // Asymmetric with check() by design: there, a createAuthHeaders
       // throw is caught and surfaced as a 502 to the caller. Here, the
       // throw propagates up to createToolHandler's settle catch and
-      // surfaces as a "[tool-sdk] gate.settle failed:" log. The response
-      // (already a successful 200) is unchanged either way.
+      // surfaces as a "[tool-sdk] gate.settle failed:" log, which fails the
+      // response only under `settlement: "required"`.
       let authHeaders: Record<string, string> = {}
       if (config.createAuthHeaders) {
         authHeaders = await config.createAuthHeaders()
@@ -327,6 +462,10 @@ function hostedX402Gate(
         () => controller.abort(),
         FACILITATOR_TIMEOUT_MS,
       )
+
+      // Whether the failure below proves the facilitator never broadcast a
+      // transaction for this authorization.
+      let unbroadcast = false
 
       try {
         const res = await fetch(`${facilitatorUrl}/settle`, {
@@ -343,6 +482,10 @@ function hostedX402Gate(
           signal: controller.signal,
         })
         if (!res.ok) {
+          // Throttling is refused before the request is processed, so the
+          // authorization is untouched. Any other status leaves open that a
+          // transaction is already in flight.
+          if (res.status === 429) unbroadcast = true
           // Truncate the upstream body so a verbose facilitator error
           // (potentially echoing wallet addresses, nonces, or internal
           // state) does not flood operator log aggregation.
@@ -360,6 +503,20 @@ function hostedX402Gate(
         if (ctx.gates?.x402 && body.transaction) {
           ctx.gates.x402.settlementTxHash = body.transaction
         }
+      } catch (err) {
+        // Hand the key back only when the authorization is provably untouched.
+        // Must not mask the settlement error.
+        if (unbroadcast && stashed.replayKey && config.replayGuard?.release) {
+          try {
+            await withReplayGuardTimeout(
+              config.replayGuard.release(stashed.replayKey),
+              "release",
+            )
+          } catch (releaseErr) {
+            console.error("[tool-sdk] replayGuard.release failed:", releaseErr)
+          }
+        }
+        throw err
       } finally {
         clearTimeout(timeoutId)
       }
@@ -383,6 +540,11 @@ export interface ToolPaywallConfig {
   maxTimeoutSeconds?: number
   resource?: string
   facilitatorUrl?: string
+  /**
+   * Enforce that each payment authorization is used at most once. See
+   * {@link X402ReplayGuard}.
+   */
+  replayGuard?: X402ReplayGuard
   /**
    * Called after the facilitator confirms settlement. Use for telemetry,
    * logging, or post-payment side-effects. Errors are caught and logged
@@ -452,6 +614,7 @@ export function defineToolPaywall(config: ToolPaywallConfig): {
       maxTimeoutSeconds: config.maxTimeoutSeconds,
       resource: config.resource,
       facilitatorUrl: config.facilitatorUrl,
+      replayGuard: config.replayGuard,
     }
     cachedRecipient = recipient
     cachedGate =
@@ -542,6 +705,47 @@ function safeBase64Decode(data: string): string {
     return globalThis.atob(data)
   }
   return Buffer.from(data, "base64").toString("utf-8")
+}
+
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
+const NONCE_PATTERN = /^0x[0-9a-fA-F]{64}$/
+
+/**
+ * Stable identity of an EIP-3009 authorization: the `(payer, nonce)` pair the
+ * token contract itself treats as single-use, scoped by network and asset so
+ * one guard store can serve several gates.
+ *
+ * The key format is `x402:${network}:${asset}:${from}:${nonce}`, with `from`
+ * and `nonce` lowercased. A custom gate sharing a `replayGuard` store with the
+ * built-in gates must derive keys through this function rather than
+ * reimplementing the format.
+ *
+ * Returns `undefined` unless `from` and `nonce` are well-formed hex of the
+ * lengths the token contract enforces. A malformed pair would key an entry that
+ * no real authorization can ever collide with, making the guard ineffective
+ * rather than merely imprecise.
+ *
+ * EVM-only, matching the `exact` scheme on the networks these gates support. A
+ * non-EVM authorization format would need its own derivation rather than
+ * loosening these patterns.
+ */
+export function authorizationReplayKey(
+  paymentPayload: { payload: unknown },
+  network: string,
+  asset: string,
+): string | undefined {
+  const authorization = (
+    paymentPayload.payload as
+      | { authorization?: { from?: unknown; nonce?: unknown } }
+      | null
+      | undefined
+  )?.authorization
+  const from = authorization?.from
+  const nonce = authorization?.nonce
+  if (typeof from !== "string" || typeof nonce !== "string") return undefined
+  if (!ADDRESS_PATTERN.test(from) || !NONCE_PATTERN.test(nonce))
+    return undefined
+  return `x402:${network}:${asset}:${from.toLowerCase()}:${nonce.toLowerCase()}`
 }
 
 function canonicalResource(url: string): string {

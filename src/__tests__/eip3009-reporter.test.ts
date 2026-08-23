@@ -357,4 +357,59 @@ describe("createEip3009UsageReporter", () => {
       createEip3009UsageReporter(makeConfig({ chainId: 0 })),
     ).toThrow("chainId must be a positive integer")
   })
+
+  // Every branch of this reporter sends `x-api-key`, and the EIP-3009 branch
+  // forwards the caller's signed authorization too. reportCallerX402Usage has
+  // refused a plaintext aggregatorUrl since it was written; this one did not.
+  it("refuses to send over an insecure http aggregatorUrl", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const reporter = createEip3009UsageReporter(
+      makeConfig({ aggregatorUrl: "http://evil.example/usage" }),
+    )
+    await reporter(
+      makeEvent({
+        paid: true,
+        settlementTxHash:
+          "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+        payer: PAYER_ADDRESS,
+      }),
+    )
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("insecure aggregatorUrl"),
+    )
+  })
+
+  it("refuses the EIP-3009 branch over an insecure http aggregatorUrl too", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const reporter = createEip3009UsageReporter(
+      makeConfig({ aggregatorUrl: "http://evil.example/usage" }),
+    )
+    await reporter(
+      makeEvent({
+        callerAddress: CALLER_ADDRESS,
+        callerAuthorization: makeCallerAuthorization(),
+      }),
+    )
+
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("allows http://localhost for local dev", async () => {
+    const reporter = createEip3009UsageReporter(
+      makeConfig({ aggregatorUrl: "http://localhost:3000/usage" }),
+    )
+    await reporter(
+      makeEvent({
+        paid: true,
+        settlementTxHash:
+          "0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1",
+        payer: PAYER_ADDRESS,
+      }),
+    )
+
+    expect(mockFetch).toHaveBeenCalledOnce()
+    expect(mockFetch.mock.calls[0]![0]).toBe("http://localhost:3000/usage")
+  })
 })

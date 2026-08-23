@@ -162,6 +162,110 @@ describe("paidPredicateGate", () => {
     expect(ctx.gates?.x402).toEqual({ paid: true, payer: TEST_CALLER })
   })
 
+  it("rejects a replayed authorization with 402 when a replayGuard is configured", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    // Every /verify passes, so the reservation is the only thing rejecting the
+    // replay. Not ordered mocks: both checks must see the same response.
+    mockFetch.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ isValid: true, payer: TEST_CALLER }), {
+          status: 200,
+        }),
+    )
+    const claimed = new Set<string>()
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      replayGuard: {
+        reserve: async key => {
+          if (claimed.has(key)) return false
+          claimed.add(key)
+          return true
+        },
+      },
+    })
+    const header = makeXPaymentHeader()
+    const makeRequest = () =>
+      new Request("https://example.com/api", {
+        method: "POST",
+        headers: { "X-Payment": header },
+      })
+
+    const first = await gate.check(makeRequest(), { gates: {} })
+    const second = await gate.check(makeRequest(), { gates: {} })
+
+    expect(first).toBeNull()
+    expect(second?.status).toBe(402)
+    expect((await second?.json())?.error).toBe(
+      "payment_authorization_already_used",
+    )
+  })
+
+  it("releases the reservation when the facilitator throttles settlement", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    // A 429 is refused before processing, so the authorization is untouched.
+    // An ambiguous failure keeps the claim instead.
+    mockFetch.mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+    const release = vi.fn().mockResolvedValue(undefined)
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      replayGuard: { reserve: async () => true, release },
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    await gate.check(request, ctx)
+    await expect(gate.settle?.(ctx as ToolContext)).rejects.toThrow(
+      /\/settle returned 429/,
+    )
+
+    expect(release).toHaveBeenCalledWith(
+      expect.stringContaining(TEST_CALLER.toLowerCase()),
+    )
+  })
+
+  it("keeps the reservation when the facilitator rejects the authorization", async () => {
+    const { paidPredicateGate } = await import(
+      "../lib/middleware/predicate-gate.js"
+    )
+    mockFacilitatorVerifySuccess()
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: "nonce used" }), {
+        status: 200,
+      }),
+    )
+    const release = vi.fn().mockResolvedValue(undefined)
+    const gate = paidPredicateGate({
+      toolId: TEST_TOOL_ID,
+      operatorAddress: TEST_OPERATOR,
+      amountUsdc: "1.00",
+      replayGuard: { reserve: async () => true, release },
+    })
+    const ctx: Partial<ToolContext> = { gates: {} }
+    const request = new Request("https://example.com/api", {
+      method: "POST",
+      headers: { "X-Payment": makeXPaymentHeader() },
+    })
+
+    await gate.check(request, ctx)
+    await expect(gate.settle?.(ctx as ToolContext)).rejects.toThrow(
+      /reported failure/,
+    )
+
+    expect(release).not.toHaveBeenCalled()
+  })
+
   it("returns 403 when predicate denies access (no payment settled)", async () => {
     const { paidPredicateGate } = await import(
       "../lib/middleware/predicate-gate.js"

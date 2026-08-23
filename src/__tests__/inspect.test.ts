@@ -1,5 +1,5 @@
 import { encodeAbiParameters } from "viem"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { computeManifestHash } from "../lib/onchain/hash.js"
 
 const VALID_MANIFEST = {
@@ -24,6 +24,21 @@ const mockGetToolConfig = vi.fn(async () => ({
 const mockTryHasAccess = vi.fn(async () => ({ ok: true, granted: true }))
 
 const registryCtorConfigs: Record<string, unknown>[] = []
+
+vi.mock("node:dns/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:dns/promises")>()
+  return { ...actual, lookup: vi.fn() }
+})
+
+async function mockResolves(addresses: string[]) {
+  const dns = await import("node:dns/promises")
+  ;(dns.lookup as ReturnType<typeof vi.fn>).mockResolvedValue(
+    addresses.map(address => ({
+      address,
+      family: address.includes(":") ? 6 : 4,
+    })),
+  )
+}
 
 vi.mock("../lib/onchain/registry.js", () => ({
   ToolRegistryClient: class {
@@ -56,6 +71,12 @@ afterEach(() => {
 })
 
 describe("inspect command", () => {
+  beforeEach(async () => {
+    // Default: metadata hosts resolve to a public address, so tests that
+    // predate the resolve-and-check do not need to know about DNS.
+    await mockResolves(["93.184.216.34"])
+  })
+
   it("prints onchain config and cross-checks manifest hash", async () => {
     vi.stubGlobal(
       "fetch",
@@ -512,6 +533,95 @@ describe("inspect command", () => {
     expect(allOutput).toContain("FAIL")
     expect(allOutput).toContain("405")
 
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("refuses to fetch a metadata URI whose public hostname resolves inward", async () => {
+    // The lexical guard only sees the hostname as written. localtest.me is a
+    // public name whose A record is 127.0.0.1, which is the bypass reported in
+    // ProjectOpenSea/tool-sdk#13 and demonstrated against 0.28.5.
+    await mockResolves(["127.0.0.1"])
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      metadataURI: "http://localtest.me:8799/manifest.json",
+      manifestHash: MANIFEST_HASH,
+      accessPredicate: "0x0000000000000000000000000000000000000000",
+    })
+
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    try {
+      await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+    } catch {
+      // expected process.exit
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("resolves to a private/internal address")
+    // Name the host that was refused, so the message stays actionable if the
+    // wording is ever reworked.
+    expect(errorOutput).toContain("localtest.me")
+
+    exitSpy.mockRestore()
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it("refuses to fetch a metadata URI whose hostname cannot be resolved", async () => {
+    // fetch resolves independently of the lookup, so a nameserver that answers
+    // SERVFAIL here and returns a private address to undici would defeat a
+    // check that treated a failed lookup as safe. metadataURI is untrusted.
+    const dns = await import("node:dns/promises")
+    ;(dns.lookup as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("SERVFAIL"),
+    )
+    mockGetToolConfig.mockResolvedValueOnce({
+      creator: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      metadataURI: "http://unresolvable.example/manifest.json",
+      manifestHash: MANIFEST_HASH,
+      accessPredicate: "0x0000000000000000000000000000000000000000",
+    })
+
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(VALID_MANIFEST), { status: 200 }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called")
+    }) as never)
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { inspectCommand } = await import("../cli/commands/inspect.js")
+
+    try {
+      await inspectCommand.parseAsync(["node", "inspect", "--tool-id", "1"])
+    } catch {
+      // expected process.exit
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const errorOutput = errorSpy.mock.calls.map(c => c[0]).join("\n")
+    expect(errorOutput).toContain("could not be resolved")
+    expect(errorOutput).toContain("unresolvable.example")
+
+    exitSpy.mockRestore()
     logSpy.mockRestore()
     errorSpy.mockRestore()
   })

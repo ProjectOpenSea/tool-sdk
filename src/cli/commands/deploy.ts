@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process"
+import { execFileSync, execSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { Command } from "commander"
@@ -48,6 +48,52 @@ export function execCmd(
   }
 }
 
+/**
+ * Runs a command by argv rather than through a shell.
+ *
+ * `execCmd` builds one string and hands it to `execSync`, which runs it via
+ * `sh -c`, so any shell metacharacter in an interpolated value is parsed as
+ * syntax. Three of the values this file interpolates come from outside it: the
+ * `name` field of the working directory's package.json, variable names parsed
+ * out of .env.local.example, and the stdout of `vercel whoami`. Passing them as
+ * argv makes `&`, `;`, backticks and `$()` ordinary characters.
+ *
+ * Values that could be read as flags are still validated at the call site --
+ * argv does not help a value that begins with `-`.
+ */
+export function execFileCmd(
+  file: string,
+  args: string[],
+  options?: { input?: string; silent?: boolean; inheritStderr?: boolean },
+): string {
+  try {
+    const stdio: ("pipe" | "inherit")[] = options?.silent
+      ? ["pipe", "pipe", "pipe"]
+      : options?.input
+        ? ["pipe", "pipe", "inherit"]
+        : options?.inheritStderr
+          ? ["inherit", "pipe", "inherit"]
+          : ["inherit", "pipe", "pipe"]
+
+    return execFileSync(file, args, {
+      encoding: "utf-8",
+      input: options?.input,
+      stdio,
+    }).trim()
+  } catch (err) {
+    const error = err as {
+      stderr?: string
+      stdout?: string
+      message?: string
+    }
+    const captured = [error.stderr?.trim(), error.stdout?.trim()]
+      .filter(Boolean)
+      .join("\n")
+    const message = captured || error.message || "Unknown error"
+    throw new Error(message)
+  }
+}
+
 export function parseEnvExample(filePath: string): EnvVar[] {
   if (!existsSync(filePath)) {
     return []
@@ -76,6 +122,24 @@ const SENSITIVE_PATTERN = /(?:_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE)$/i
 
 export function isSensitiveEnvVar(name: string): boolean {
   return SENSITIVE_PATTERN.test(name)
+}
+
+// Vercel project names may only contain lowercase letters, numbers, ".", "_"
+// and "-" (max 100 chars). Validated as well as passed by argv, because a
+// value starting with "-" would be read as a flag by the Vercel CLI.
+const VERCEL_PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/
+
+export function isValidVercelProjectName(name: string): boolean {
+  return VERCEL_PROJECT_NAME_PATTERN.test(name)
+}
+
+// parseEnvExample takes everything left of the first "=" as a variable name,
+// with no charset check, so a hostile .env.local.example can name anything.
+// Real environment variable names are this shape.
+const ENV_VAR_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+export function isValidEnvVarName(name: string): boolean {
+  return ENV_VAR_NAME_PATTERN.test(name)
 }
 
 export function extractDeploymentUrl(output: string): string | undefined {
@@ -219,21 +283,29 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
           name?: string
         }
         if (pkg.name) {
-          projectName = pkg.name.replace(/^@[^/]+\//, "")
+          const candidate = pkg.name.replace(/^@[^/]+\//, "")
+          if (isValidVercelProjectName(candidate)) {
+            projectName = candidate
+          } else {
+            console.log(
+              pc.yellow(
+                `  Warning: package.json name "${pkg.name}" is not a valid Vercel project name - omitting --project flag`,
+              ),
+            )
+          }
         }
       }
     } catch {
       // Malformed package.json — fall through with empty projectName
     }
 
-    const linkParts = ["npx vercel link", "--yes"]
+    const linkArgs = ["vercel", "link", "--yes"]
     if (projectName) {
-      linkParts.push(`--project=${projectName}`)
+      linkArgs.push(`--project=${projectName}`)
     }
     if (vercelScope) {
-      linkParts.push(`--scope=${vercelScope}`)
+      linkArgs.push(`--scope=${vercelScope}`)
     }
-    const linkCmd = linkParts.join(" ")
 
     console.log(
       pc.dim(
@@ -241,7 +313,7 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
       ),
     )
     try {
-      execCmd(linkCmd, {
+      execFileCmd("npx", linkArgs, {
         inheritStderr: true,
       })
       console.log(pc.green("  Project linked"))
@@ -274,6 +346,18 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
       const existingEnvNames = fetchExistingEnvVars()
 
       for (const envVar of filteredVars) {
+        // Names come from .env.local.example, which parseEnvExample reads
+        // without a charset check. Skip anything that is not a real
+        // environment variable name rather than prompting for it or looking
+        // it up in process.env.
+        if (!isValidEnvVarName(envVar.name)) {
+          console.log(
+            pc.yellow(
+              `  Skipping "${envVar.name}" - not a valid environment variable name`,
+            ),
+          )
+          continue
+        }
         if (existingEnvNames.has(envVar.name)) {
           console.log(pc.dim(`  ${envVar.name} already set, skipping`))
           continue
@@ -312,10 +396,14 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
         }
 
         try {
-          execCmd(`npx vercel env add ${envVar.name} production`, {
-            input: value,
-            silent: true,
-          })
+          execFileCmd(
+            "npx",
+            ["vercel", "env", "add", envVar.name, "production"],
+            {
+              input: value,
+              silent: true,
+            },
+          )
           console.log(pc.green(`  Set ${envVar.name}`))
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)

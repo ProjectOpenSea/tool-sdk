@@ -1,5 +1,9 @@
 # @opensea/tool-sdk
 
+> **Read-only mirror.** This package is developed in a private monorepo and mirrored to [ProjectOpenSea/tool-sdk](https://github.com/ProjectOpenSea/tool-sdk) when a version is released, so the public code can trail the internal main branch by weeks.
+>
+> Pull requests opened on the mirror cannot be merged there. They are read, and a fix worth taking is recreated in the monorepo. Because a fix that has landed internally is not public until the next release, filing an issue before writing a patch is the quickest way to find out whether a bug is already fixed.
+
 SDK and CLI for building [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
 
 Pairs with the onchain reference implementation at [ProjectOpenSea/tool-registry](https://github.com/ProjectOpenSea/tool-registry) — the `ToolRegistry` contract and example access predicates this SDK reads from and writes to.
@@ -27,6 +31,8 @@ npx @opensea/tool-sdk register \
 ```
 
 ## CLI Reference
+
+For the latest commands and flags, run `npx @opensea/tool-sdk --help`. The reference below is a high-level guide and may lag the CLI.
 
 ### `init [name]`
 

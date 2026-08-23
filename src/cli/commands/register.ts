@@ -34,7 +34,11 @@ import {
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
+import {
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+  WALLET_PROVIDER_OPTION_DESCRIPTION,
+} from "./shared.js"
 import { warnBareExtensionKeys } from "./warn-bare-extensions.js"
 
 interface RegisterOptions {
@@ -73,7 +77,7 @@ export const registerCommand = new Command("register")
     'JSON config for the access predicate (e.g. \'{"collections":["0x..."]}\')',
   )
   .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
-  .option("--rpc-url <url>", "RPC endpoint for gas estimation and tx broadcast")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .option("--dry-run", "Print summary without transacting")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(async (options: RegisterOptions) => {
@@ -260,12 +264,17 @@ export const registerCommand = new Command("register")
 
     let predicateName: string | undefined
 
+    const wallet = options.walletProvider
+      ? createWalletForProvider(options.walletProvider as WalletProvider)
+      : createWalletFromEnv()
+    const rpcUrl = resolveRpcUrl(options.rpcUrl, wallet, chain)
+
     if (options.accessPredicate) {
       accessPredicate = options.accessPredicate as `0x${string}`
 
       const publicClient = createPublicClient({
         chain,
-        transport: http(options.rpcUrl),
+        transport: http(rpcUrl),
       })
       try {
         predicateName = await publicClient.readContract({
@@ -320,9 +329,6 @@ export const registerCommand = new Command("register")
       }
     }
 
-    const wallet = options.walletProvider
-      ? createWalletForProvider(options.walletProvider as WalletProvider)
-      : createWalletFromEnv()
     const address = (await wallet.getAddress()).toLowerCase()
 
     if (manifest.creatorAddress !== address) {
@@ -442,15 +448,11 @@ export const registerCommand = new Command("register")
       }
     }
 
-    const walletClient = await walletAdapterToClient(
-      wallet,
-      chain,
-      options.rpcUrl ?? wallet.getRpcUrl?.(),
-    )
+    const walletClient = await walletAdapterToClient(wallet, chain, rpcUrl)
 
     const registry = new ToolRegistryClient({
       chain,
-      rpcUrl: options.rpcUrl ?? wallet.getRpcUrl?.(),
+      rpcUrl,
       walletClient,
     })
 
@@ -496,7 +498,7 @@ export const registerCommand = new Command("register")
         )
         const publicClient = createPublicClient({
           chain,
-          transport: http(options.rpcUrl),
+          transport: http(rpcUrl),
         })
         await publicClient.waitForTransactionReceipt({ hash: txHash })
         console.log(pc.green("\nERC-20 balance gate configured!"))
@@ -541,7 +543,7 @@ export const registerCommand = new Command("register")
           config: predicateConfig,
           chain,
           walletClient,
-          rpcUrl: options.rpcUrl,
+          rpcUrl,
         })
       } catch (err) {
         console.error(

@@ -20,11 +20,16 @@ import { computeManifestHash } from "../../lib/onchain/hash.js"
 import { ToolRegistryClient } from "../../lib/onchain/registry.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
 import {
+  classifyResolvedHostname,
   isPrivateHostname,
   printProbeResult,
   probeEndpoint,
 } from "./probe-endpoint.js"
-import { parseToolId } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+} from "./shared.js"
 
 interface InspectOptions {
   toolId: string
@@ -43,7 +48,7 @@ export const inspectCommand = new Command("inspect")
     "--check-access <address>",
     "Check whether an address has access to the tool",
   )
-  .option("--rpc-url <url>", "RPC endpoint for onchain reads")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .action(async (options: InspectOptions) => {
     if (!options.toolId) {
       console.error(pc.red("Error: --tool-id is required"))
@@ -56,7 +61,8 @@ export const inspectCommand = new Command("inspect")
     )
 
     const chain = getChain(options.network)
-    const client = new ToolRegistryClient({ chain, rpcUrl: options.rpcUrl })
+    const rpcUrl = resolveRpcUrl(options.rpcUrl, undefined, chain)
+    const client = new ToolRegistryClient({ chain, rpcUrl })
 
     console.log(pc.cyan("Reading onchain tool config...\n"))
 
@@ -78,7 +84,7 @@ export const inspectCommand = new Command("inspect")
     if (config.accessPredicate !== zeroAddress) {
       const publicClient = createPublicClient({
         chain,
-        transport: http(options.rpcUrl),
+        transport: http(rpcUrl),
       })
 
       let predicateName: string | undefined
@@ -277,6 +283,33 @@ export const inspectCommand = new Command("inspect")
       console.error(
         pc.red(
           `Error: metadata URI host "${metadataUrl.hostname}" is a private/internal address; refusing to fetch`,
+        ),
+      )
+      process.exit(1)
+    }
+    // The lexical check above only inspects the hostname as written. A public
+    // name whose A record points inward (localtest.me -> 127.0.0.1) passes it,
+    // and this fetch connects to whatever the resolver returns. Registry
+    // entries are permissionlessly writable and can be repointed after review,
+    // so resolve and re-check before connecting.
+    const resolved = await classifyResolvedHostname(metadataUrl.hostname)
+    if (resolved === "private") {
+      console.error(
+        pc.red(
+          `Error: metadata URI host "${metadataUrl.hostname}" resolves to a private/internal address; refusing to fetch`,
+        ),
+      )
+      process.exit(1)
+    }
+    // Unlike probe-endpoint, this hostname is untrusted: it comes from a
+    // permissionlessly writable registry. fetch resolves independently of the
+    // lookup above, so an authoritative server that answers SERVFAIL here and
+    // hands undici a private address there would defeat the check. Refuse
+    // rather than fetch a host we could not classify.
+    if (resolved === "unresolved") {
+      console.error(
+        pc.red(
+          `Error: metadata URI host "${metadataUrl.hostname}" could not be resolved; refusing to fetch`,
         ),
       )
       process.exit(1)

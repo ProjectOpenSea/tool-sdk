@@ -53,6 +53,23 @@ export interface ToolHandlerConfig<TIn, TOut> {
   inputSchema: z.ZodType<TIn>
   outputSchema: z.ZodType<TOut>
   gates?: GateMiddleware[]
+  /**
+   * What to do when a gate's `settle()` fails after the handler already ran.
+   *
+   * - `"required"` (default): withhold the output and return 502. The caller
+   *   was not charged, so returning the paid result would be giving the tool
+   *   away for free. Costs you the handler's work for that call, and a caller
+   *   who retries pays and gets the result.
+   *   With several settling gates, an earlier gate may already have settled
+   *   when a later one fails, so the caller can be charged by that gate and
+   *   still get a 502. Prefer a single settling gate.
+   * - `"best-effort"`: log the failure and return the output with a 200
+   *   anyway. Only safe when you replay failed settlements out-of-band and
+   *   can absorb the ones you never recover. Note that a settlement that
+   *   failed because the caller's authorization nonce was already spent can
+   *   never be replayed.
+   */
+  settlement?: "required" | "best-effort"
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>
   /**
    * Automatically reports tool usage to the OpenSea metrics endpoint.
@@ -160,9 +177,10 @@ export function createToolHandler<TIn, TOut>(
       // adds latency to every successful call (capped at the gate's own
       // timeout). Truly non-blocking settlement requires runtime-specific
       // primitives (`waitUntil`) that are not portable across the
-      // runtimes this SDK targets. Errors do not change the response:
-      // operators surface failed settlements via logs and replay them
-      // out-of-band using the verified payment payload.
+      // runtimes this SDK targets. A failure is always logged so operators
+      // can replay it out-of-band using the verified payment payload;
+      // whether it also withholds the output depends on `config.settlement`.
+      let settlementFailed = false
       if (config.gates) {
         for (const gate of config.gates) {
           if (gate.settle) {
@@ -170,6 +188,8 @@ export function createToolHandler<TIn, TOut>(
               await gate.settle(ctx)
             } catch (err) {
               console.error("[tool-sdk] gate.settle failed:", err)
+              settlementFailed = true
+              if ((config.settlement ?? "required") === "required") break
             }
           }
         }
@@ -183,17 +203,33 @@ export function createToolHandler<TIn, TOut>(
         payer: ctx.gates.x402?.payer,
         settlementTxHash: ctx.gates.x402?.settlementTxHash,
         settlementChainId: ctx.gates.x402?.settlementChainId,
+        settlementFailed: settlementFailed || undefined,
         toolName: resolvedManifest.name,
         latencyMs,
         timestamp: Date.now(),
       }
 
+      // Fires even when settlement failed: an ambiguous facilitator error can
+      // leave the caller charged with no output, and this event is the only
+      // machine-readable record of that call.
       if (config.onInvocation) {
         try {
           await config.onInvocation(event)
         } catch (err) {
           console.error("[tool-sdk] onInvocation failed:", err)
         }
+      }
+
+      // Withhold the output, but only after the invocation event is out. The
+      // usage report is skipped: there is no settlement to report.
+      if (
+        settlementFailed &&
+        (config.settlement ?? "required") === "required"
+      ) {
+        return Response.json(
+          { error: "Payment settlement failed" },
+          { status: 502 },
+        )
       }
 
       // Fire the usage report. The reporter has its own AbortController

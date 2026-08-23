@@ -13,7 +13,12 @@ import {
   walletAdapterToClient,
 } from "../../lib/wallet/index.js"
 import { getChain, NETWORK_OPTION_DESCRIPTION } from "./get-chain.js"
-import { parseToolId, WALLET_PROVIDER_OPTION_DESCRIPTION } from "./shared.js"
+import {
+  parseToolId,
+  RPC_URL_OPTION_DESCRIPTION,
+  resolveRpcUrl,
+  WALLET_PROVIDER_OPTION_DESCRIPTION,
+} from "./shared.js"
 
 interface ConfigureERC20GateOptions {
   network: string
@@ -39,7 +44,7 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
   )
   .option("--network <network>", NETWORK_OPTION_DESCRIPTION, "base")
   .option("--wallet-provider <provider>", WALLET_PROVIDER_OPTION_DESCRIPTION)
-  .option("--rpc-url <url>", "RPC endpoint")
+  .option("--rpc-url <url>", RPC_URL_OPTION_DESCRIPTION)
   .option("--dry-run", "Print summary without transacting")
   .action(
     async (
@@ -112,17 +117,14 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
           )
         : await createWalletFromEnv()
 
-      const walletClient = await walletAdapterToClient(
-        adapter,
-        chain,
-        options.rpcUrl,
-      )
+      const rpcUrl = resolveRpcUrl(options.rpcUrl, adapter, chain)
+      const walletClient = await walletAdapterToClient(adapter, chain, rpcUrl)
 
       const client = new ERC20BalancePredicateClient({
         chain,
         walletClient,
         predicateAddress,
-        rpcUrl: options.rpcUrl,
+        rpcUrl,
       })
 
       try {
@@ -134,7 +136,7 @@ export const configureERC20GateCommand = new Command("configure-erc20-gate")
 
         const publicClient = createPublicClient({
           chain,
-          transport: http(options.rpcUrl),
+          transport: http(rpcUrl),
         })
         await publicClient.waitForTransactionReceipt({ hash: txHash })
 

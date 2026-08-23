@@ -23,7 +23,7 @@ class ExitError extends Error {
 
 vi.mock("node:child_process", async importOriginal => {
   const actual = await importOriginal<typeof import("node:child_process")>()
-  return { ...actual, execSync: vi.fn() }
+  return { ...actual, execSync: vi.fn(), execFileSync: vi.fn() }
 })
 
 beforeAll(() => {
@@ -100,11 +100,22 @@ describe("fetchExistingEnvVars", () => {
 
 describe("deploy command (mocked shell)", () => {
   let execSyncMock: ReturnType<typeof vi.fn>
+  let execFileSyncMock: ReturnType<typeof vi.fn>
   let origCwd: string
 
   beforeEach(async () => {
     const cp = await import("node:child_process")
     execSyncMock = cp.execSync as ReturnType<typeof vi.fn>
+    execFileSyncMock = cp.execFileSync as ReturnType<typeof vi.fn>
+    // Two call sites run by argv rather than through a shell. Route them
+    // through whatever implementation the test gave execSync, joined back into
+    // a string, so a test that only configures execSync still resolves them.
+    // The implementation is invoked directly rather than through execSyncMock
+    // so the two call records stay separate and can be asserted on apart.
+    execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+      const impl = execSyncMock.getMockImplementation()
+      return impl ? impl([file, ...(args ?? [])].join(" ")) : ""
+    })
     origCwd = process.cwd()
   })
 
@@ -114,8 +125,7 @@ describe("deploy command (mocked shell)", () => {
   })
 
   function setupExecMock(handlers: Record<string, string | Error>) {
-    execSyncMock.mockImplementation((cmd: string) => {
-      const cmdStr = String(cmd)
+    const dispatch = (cmdStr: string) => {
       for (const [pattern, result] of Object.entries(handlers)) {
         if (cmdStr.includes(pattern)) {
           if (result instanceof Error) throw result
@@ -123,7 +133,8 @@ describe("deploy command (mocked shell)", () => {
         }
       }
       return ""
-    })
+    }
+    execSyncMock.mockImplementation((cmd: string) => dispatch(String(cmd)))
   }
 
   function setupTestDir(
@@ -545,6 +556,150 @@ describe("deploy command (mocked shell)", () => {
       } else {
         process.env.API_KEY = origApiKey
       }
+    }
+  })
+
+  function setupUnlinkedTestDir(name: string, packageName: string) {
+    const testDir = join(fixturesDir, name)
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(
+      join(testDir, "package.json"),
+      JSON.stringify({ name: packageName }),
+    )
+    return testDir
+  }
+
+  it("never lets a package.json name with shell metacharacters reach a command (CWE-78)", async () => {
+    vi.spyOn(process, "exit").mockImplementation(code => {
+      throw new ExitError(code as number)
+    })
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const maliciousName = '"; touch /tmp/pwned; echo "'
+    const testDir = setupUnlinkedTestDir("malicious-name", maliciousName)
+
+    setupExecMock({
+      "vercel --version": "Vercel CLI 33.0.0",
+      "vercel whoami": "test-user",
+      "vercel deploy --prod": new Error("stop after link"),
+    })
+
+    process.chdir(testDir)
+
+    const { deployCommand } = await import("../cli/commands/deploy.js")
+    await expect(
+      deployCommand.parseAsync(["--host", "vercel"], { from: "user" }),
+    ).rejects.toThrow(ExitError)
+
+    // Not in a shell string, and not in an argv element either.
+    for (const call of execSyncMock.mock.calls) {
+      expect(String(call[0])).not.toContain("touch /tmp/pwned")
+    }
+    for (const call of execFileSyncMock.mock.calls) {
+      const argv = (call[1] as string[]) ?? []
+      expect(argv.join(" ")).not.toContain("touch /tmp/pwned")
+    }
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("not a valid Vercel project name"),
+    )
+  })
+
+  it("passes a valid package.json name through as an argv element, not a shell string", async () => {
+    vi.spyOn(process, "exit").mockImplementation(code => {
+      throw new ExitError(code as number)
+    })
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const testDir = setupUnlinkedTestDir("valid-name", "@scope/my-tool")
+
+    setupExecMock({
+      "vercel --version": "Vercel CLI 33.0.0",
+      "vercel whoami": "test-user",
+      "vercel link": "",
+      "vercel deploy --prod": new Error("stop after link"),
+    })
+
+    process.chdir(testDir)
+
+    const { deployCommand } = await import("../cli/commands/deploy.js")
+    await expect(
+      deployCommand.parseAsync(["--host", "vercel"], { from: "user" }),
+    ).rejects.toThrow(ExitError)
+
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      "npx",
+      expect.arrayContaining(["vercel", "link", "--project=my-tool"]),
+      expect.anything(),
+    )
+    // The link command must not have gone through the shell path at all.
+    for (const call of execSyncMock.mock.calls) {
+      expect(String(call[0])).not.toContain("vercel link")
+    }
+  })
+
+  it("skips an env var whose name could never be a real environment variable", async () => {
+    vi.spyOn(process, "exit").mockImplementation(code => {
+      throw new ExitError(code as number)
+    })
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    // A hostile name alongside a legitimate one, so the test also shows the
+    // good value still reaching the command by argv.
+    const testDir = setupTestDir("hostile-env-name", {
+      envExample:
+        'API_KEY & touch /tmp/pwned="x"\nREAL_KEY=needed\nTOOL_ENDPOINT=auto\n',
+      manifest: `export const manifest = { name: "my-tool" }`,
+    })
+
+    setupExecMock({
+      "vercel --version": "Vercel CLI 33.0.0",
+      "vercel whoami": "test-user",
+      "vercel env ls": "[]",
+      "vercel deploy --prod": new Error("stop before deploy"),
+    })
+
+    process.chdir(testDir)
+
+    // Non-interactive mode reads the value from the environment, so provide it
+    // here rather than depending on the runner's environment.
+    const origRealKey = process.env.REAL_KEY
+    process.env.REAL_KEY = "a-real-value"
+
+    try {
+      const { deployCommand } = await import("../cli/commands/deploy.js")
+      await expect(
+        deployCommand.parseAsync(["--host", "vercel", "--non-interactive"], {
+          from: "user",
+        }),
+      ).rejects.toThrow(ExitError)
+    } finally {
+      if (origRealKey === undefined) {
+        delete process.env.REAL_KEY
+      } else {
+        process.env.REAL_KEY = origRealKey
+      }
+    }
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("not a valid environment variable name"),
+    )
+    for (const call of execFileSyncMock.mock.calls) {
+      const argv = (call[1] as string[]) ?? []
+      expect(argv.join(" ")).not.toContain("touch /tmp/pwned")
+    }
+    // The legitimate variable still goes out, and by argv rather than through
+    // a shell string. This is what distinguishes the argv path being exercised
+    // from the value merely being filtered out upstream.
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      "npx",
+      ["vercel", "env", "add", "REAL_KEY", "production"],
+      expect.anything(),
+    )
+    for (const call of execSyncMock.mock.calls) {
+      expect(String(call[0])).not.toContain("vercel env add REAL_KEY")
     }
   })
 })

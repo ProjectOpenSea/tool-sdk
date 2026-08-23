@@ -8,11 +8,14 @@ import { base } from "viem/chains"
 import type { GateMiddleware, ToolContext } from "../../types.js"
 import { resolveNetwork } from "../client/x402-challenge.js"
 import {
+  authorizationReplayKey,
   CDP_X402_FACILITATOR_URL,
   PAYAI_X402_FACILITATOR_URL,
   USDC_BASE_ADDRESS,
   USDC_BASE_SEPOLIA_ADDRESS,
+  withReplayGuardTimeout,
   type X402Network,
+  type X402ReplayGuard,
 } from "../middleware/x402-facilitators.js"
 import { IDelegateRegistryABI } from "../onchain/abis.js"
 import { DELEGATE_REGISTRY } from "../onchain/chains.js"
@@ -671,6 +674,12 @@ export interface PaidPredicateGateConfig {
    * facilitator is "cdp".
    */
   createAuthHeaders?: () => Promise<Record<string, string>>
+  /**
+   * Enforce that each payment authorization is used at most once. See
+   * {@link X402ReplayGuard}. Without it, concurrent replays of one
+   * authorization each pass verification and run the handler.
+   */
+  replayGuard?: X402ReplayGuard
 }
 
 /**
@@ -781,7 +790,11 @@ export function paidPredicateGate(
   // keyed by ctx so the user handler cannot tamper with verified payloads.
   const stashedByCtx = new WeakMap<
     Partial<ToolContext>,
-    { paymentPayload: PaymentPayload; requirements: PaymentRequirementsV1 }
+    {
+      paymentPayload: PaymentPayload
+      requirements: PaymentRequirementsV1
+      replayKey?: string
+    }
   >()
 
   return {
@@ -1012,6 +1025,47 @@ export function paidPredicateGate(
         )
       }
 
+      // Claim before the handler runs so concurrent replays can't each
+      // produce paid output. After /verify: junk must not fill the store.
+      let replayKey: string | undefined
+      if (config.replayGuard) {
+        replayKey = authorizationReplayKey(paymentPayload, network, asset)
+        if (!replayKey) {
+          // Fail closed: an unidentifiable authorization can't be held to
+          // the single-use invariant the operator asked for.
+          return Response.json(
+            {
+              x402Version: 1,
+              error: "invalid_payload",
+              accepts: [requirements],
+            },
+            { status: 402 },
+          )
+        }
+        let reserved: boolean
+        try {
+          reserved = await withReplayGuardTimeout(
+            config.replayGuard.reserve(replayKey),
+            "reserve",
+          )
+        } catch (err) {
+          // Fail closed: a store outage is indistinguishable from a replay,
+          // and guessing "not a replay" is the expensive guess.
+          console.error("[tool-sdk] replayGuard.reserve failed:", err)
+          reserved = false
+        }
+        if (!reserved) {
+          return Response.json(
+            {
+              x402Version: 1,
+              error: "payment_authorization_already_used",
+              accepts: [requirements],
+            },
+            { status: 402 },
+          )
+        }
+      }
+
       // --- Success: set context and stash for settlement ---
       ctx.callerAddress = predicateSubject
       if (agentAddress) {
@@ -1024,7 +1078,7 @@ export function paidPredicateGate(
         ctx.gates.predicate = { granted: true }
         ctx.gates.x402 = { paid: true, payer: verifyData.payer }
       }
-      stashedByCtx.set(ctx, { paymentPayload, requirements })
+      stashedByCtx.set(ctx, { paymentPayload, requirements, replayKey })
       return null
     },
 
@@ -1043,6 +1097,10 @@ export function paidPredicateGate(
         FACILITATOR_TIMEOUT_MS,
       )
 
+      // Whether the failure below proves the facilitator never broadcast a
+      // transaction for this authorization.
+      let unbroadcast = false
+
       try {
         const res = await fetch(`${facilitatorUrl}/settle`, {
           method: "POST",
@@ -1058,6 +1116,10 @@ export function paidPredicateGate(
           signal: controller.signal,
         })
         if (!res.ok) {
+          // Throttling is refused before the request is processed, so the
+          // authorization is untouched. Any other status leaves open that a
+          // transaction is already in flight.
+          if (res.status === 429) unbroadcast = true
           const body = (await res.text().catch(() => "<no body>")).slice(0, 256)
           throw new Error(`facilitator /settle returned ${res.status}: ${body}`)
         }
@@ -1084,6 +1146,20 @@ export function paidPredicateGate(
             ctx.gates.x402.settlementChainId = chainId
           }
         }
+      } catch (err) {
+        // Hand the key back only when the authorization is provably untouched.
+        // Must not mask the settlement error.
+        if (unbroadcast && stashed.replayKey && config.replayGuard?.release) {
+          try {
+            await withReplayGuardTimeout(
+              config.replayGuard.release(stashed.replayKey),
+              "release",
+            )
+          } catch (releaseErr) {
+            console.error("[tool-sdk] replayGuard.release failed:", releaseErr)
+          }
+        }
+        throw err
       } finally {
         clearTimeout(timeoutId)
       }
