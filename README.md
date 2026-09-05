@@ -1122,3 +1122,7 @@ app.post("/api", toExpressHandler(handler))
 ## ERC Spec
 
 See the full [ERC-8257 Tool Registry specification](https://github.com/ethereum/ERCs/pull/1723) for details on manifest schema, origin binding, creator binding, and consumer verification.
+
+## Security
+
+Found a vulnerability? Report it through OpenSea's Bugcrowd program at https://bugcrowd.com/engagements/opensea rather than opening a public issue. See [SECURITY.md](SECURITY.md).
