@@ -88,7 +88,7 @@ Set env vars and `createWalletFromEnv()` auto-detects the provider:
 - `TURNKEY_API_PUBLIC_KEY` — Turnkey signing
 - `FIREBLOCKS_API_KEY` — Fireblocks vault
 
-CLI commands also accept `--wallet-provider privy|turnkey|fireblocks|private-key`.
+CLI commands also accept `--wallet-provider privy|turnkey|fireblocks|bankr|private-key`.
 
 ## Response codes
 

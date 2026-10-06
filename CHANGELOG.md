@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.31.1
+
+### Patch Changes
+
+- e83546e: Docs: close the stray code fence in the predicate gating guide that turned the delegated access section into a code block, and list `bankr` among the `--wallet-provider` values in the skill and the Vercel template.
+
 ## 0.31.0
 
 ### Minor Changes

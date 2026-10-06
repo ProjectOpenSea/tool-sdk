@@ -118,7 +118,7 @@ const data = await res.json()</pre>
 PRIVY_APP_ID          — Privy server wallet
 TURNKEY_API_PUBLIC_KEY — Turnkey signing
 FIREBLOCKS_API_KEY    — Fireblocks vault</pre>
-    <p>CLI commands also accept <code>--wallet-provider privy|turnkey|fireblocks|private-key</code>.</p>
+    <p>CLI commands also accept <code>--wallet-provider privy|turnkey|fireblocks|bankr|private-key</code>.</p>
 
     <h2>Response</h2>
     <p>On success, returns <code>200</code> with a JSON body matching the manifest's <code>outputs</code> schema. On auth failure, returns <code>401</code> (missing/invalid SIWE) or <code>403</code> (access predicate denied). For x402-gated tools, <code>402</code> indicates payment is required.</p>
