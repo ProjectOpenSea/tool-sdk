@@ -1,3 +1,4 @@
+import type { jsonSchema } from "ai"
 import { z } from "zod/v4"
 
 /**
@@ -47,6 +48,9 @@ export const AppraisalSchema = z.object({
 
 export type Appraisal = z.infer<typeof AppraisalSchema>
 
+// `ai` does not re-export JSONSchema7, and @ai-sdk/provider is not a direct dependency.
+type JSONSchema7 = Parameters<typeof jsonSchema>[0]
+
 const priceJsonSchema = {
   type: "object",
   properties: {
@@ -56,7 +60,7 @@ const priceJsonSchema = {
   },
   required: ["amount", "currency", "usd"],
   additionalProperties: false,
-} as const
+} satisfies JSONSchema7
 
 export const appraisalJsonSchema = {
   type: "object",
@@ -111,4 +115,4 @@ export const appraisalJsonSchema = {
     "comparableListings",
   ],
   additionalProperties: false,
-} as const
+} satisfies JSONSchema7

@@ -1,3 +1,4 @@
+import type { jsonSchema } from "ai"
 import { z } from "zod/v4"
 
 /**
@@ -130,6 +131,9 @@ const stringArray = {
   items: { type: "string" },
 } as const
 
+// `ai` does not re-export JSONSchema7, and @ai-sdk/provider is not a direct dependency.
+type JSONSchema7 = Parameters<typeof jsonSchema>[0]
+
 export const personalityJsonSchema = {
   type: "object",
   properties: {
@@ -214,7 +218,7 @@ export const personalityJsonSchema = {
     "dontList",
   ],
   additionalProperties: false,
-} as const
+} satisfies JSONSchema7
 
 export const manifestOutputsJsonSchema = {
   type: "object",
