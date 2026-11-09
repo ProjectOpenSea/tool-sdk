@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.32.1
+
+### Patch Changes
+
+- b5bc983: Fix two scaffolding bugs. `toExpressHandler` now type-checks as an Express 5 `RequestHandler`, so a project scaffolded from the express template passes `tsc`. Previously `ExpressRequest` and `ExpressResponse` declared an index signature that Express's `Request` and `Response` do not have. `tool-sdk init --no-interactive` now skips the prompts and scaffolds with defaults; it had read an option Commander never sets.
+
 ## 0.32.0
 
 ### Minor Changes

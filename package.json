@@ -1,6 +1,6 @@
 {
   "name": "@opensea/tool-sdk",
-  "version": "0.32.0",
+  "version": "0.32.1",
   "type": "module",
   "description": "SDK and CLI for building ERC-8257 compliant AI agent tools",
   "repository": {
@@ -51,6 +51,7 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@types/express": "5.0.6",
     "@types/node": "22.7.5",
     "tsdown": "0.23.4",
     "typescript": "7.0.2",

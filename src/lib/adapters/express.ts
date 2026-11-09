@@ -7,7 +7,6 @@ export interface ExpressRequest {
   hostname: string
   protocol: string
   body?: unknown
-  [key: string]: unknown
 }
 
 export interface ExpressResponse {
@@ -16,7 +15,6 @@ export interface ExpressResponse {
   json(body: unknown): void
   send(body: string | Buffer): void
   end(): void
-  [key: string]: unknown
 }
 
 export function toExpressHandler(

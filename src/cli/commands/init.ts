@@ -15,7 +15,7 @@ import { deriveSlug } from "../../lib/utils.js"
 declare const __VERSION__: string
 
 interface InitOptions {
-  noInteractive?: boolean
+  interactive?: boolean
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -66,7 +66,7 @@ export const initCommand = new Command("init")
     let hosting: string
     let endpoint: string
 
-    if (options.noInteractive) {
+    if (options.interactive === false) {
       name = nameArg ?? "my-tool"
       description = `A ${name} tool`
       creatorAddress = "0x0000000000000000000000000000000000000000"
