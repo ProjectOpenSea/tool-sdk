@@ -5,8 +5,10 @@ import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
 import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import { parseX402Challenge, resolveNetwork } from "./x402-challenge.js"
 import {
+  assertIdempotencyKeyPinned,
   createX402Client,
   extractSettlementTxHash,
+  idempotentSigningOptions,
   rejectServerErrorAfterPayment,
   validatePaymentRequirements,
 } from "./x402-payment.js"
@@ -25,6 +27,14 @@ export interface PaidAuthenticatedFetchOptions extends RequestInit {
    * successful x402 payment. The tool is identified by endpoint URL.
    */
   reportCallerUsage?: CallerUsageReporterConfig | boolean
+  /**
+   * Makes retries of one logical purchase safe, as in `paidFetch`: the
+   * nonzero payment is signed with a nonce derived from this key, so it can
+   * settle at most once. Requires `allowedAssets` to be exactly one USDC
+   * contract, and the challenge to be on that USDC's network. The
+   * predicate gate's zero-value authorization keeps a random nonce.
+   */
+  idempotencyKey?: string
 }
 
 /**
@@ -47,6 +57,7 @@ export async function paidAuthenticatedFetch(
     allowedRecipients,
     allowedAssets,
     reportCallerUsage,
+    idempotencyKey,
     ...fetchOptions
   } = options
 
@@ -61,6 +72,7 @@ export async function paidAuthenticatedFetch(
       "paidAuthenticatedFetch does not support ReadableStream bodies — pass a string or ArrayBuffer instead",
     )
   }
+  assertIdempotencyKeyPinned(idempotencyKey, allowedAssets)
 
   const baseHeaders = Object.fromEntries(
     new Headers(fetchOptions.headers).entries(),
@@ -113,6 +125,7 @@ export async function paidAuthenticatedFetch(
       paymentSigner,
       requirements.network,
       x402Version,
+      idempotentSigningOptions(idempotencyKey, requirements),
     )
     const httpClient = new x402HTTPClient(client)
 

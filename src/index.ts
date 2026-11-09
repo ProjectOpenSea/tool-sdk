@@ -28,6 +28,7 @@ export type {
 export {
   buildSettlementResponseHeader,
   extractSettlementTxHash,
+  idempotencyNonce,
   paidFetch,
   signX402Payment,
   X402PaymentError,

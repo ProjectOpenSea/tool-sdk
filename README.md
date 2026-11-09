@@ -867,7 +867,7 @@ for the network, and `payTo` is rejected if it is the zero address or a
 known burn address.
 
 ```typescript
-import { paidFetch } from "@opensea/tool-sdk"
+import { paidFetch, USDC_BASE_ADDRESS } from "@opensea/tool-sdk"
 import { privateKeyToAccount } from "viem/accounts"
 
 const account = privateKeyToAccount("0x...")
@@ -875,14 +875,27 @@ const res = await paidFetch("https://tool.example.com/api", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ query: "what is this NFT worth?" }),
-  account,
+  signer: account,
   // Optional safety caps:
   maxAmount: "100000",                          // reject if server asks for more than 0.10 USDC
   allowedRecipients: ["0xYourTrustedPayee"],    // reject unknown payTo addresses
-  // allowedAssets defaults to the known USDC contract per network
+  allowedAssets: [USDC_BASE_ADDRESS],           // defaults to the known USDC contract per network
+  idempotencyKey: orderId,                      // a retry with the same key settles at most once
 })
 const data = await res.json()
 ```
+
+**Retries:** without `idempotencyKey`, every `paidFetch` call signs a fresh
+EIP-3009 nonce, so retrying a purchase after a lost response or a crash can
+settle twice. With a key, the payment is signed with a nonce derived from it
+(`idempotencyNonce(key)`), and the token settles a nonce at most once per
+payer, so a retry cannot be charged twice. The nonce is spent per token
+contract on each chain, so a key requires `allowedAssets` to be exactly one
+USDC contract (`USDC_BASE_ADDRESS` or `USDC_BASE_SEPOLIA_ADDRESS`), and
+`paidFetch` refuses a challenge for any other network: every attempt pays the
+same token on the same chain. Use one key per logical purchase, such as a
+UUID stored with the request. `paidAuthenticatedFetch` takes the same option. To let a seller that dedups return the original result, also
+send your own `Idempotency-Key` header.
 
 ### Predicate-Gated Tools
 

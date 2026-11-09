@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.33.0
+
+### Minor Changes
+
+- 4a7cf07: `paidFetch` and `paidAuthenticatedFetch` take an optional `idempotencyKey`. With a key, the nonzero payment is signed with an EIP-3009 nonce derived from it (`idempotencyNonce(key)`, also exported), and the token settles a given nonce at most once per payer, so retrying a purchase after a lost response or a crash cannot charge twice. Because a nonce is spent per token contract on each chain, a key requires `allowedAssets` to be exactly one USDC contract, and the challenge must be for that USDC's network. A zero-value predicate-gate authorization keeps a random nonce. `signEip3009Authorization` and the exact and upto schemes accept an explicit `nonce`. Without a key, nothing changes. Requested in [tool-sdk#35](https://github.com/ProjectOpenSea/tool-sdk/issues/35) by @cv-scvd.
+
 ## 0.32.2
 
 ### Patch Changes

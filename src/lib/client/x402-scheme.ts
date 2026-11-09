@@ -12,6 +12,15 @@ import { toHex } from "viem"
 import { parseBaseUnitAmount, resolveNetwork } from "./x402-challenge.js"
 import type { PaymentRequirements } from "./x402-payment.js"
 
+export interface Eip3009SigningOptions {
+  /**
+   * The EIP-3009 nonce to sign, as 32-byte hex. Omit for a fresh random
+   * nonce. The token settles a given nonce at most once per payer, so
+   * re-signing with the same nonce can never settle twice.
+   */
+  nonce?: `0x${string}`
+}
+
 /**
  * x402 foundation SchemeNetworkClient wrapping tool-sdk's EIP-3009
  * TransferWithAuthorization signing. Allows `paidFetch` and
@@ -21,20 +30,27 @@ import type { PaymentRequirements } from "./x402-payment.js"
 export class ExactEip3009Scheme implements SchemeNetworkClient {
   readonly scheme = "exact"
 
-  constructor(private readonly signer: WalletAdapter | Account) {}
+  constructor(
+    private readonly signer: WalletAdapter | Account,
+    private readonly options: Eip3009SigningOptions = {},
+  ) {}
 
   async createPaymentPayload(
     x402Version: number,
     paymentRequirements: X402PaymentRequirements,
     _context?: PaymentPayloadContext,
   ): Promise<PaymentPayloadResult> {
-    const payload = await signEip3009Authorization(this.signer, {
-      network: paymentRequirements.network,
-      payTo: paymentRequirements.payTo,
-      asset: paymentRequirements.asset,
-      amount: paymentRequirements.amount,
-      extra: paymentRequirements.extra,
-    })
+    const payload = await signEip3009Authorization(
+      this.signer,
+      {
+        network: paymentRequirements.network,
+        payTo: paymentRequirements.payTo,
+        asset: paymentRequirements.asset,
+        amount: paymentRequirements.amount,
+        extra: paymentRequirements.extra,
+      },
+      this.options,
+    )
 
     if (x402Version === 1) {
       return {
@@ -59,20 +75,27 @@ export class ExactEip3009Scheme implements SchemeNetworkClient {
 export class UptoEip3009Scheme implements SchemeNetworkClient {
   readonly scheme = "upto"
 
-  constructor(private readonly signer: WalletAdapter | Account) {}
+  constructor(
+    private readonly signer: WalletAdapter | Account,
+    private readonly options: Eip3009SigningOptions = {},
+  ) {}
 
   async createPaymentPayload(
     x402Version: number,
     paymentRequirements: X402PaymentRequirements,
     _context?: PaymentPayloadContext,
   ): Promise<PaymentPayloadResult> {
-    const payload = await signEip3009Authorization(this.signer, {
-      network: paymentRequirements.network,
-      payTo: paymentRequirements.payTo,
-      asset: paymentRequirements.asset,
-      amount: paymentRequirements.amount,
-      extra: paymentRequirements.extra,
-    })
+    const payload = await signEip3009Authorization(
+      this.signer,
+      {
+        network: paymentRequirements.network,
+        payTo: paymentRequirements.payTo,
+        asset: paymentRequirements.asset,
+        amount: paymentRequirements.amount,
+        extra: paymentRequirements.extra,
+      },
+      this.options,
+    )
 
     if (x402Version === 1) {
       return {
@@ -97,6 +120,12 @@ function v1Network(network: string): string {
   return resolveNetwork(network)?.canonical ?? network
 }
 
+function randomNonce(): `0x${string}` {
+  const nonceBytes = new Uint8Array(32)
+  crypto.getRandomValues(nonceBytes)
+  return toHex(nonceBytes)
+}
+
 /**
  * Core EIP-3009 TransferWithAuthorization signing logic shared by
  * {@link ExactEip3009Scheme} and the standalone {@link signX402Payment}.
@@ -111,6 +140,7 @@ export async function signEip3009Authorization(
     maxAmountRequired?: string
     extra?: Record<string, unknown>
   },
+  options: Eip3009SigningOptions = {},
 ): Promise<{ signature: string; authorization: Record<string, string> }> {
   const resolved = resolveNetwork(reqs.network)
   if (resolved === undefined) {
@@ -123,9 +153,10 @@ export async function signEip3009Authorization(
     ? await (signer as WalletAdapter).getAddress()
     : (signer as Account).address
 
-  const nonceBytes = new Uint8Array(32)
-  crypto.getRandomValues(nonceBytes)
-  const nonce = toHex(nonceBytes)
+  const nonce = options.nonce ?? randomNonce()
+  if (!/^0x[0-9a-fA-F]{64}$/.test(nonce)) {
+    throw new Error("EIP-3009 nonce must be 32 bytes of 0x-prefixed hex")
+  }
 
   const validAfter = "0"
   const validBefore = String(Math.floor(Date.now() / 1000) + 600)

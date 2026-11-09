@@ -297,6 +297,49 @@ describe("paidAuthenticatedFetch", () => {
     expect(h2.get("X-Payment")).toBeTruthy()
   })
 
+  it("signs only the nonzero payment with the idempotencyKey nonce", async () => {
+    let callCount = 0
+    const capturedInits: RequestInit[] = []
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedInits.push(init ?? {})
+      callCount++
+      if (callCount === 1) {
+        return new Response(
+          JSON.stringify({
+            accepts: [{ ...baseRequirements, maxAmountRequired: "0" }],
+          }),
+          { status: 402 },
+        )
+      }
+      if (callCount === 2) {
+        return new Response(JSON.stringify({ accepts: [baseRequirements] }), {
+          status: 402,
+        })
+      }
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { paidAuthenticatedFetch } = await import(
+      "../lib/client/paid-authenticated-fetch.js"
+    )
+    const { idempotencyNonce } = await import("../lib/client/x402-payment.js")
+
+    await paidAuthenticatedFetch("https://my-tool.vercel.app/api/invoke", {
+      account,
+      method: "POST",
+      body: "{}",
+      idempotencyKey: "order-1",
+      allowedAssets: [baseRequirements.asset],
+    })
+
+    const nonceAt = (i: number) =>
+      JSON.parse(atob(new Headers(capturedInits[i].headers).get("X-Payment")!))
+        .payload.authorization.nonce
+    expect(nonceAt(1)).not.toBe(idempotencyNonce("order-1"))
+    expect(nonceAt(2)).toBe(idempotencyNonce("order-1"))
+  })
+
   it("refuses to sign a second nonzero challenge in one invocation", async () => {
     const fetchMock = vi.fn(
       async () =>

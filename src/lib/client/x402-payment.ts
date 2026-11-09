@@ -1,6 +1,11 @@
 import type { WalletAdapter } from "@opensea/wallet-adapters"
 import { x402Client, x402HTTPClient } from "@x402/core/client"
 import type { Account } from "viem"
+import { keccak256, stringToHex } from "viem"
+import {
+  USDC_BASE_ADDRESS,
+  USDC_BASE_SEPOLIA_ADDRESS,
+} from "../middleware/x402-facilitators.js"
 import type { CallerUsageReporterConfig } from "../usage/caller-reporter.js"
 import { reportCallerX402Usage } from "../usage/caller-reporter.js"
 import {
@@ -10,6 +15,7 @@ import {
   resolveNetwork,
 } from "./x402-challenge.js"
 import {
+  type Eip3009SigningOptions,
   ExactEip3009Scheme,
   signEip3009Authorization,
   toX402PaymentRequired,
@@ -200,6 +206,21 @@ export interface PaidFetchOptions extends RequestInit {
    * identified by its endpoint URL — no onchain registry coordinates needed.
    */
   reportCallerUsage?: CallerUsageReporterConfig | boolean
+  /**
+   * Makes retries of one logical purchase safe. The payment is signed with
+   * a nonce derived from this key ({@link idempotencyNonce}), and the token
+   * settles a given nonce at most once per payer, so calling `paidFetch`
+   * again with the same key after a lost response or a crash cannot charge
+   * twice: a second settlement is rejected onchain. A nonce is spent per
+   * token contract on each chain, so a key requires `allowedAssets` to be
+   * exactly one USDC contract, and the challenge must be for that USDC's own
+   * network: every attempt then pays the same token on the same chain. Use one key per
+   * logical purchase, such as a UUID stored with the request; reusing a key
+   * for a different purchase makes that purchase fail to settle. Applies
+   * only to nonzero payments. To let a seller that dedups return the first
+   * result, also send your own `Idempotency-Key` header.
+   */
+  idempotencyKey?: string
 }
 
 /**
@@ -230,6 +251,7 @@ export async function paidFetch(
     allowedRecipients,
     allowedAssets,
     reportCallerUsage,
+    idempotencyKey,
     ...fetchOptions
   } = options
 
@@ -238,6 +260,7 @@ export async function paidFetch(
       "paidFetch does not support ReadableStream bodies — pass a string or ArrayBuffer instead",
     )
   }
+  assertIdempotencyKeyPinned(idempotencyKey, allowedAssets)
 
   const probeRes = await fetch(url, fetchOptions)
 
@@ -257,7 +280,12 @@ export async function paidFetch(
     allowedAssets,
   })
 
-  const client = createX402Client(signer, requirements.network, x402Version)
+  const client = createX402Client(
+    signer,
+    requirements.network,
+    x402Version,
+    idempotentSigningOptions(idempotencyKey, requirements),
+  )
   const httpClient = new x402HTTPClient(client)
 
   const paymentRequired = toX402PaymentRequired({
@@ -425,6 +453,79 @@ export function validatePaymentRequirements(
 }
 
 /**
+ * The EIP-3009 nonce `paidFetch` and `paidAuthenticatedFetch` sign for an
+ * `idempotencyKey`: keccak256 of a namespaced form of the key. The same key
+ * always yields the same nonce, so the token settles it at most once per
+ * payer.
+ */
+export function idempotencyNonce(idempotencyKey: string): `0x${string}` {
+  if (idempotencyKey.length === 0) {
+    throw new Error("idempotencyKey must be a non-empty string")
+  }
+  return keccak256(
+    stringToHex(`opensea-tool-sdk/x402/idempotency:${idempotencyKey}`),
+  )
+}
+
+const KNOWN_USDC = new Set(
+  [USDC_BASE_ADDRESS, USDC_BASE_SEPOLIA_ADDRESS].map(a => a.toLowerCase()),
+)
+
+/**
+ * EIP-3009 tracks nonces per token contract on each chain, so the same
+ * idempotency nonce in any other (chain, token) domain is fresh and would
+ * settle again. A key therefore requires `allowedAssets` to be exactly one
+ * USDC contract; {@link idempotentSigningOptions} then requires the challenge
+ * to be for that contract's own network, leaving one possible domain.
+ */
+export function assertIdempotencyKeyPinned(
+  idempotencyKey: string | undefined,
+  allowedAssets: string[] | undefined,
+): void {
+  if (idempotencyKey === undefined) return
+  idempotencyNonce(idempotencyKey)
+  if (
+    allowedAssets?.length !== 1 ||
+    !KNOWN_USDC.has(allowedAssets[0].toLowerCase())
+  ) {
+    throw new Error(
+      "idempotencyKey requires allowedAssets with exactly one USDC contract (USDC_BASE_ADDRESS or USDC_BASE_SEPOLIA_ADDRESS), so every retry pays the same token on the same chain",
+    )
+  }
+}
+
+/**
+ * Signing options for one challenge: the idempotency nonce for a nonzero
+ * payment when a key is set, otherwise a random nonce. A zero-value
+ * authorization (the predicate gate's) keeps a random nonce so it can never
+ * consume the nonce the real payment needs. A keyed payment must be for the
+ * USDC of the challenge's own network, so the pinned asset also pins the
+ * chain.
+ */
+export function idempotentSigningOptions(
+  idempotencyKey: string | undefined,
+  requirements: Pick<
+    PaymentRequirements,
+    "network" | "asset" | "maxAmountRequired"
+  >,
+): Eip3009SigningOptions {
+  if (idempotencyKey === undefined) {
+    return {}
+  }
+  const nonce = idempotencyNonce(idempotencyKey)
+  if (BigInt(requirements.maxAmountRequired) === 0n) {
+    return {}
+  }
+  const usdc = resolveNetwork(requirements.network)?.usdc
+  if (usdc?.toLowerCase() !== requirements.asset.toLowerCase()) {
+    throw new Error(
+      `idempotencyKey covers USDC on the challenged network only: the 402 asks for ${requirements.asset} on ${requirements.network}`,
+    )
+  }
+  return { nonce }
+}
+
+/**
  * Create an x402Client with both exact and upto EIP-3009 schemes registered
  * for the specified network and protocol version. The x402Client routes to
  * the correct scheme based on the challenge's `scheme` field.
@@ -433,9 +534,10 @@ export function createX402Client(
   signer: WalletAdapter | Account,
   network: string,
   x402Version: number,
+  signingOptions: Eip3009SigningOptions = {},
 ): x402Client {
-  const exact = new ExactEip3009Scheme(signer)
-  const upto = new UptoEip3009Scheme(signer)
+  const exact = new ExactEip3009Scheme(signer, signingOptions)
+  const upto = new UptoEip3009Scheme(signer, signingOptions)
   const client = new x402Client()
   if (x402Version >= 2) {
     client.register(network as `${string}:${string}`, exact)
