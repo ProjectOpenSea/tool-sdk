@@ -1,12 +1,11 @@
 type WebHandler = (request: Request) => Response | Promise<Response>
 
 export interface VercelRequest {
-  method: string
+  method?: string
   url?: string
   headers: Record<string, string | string[] | undefined>
   body?: unknown
   rawBody?: Buffer
-  [key: string]: unknown
 }
 
 export interface VercelResponse {
@@ -15,7 +14,6 @@ export interface VercelResponse {
   json(body: unknown): void
   send(body: string | Buffer): void
   end(): void
-  [key: string]: unknown
 }
 
 export function toVercelHandler(
@@ -36,9 +34,10 @@ export function toVercelHandler(
       }
     }
 
-    const hasBody = req.method !== "GET" && req.method !== "HEAD"
+    const method = req.method ?? "GET"
+    const hasBody = method !== "GET" && method !== "HEAD"
     const webRequest = new Request(url, {
-      method: req.method,
+      method,
       headers,
       body: hasBody ? JSON.stringify(req.body) : undefined,
     })

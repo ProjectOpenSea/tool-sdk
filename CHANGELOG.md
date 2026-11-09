@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.32.2
+
+### Patch Changes
+
+- 5d2f895: `toVercelHandler` now accepts a request and response typed with `@vercel/node`. `VercelRequest.method` is optional, as it is on Node's `IncomingMessage`, and `VercelRequest` and `VercelResponse` no longer declare an index signature that Node's `IncomingMessage` and `ServerResponse` do not have. A request without a method is now handled as `GET`. Before, the adapter attached a body and built an invalid GET request.
+
 ## 0.32.1
 
 ### Patch Changes
