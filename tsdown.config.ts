@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { defineConfig } from "tsup"
+import { defineConfig } from "tsdown"
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string
@@ -9,9 +9,11 @@ export default defineConfig([
   {
     entry: { cli: "src/cli.ts" },
     format: ["esm"],
+    dts: false,
     clean: true,
     sourcemap: true,
     target: "node18",
+    fixedExtension: false,
     define: {
       __VERSION__: JSON.stringify(pkg.version),
     },
@@ -26,9 +28,11 @@ export default defineConfig([
       "testing/index": "src/testing/index.ts",
     },
     format: ["esm"],
-    dts: true,
+    dts: { sourcemap: true },
+    clean: false,
     sourcemap: true,
     target: "node18",
+    fixedExtension: false,
     define: {
       __VERSION__: JSON.stringify(pkg.version),
     },
