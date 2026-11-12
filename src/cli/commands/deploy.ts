@@ -8,7 +8,6 @@ import { deriveSlug } from "../../lib/utils.js"
 interface DeployOptions {
   host: string
   nonInteractive?: boolean
-  yes?: boolean
 }
 
 interface EnvVar {
@@ -226,10 +225,6 @@ export const deployCommand = new Command("deploy")
   .description("Deploy a tool-sdk project to a hosting platform")
   .requiredOption("--host <host>", "Hosting platform (vercel)")
   .option("--non-interactive", "Read env var values from environment (for CI)")
-  .option(
-    "-y, --yes",
-    "(deprecated, no-op — vercel link is now auto-confirmed)",
-  )
   .action(async (options: DeployOptions) => {
     if (options.host !== "vercel") {
       console.error(

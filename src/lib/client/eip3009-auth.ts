@@ -21,8 +21,9 @@ export interface Eip3009AuthenticatedFetchOptions extends RequestInit {
 
 /**
  * Encode a `ZeroValueAuthorization` as an `Authorization: EIP-3009 <token>`
- * header value. The payload is base64url-encoded JSON for consistency with
- * the SIWE auth scheme.
+ * header value. The payload is base64url-encoded JSON without padding.
+ * Predicate gates in this SDK read only `X-Payment`, not this header; use
+ * `eip3009AuthenticatedFetch` to call a predicate-gated tool.
  */
 export function createEip3009AuthHeader(
   authorization: ZeroValueAuthorization,

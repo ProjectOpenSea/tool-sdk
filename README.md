@@ -149,14 +149,13 @@ Deploys the project to a host. Vercel is the only host today.
 
 ```bash
 npx @opensea/tool-sdk deploy --host vercel
-npx @opensea/tool-sdk deploy --host vercel --non-interactive -y
+npx @opensea/tool-sdk deploy --host vercel --non-interactive
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--host <host>` | Hosting platform (required; `vercel`) |
 | `--non-interactive` | Read env var values from the environment (for CI) |
-| `-y, --yes` | Auto-confirm prompts such as the Vercel link step |
 
 ### `pay <url>`
 
@@ -222,7 +221,7 @@ npx @opensea/tool-sdk dry-run-gate \
 
 ### `dry-run-predicate-gate`
 
-Runs the handler locally without an auth header and asserts a valid challenge: 402 when `operatorAddress` is configured, 401 otherwise.
+Runs the handler locally without an auth header and asserts a valid 402 challenge. `--operator-address` is required.
 
 ```bash
 npx @opensea/tool-sdk dry-run-predicate-gate \
@@ -520,16 +519,15 @@ const handler = createToolHandler({
 
 | Outcome | Status | Body |
 | --- | --- | --- |
-| No auth, `operatorAddress` configured | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
-| No auth, no `operatorAddress` | `401` | `{ error, hint }` |
-| Malformed auth header or `X-Payment` | `401` | `{ error }` |
+| No `X-Payment` header | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
+| Malformed `X-Payment` | `401` | `{ error }` |
 | `tryHasAccess` returned `(true, true)` | (passes) | n/a |
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "Predicate misbehaved..." }` |
 
 `predicate` in the 403 body is the registered predicate's address, read from `getToolConfig` on the first denial and cached in-process. Callers can read that predicate's onchain config to see what they need.
 
-`X-Payment` (a zero-value EIP-3009 `TransferWithAuthorization` from the 402 flow) is the preferred auth. The gate also accepts `Authorization: EIP-3009 <base64url(json)>`, and the deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility.
+The gate reads only `X-Payment`: a zero-value EIP-3009 `TransferWithAuthorization` signed in response to the 402 challenge. `eip3009AuthenticatedFetch` handles that round trip on the client.
 
 The gate rejects expired authorizations and any `validBefore` more than 1 hour out. SDK clients sign shorter windows: 5 minutes for zero-value, 10 minutes for paid. Each authorization carries a random signed nonce. If one authorization must run the handler at most once, configure `replayGuard`; see [Replay protection](#replay-protection).
 

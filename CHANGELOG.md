@@ -1,5 +1,23 @@
 # @opensea/tool-sdk
 
+## 0.34.0
+
+### Minor Changes
+
+- ed09a89: Remove deprecated and unused surface. This is a breaking change.
+
+  - `authenticatedFetch`, `createSiweMessage`, `createSiweAuthHeader` and the `AuthenticatedFetchOptions` type are removed. No gate in this SDK reads an `Authorization: SIWE` header. Use `eip3009AuthenticatedFetch`, which answers the gate's 402 challenge with a zero-value EIP-3009 `X-Payment` authorization.
+  - The `TransactionRequest` type re-export is removed, following `@opensea/wallet-adapters` 2.0.0. Use `EvmTransactionRequest`, now exported from `@opensea/tool-sdk`.
+  - `tool-sdk deploy` no longer accepts `-y`/`--yes`. The flag did nothing: `vercel link` is already auto-confirmed. Drop it from scripts.
+  - `PaidAuthenticatedFetchOptions.expirationMinutes` is removed. `paidAuthenticatedFetch` already ignored it because EIP-3009 authorizations carry their own validity window, so there is no replacement; delete the option from calls.
+  - The unused `@x402/fetch` dependency is removed.
+  - The scaffolded Vercel template's `index.html` and `llms.txt` now document the `X-Payment` flow and `eip3009AuthenticatedFetch` instead of SIWE, and `tool-sdk inspect` no longer tells callers a predicate needs SIWE.
+
+### Patch Changes
+
+- Updated dependencies [ed09a89]
+  - @opensea/wallet-adapters@2.0.0
+
 ## 0.33.1
 
 ### Patch Changes

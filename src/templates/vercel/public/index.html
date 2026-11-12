@@ -53,17 +53,17 @@
     <h2>Authentication</h2>
     <p>This tool may use one or both of the following gates (check the <a href="/.well-known/ai-tool/{{TOOL_SLUG}}.json">manifest</a> for details):</p>
     <ul>
-      <li><strong>Predicate gate (SIWE)</strong> — requires a <a href="https://eips.ethereum.org/EIPS/eip-4361">SIWE</a> authorization header: <code>Authorization: SIWE &lt;base64url(message)&gt;.&lt;signature&gt;</code>. Build the SIWE message for the domain of <code>{{TOOL_ENDPOINT}}</code> and sign with a qualifying wallet.</li>
-      <li><strong>x402 payment gate</strong> — requires an <code>X-Payment</code> header with a signed USDC transfer authorization. The endpoint returns <code>402</code> with payment requirements if this gate is active.</li>
+      <li><strong>Predicate gate</strong>: the endpoint returns <code>402</code> with a zero-value challenge. Sign a zero-value <a href="https://eips.ethereum.org/EIPS/eip-3009">EIP-3009</a> <code>TransferWithAuthorization</code> to the challenge's <code>payTo</code> with a qualifying wallet and send it in the <code>X-Payment</code> header. No USDC moves.</li>
+      <li><strong>x402 payment gate</strong>: requires an <code>X-Payment</code> header with a signed USDC transfer authorization. The endpoint returns <code>402</code> with payment requirements if this gate is active.</li>
     </ul>
 
     <h2>Agent quick start</h2>
     <p>Using <a href="https://www.npmjs.com/package/@opensea/tool-sdk"><code>@opensea/tool-sdk</code></a> CLI:</p>
-    <pre># Predicate-gated tool (SIWE auth)
+    <pre># Predicate-gated tool (zero-value EIP-3009 auth)
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk auth \
   {{TOOL_ENDPOINT}}/api --body '{"query": "hello"}'
 
-# x402-paid tool (USDC payment, no SIWE)
+# x402-paid tool (USDC payment)
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk pay \
   {{TOOL_ENDPOINT}}/api --body '{"query": "hello"}'
 
@@ -80,16 +80,16 @@ import { base } from "viem/chains"
 const adapter = createWalletFromEnv()
 const client = await walletAdapterToClient(adapter, base)</pre>
 
-    <p>For <strong>predicate-gated</strong> tools (SIWE auth):</p>
-    <pre>import { authenticatedFetch } from "@opensea/tool-sdk"
+    <p>For <strong>predicate-gated</strong> tools (zero-value EIP-3009 auth):</p>
+    <pre>import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
 
-const res = await authenticatedFetch(
+const res = await eip3009AuthenticatedFetch(
   "{{TOOL_ENDPOINT}}/api",
   { account: client.account, method: "POST", body: JSON.stringify({ query: "hello" }) },
 )
 const data = await res.json()</pre>
 
-    <p>For <strong>x402-paid</strong> tools (USDC payment, no SIWE):</p>
+    <p>For <strong>x402-paid</strong> tools (USDC payment):</p>
     <pre>import { paidFetch } from "@opensea/tool-sdk"
 
 const res = await paidFetch(
@@ -98,7 +98,7 @@ const res = await paidFetch(
 )
 const data = await res.json()</pre>
 
-    <p>For tools with <strong>both</strong> gates (SIWE + x402):</p>
+    <p>For tools with <strong>both</strong> gates (predicate + x402):</p>
     <pre>import { paidAuthenticatedFetch } from "@opensea/tool-sdk"
 
 const res = await paidAuthenticatedFetch(
@@ -121,7 +121,7 @@ FIREBLOCKS_API_KEY    — Fireblocks vault</pre>
     <p>CLI commands also accept <code>--wallet-provider privy|turnkey|fireblocks|bankr|private-key</code>.</p>
 
     <h2>Response</h2>
-    <p>On success, returns <code>200</code> with a JSON body matching the manifest's <code>outputs</code> schema. On auth failure, returns <code>401</code> (missing/invalid SIWE) or <code>403</code> (access predicate denied). For x402-gated tools, <code>402</code> indicates payment is required.</p>
+    <p>On success, returns <code>200</code> with a JSON body matching the manifest's <code>outputs</code> schema. Without an <code>X-Payment</code> header, returns <code>402</code> with a challenge: zero-value for predicate-gated tools, a USDC amount for x402-paid tools. A malformed or invalid <code>X-Payment</code> header returns <code>401</code>, and a wallet the access predicate denies returns <code>403</code>.</p>
 
     <p class="meta">
       Built with <a href="https://github.com/ProjectOpenSea/tool-sdk">@opensea/tool-sdk</a>

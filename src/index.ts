@@ -13,14 +13,6 @@ export {
 } from "./lib/client/external-signer.js"
 export type { PaidAuthenticatedFetchOptions } from "./lib/client/paid-authenticated-fetch.js"
 export { paidAuthenticatedFetch } from "./lib/client/paid-authenticated-fetch.js"
-/** @deprecated Use `eip3009AuthenticatedFetch` instead. */
-export type { AuthenticatedFetchOptions } from "./lib/client/siwe-auth.js"
-/** @deprecated Use `eip3009AuthenticatedFetch` and `createEip3009AuthHeader` instead. */
-export {
-  authenticatedFetch,
-  createSiweAuthHeader,
-  createSiweMessage,
-} from "./lib/client/siwe-auth.js"
 export type {
   PaidFetchOptions,
   PaymentRequirements,
@@ -195,9 +187,9 @@ export type {
 export { createX402UsageReporter } from "./lib/usage/x402-reporter.js"
 export { deriveSlug } from "./lib/utils.js"
 export type {
+  EvmTransactionRequest,
   SvmTransactionRequest,
   SvmWalletAdapter,
-  TransactionRequest,
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,

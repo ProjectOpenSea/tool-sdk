@@ -175,11 +175,6 @@ export const ToolRegisteredEvent = IToolRegistryABI.find(
   e => e.type === "event" && e.name === "ToolRegistered",
 )!
 
-// biome-ignore lint/style/noNonNullAssertion: the event is a known member of the const ABI above
-export const ToolDeregisteredEvent = IToolRegistryABI.find(
-  e => e.type === "event" && e.name === "ToolDeregistered",
-)!
-
 export const IAccessPredicateABI = [
   {
     type: "function",

@@ -17,8 +17,6 @@ import { toX402PaymentRequired } from "./x402-scheme.js"
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
   account: Account
   signer?: WalletAdapter | Account
-  /** @deprecated Ignored. EIP-3009 does not use expiration minutes. */
-  expirationMinutes?: number
   maxAmount?: string
   allowedRecipients?: string[]
   allowedAssets?: string[]
@@ -52,7 +50,6 @@ export async function paidAuthenticatedFetch(
   const {
     account,
     signer,
-    expirationMinutes: _expirationMinutes,
     maxAmount,
     allowedRecipients,
     allowedAssets,

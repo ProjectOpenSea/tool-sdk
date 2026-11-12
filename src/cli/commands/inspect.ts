@@ -362,7 +362,7 @@ export const inspectCommand = new Command("inspect")
     ) {
       console.log(
         pc.yellow(
-          "\n  ⚠ This tool uses both a payment gate and an access predicate. Clients must satisfy both — SIWE authentication for the predicate AND x402 payment.",
+          "\n  ⚠ This tool uses both a payment gate and an access predicate. Clients must satisfy both the access predicate AND the x402 payment.",
         ),
       )
     }

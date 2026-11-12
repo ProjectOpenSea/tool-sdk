@@ -1,10 +1,10 @@
 export type {
   BankrConfig,
+  EvmTransactionRequest,
   SignMessageRequest,
   SignTypedDataRequest,
   SvmTransactionRequest,
   SvmWalletAdapter,
-  TransactionRequest,
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,

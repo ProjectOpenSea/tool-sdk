@@ -373,8 +373,7 @@ interface AuthResult {
  * a client-chosen far-future expiry would make a captured header replayable
  * for its whole lifetime. Well-behaved clients sign now+300s
  * (`signZeroValueAuthorization`) or now+600s (`signEip3009Authorization`), so
- * this 1-hour cap is non-breaking. Mirrors the deprecated SIWE path's 60-min
- * expiration cap.
+ * this 1-hour cap is non-breaking.
  */
 const MAX_VALID_BEFORE_WINDOW_SECONDS = 3600
 

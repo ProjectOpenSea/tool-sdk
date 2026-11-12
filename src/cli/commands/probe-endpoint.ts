@@ -185,13 +185,6 @@ export async function classifyResolvedHostname(
     : "public"
 }
 
-/** Convenience for callers that only care whether resolution went inward. */
-export async function isPrivateResolvedAddress(
-  hostname: string,
-): Promise<boolean> {
-  return (await classifyResolvedHostname(hostname)) === "private"
-}
-
 export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
   const hostname = new URL(endpoint).hostname
   if (isPrivateHostname(hostname)) {

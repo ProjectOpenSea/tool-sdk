@@ -8,8 +8,9 @@ const BANKR_API_BASE = "https://api.bankr.bot"
  * Wrap an external signing function into a viem-compatible {@link Account}.
  *
  * This lets agent wallets (Bankr, MPC, HSM) that sign via HTTP API work with
- * {@link authenticatedFetch} and any other viem consumer without requiring a
- * local private key.
+ * `eip3009AuthenticatedFetch`, `paidFetch` and any other viem consumer without
+ * requiring a local private key. The EIP-3009 flows sign typed data, so pass
+ * `signTypedData` for them.
  */
 export function createExternalSignerAccount(params: {
   address: Address
