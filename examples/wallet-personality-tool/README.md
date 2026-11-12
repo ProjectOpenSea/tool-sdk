@@ -1,19 +1,17 @@
-# Wallet Personality Tool
+# Wallet personality tool
 
 > [!NOTE]
-> **Reference implementation.** This is a worked example shipped
-> alongside `@opensea/tool-sdk` to demonstrate building an ERC-8257
-> tool with two access tiers (x402 paywall + `SubscriptionPredicate`
-> gate). Use the code as a starting point for your own tool; the live
-> `wallet-personality-tool.vercel.app` deploy and registered tool IDs
-> (3 and 4 on Base) are illustrative, not a production service, and
-> may change or go offline without notice.
+> **Reference implementation.** This example ships with
+> `@opensea/tool-sdk` and shows an ERC-8257 tool with two access tiers:
+> an x402 paywall and a `SubscriptionPredicate` gate. Start your own tool
+> from this code. The live `wallet-personality-tool.vercel.app` deploy and
+> its registered tool IDs (3 and 4 on Base) are illustrative, not a
+> production service, and may change or go offline without notice.
 
 An [ERC-8257](https://eips.ethereum.org/EIPS/eip-8257) agent tool that
 turns a wallet's onchain history into a markdown personality file. The
 output is structured so a downstream LLM agent can load it as a system
-prompt and act *as* the wallet, and also reads cleanly to a human as a
-vibe report.
+prompt and act *as* the wallet. A person can read it as a vibe report.
 
 Built with [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk),
 the [OpenSea v2 REST API](https://docs.opensea.io/reference/api-overview),
@@ -42,16 +40,17 @@ Manifests:
 { "targetAddress": "0x..." }
 ```
 
-If `targetAddress` is omitted, the subscriber route defaults it to the
-authenticated caller (recovered from the EIP-3009 signature). The response is a structured personality plus an
-assembled markdown blob (see `ResponseSchema` in `src/schemas.ts`).
+If `targetAddress` is omitted, the subscriber route uses the
+authenticated caller (recovered from the EIP-3009 signature). The response
+is a structured personality plus an assembled markdown blob (see
+`ResponseSchema` in `src/schemas.ts`).
 
 ### Wallet configuration
 
-`tool-sdk pay`, `register`, etc. sign with one of five wallet adapters.
-Set the env vars for your provider and the SDK auto-detects it (priority:
-Privy → Fireblocks → Turnkey → Bankr → PrivateKey). You can also pin a
-provider explicitly with `--wallet-provider <name>`.
+`tool-sdk pay`, `register`, and the other signing commands use one of five
+wallet adapters. Set your provider's env vars and the SDK detects it
+(priority: Privy → Fireblocks → Turnkey → Bankr → PrivateKey), or pin one
+with `--wallet-provider <name>`.
 
 | Provider | `--wallet-provider` | Required env vars |
 |----------|---------------------|-------------------|
@@ -61,15 +60,15 @@ provider explicitly with `--wallet-provider <name>`.
 | Bankr | `bankr` | `BANKR_API_KEY` |
 | Private Key | `private-key` | `PRIVATE_KEY`, `RPC_URL` |
 
-The examples below use `PRIVATE_KEY` for brevity. Substitute your
-provider's env vars to use any other adapter; the SDK signs identically
-across providers.
+The examples below use `PRIVATE_KEY` for brevity. Swap in your
+provider's env vars to use another adapter; the SDK signs the same way
+with each.
 
 ### Public tier ($0.05): `tool-sdk pay`
 
 `tool-sdk pay` probes the endpoint for `PaymentRequirements`, signs the
 EIP-3009 `transferWithAuthorization`, and replays the request with the
-`X-Payment` header. No extra script needed.
+`X-Payment` header.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
@@ -79,11 +78,10 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 
 ### Subscriber tier (free, requires holding the subscription NFT): `tool-sdk pay`
 
-The `pay` command probes the endpoint, receives a 402 challenge that
-includes identity-gating requirements, signs the EIP-3009
-`transferWithAuthorization` as the `X-Payment` header, and retries.
-Wallet must hold an active subscription on Base or the onchain
-`predicateGate` returns `403` before the handler runs.
+`pay` gets a zero-value 402 challenge, signs the EIP-3009
+`transferWithAuthorization` as the `X-Payment` header, and retries. The
+wallet must hold an active subscription on Base, or `predicateGate`
+returns `403` before the handler runs.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
@@ -94,12 +92,12 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 ## Architecture
 
 ```
-client (POST + X-Payment / Authorization: EIP-3009)
+client (POST + X-Payment)
   │
   ▼
 api/index.ts (public)        ─┐
 api/subscriber.ts            ─┤── @opensea/tool-sdk: createToolHandler
-api/well-known/[slug].ts     ─┘    + gates [predicateGate, x402 paywall]
+api/well-known/[slug].ts     ─┘    + gates [x402 paywall | predicateGate]
   │
   ▼
 src/handler.ts ──► src/digest.ts ──► OpenSea v2
@@ -111,15 +109,15 @@ src/handler.ts ──► src/digest.ts ──► OpenSea v2
                   src/markdown.ts ──► assembled markdown
 ```
 
-The handler is framework-agnostic; only the gate chain differs between
-tiers:
+The handler is framework-agnostic. The tiers differ only in their gate.
 
-- **Public tier**: x402 paywall only. Anonymous, $0.05 per call.
-- **Subscriber tier**: `predicateGate` only. The onchain `accessPredicate`
-  for toolId=4 is the
-  [`SubscriptionPredicate` (v0.2)](https://basescan.org/address/0xcbe0cd9b1d99d95baa9c58f2767246c52e461f25#code)
-  configured with the subscription collection. EIP-3009-authenticated callers
-  who pass `tryHasAccess(4, caller)` call free.
+The public tier uses the x402 paywall alone: anonymous, $0.05 per call.
+
+The subscriber tier uses `predicateGate` alone. The onchain
+`accessPredicate` for toolId=4 is the
+[`SubscriptionPredicate` (v0.2)](https://basescan.org/address/0xcbe0cd9b1d99d95baa9c58f2767246c52e461f25#code),
+configured with the subscription collection. Callers whose EIP-3009
+signature passes `tryHasAccess(4, caller)` call for free.
 
 ## Local development
 
@@ -133,9 +131,11 @@ pnpm install --ignore-workspace
 pnpm run type-check         # tsc --noEmit
 pnpm run test               # vitest
 
-# Confirm the predicate gate fires locally (no live calls, no API keys):
+# Confirm the predicate gate issues its 402 locally (no live calls, no API keys):
+pnpm run export-manifest
 npx @opensea/tool-sdk dry-run-predicate-gate \
-  --tool-id $SUBSCRIBER_TOOL_ID --network base
+  --manifest ./manifest-subscriber.json \
+  --tool-id $SUBSCRIBER_TOOL_ID --operator-address $CREATOR_ADDRESS
 ```
 
 For a local runtime, run `pnpm run dev` (vercel dev; requires linking
@@ -179,8 +179,8 @@ public/index.html           landing page served at the root URL
    TOOL_ENDPOINT            # base URL of the deploy (no trailing path)
    ```
 
-   For the subscriber tier you'll also need `SUBSCRIBER_TOOL_ID` (the
-   `toolId` minted by `tool-sdk register`, set after the next step).
+   The subscriber tier also needs `SUBSCRIBER_TOOL_ID`, the `toolId` that
+   `tool-sdk register` returns in step 3.
 
 2. **Deploy** to Vercel (`vercel deploy --prod`). Confirm
    `/.well-known/ai-tool/wallet-personality.json` and
@@ -198,7 +198,7 @@ public/index.html           landing page served at the root URL
    ```
 
    Subscriber tier: register against the canonical
-   `SubscriptionPredicate` on Base and configure the gate in one shot:
+   `SubscriptionPredicate` on Base and configure the gate in one command:
 
    ```bash
    PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
@@ -224,8 +224,8 @@ public/index.html           landing page served at the root URL
    ```
 
    `tool-sdk inspect` reads the onchain `ToolConfig`, fetches the live
-   manifest, recomputes the JCS keccak256 hash to confirm it matches
-   `manifestHash`, and probes the access predicate.
+   manifest, recomputes its JCS keccak256 hash against `manifestHash`,
+   and probes the access predicate.
 
 ## License
 

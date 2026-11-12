@@ -49,7 +49,7 @@ const DEFAULT_TIMEOUT_MS = 5_000
  * who called using data the caller already supplied:
  *
  * - **Paid x402 calls** (`event.paid && event.settlementTxHash`): POSTs
- *   `verification_type: "x402_settlement"` with the on-chain payer and
+ *   `verification_type: "x402_settlement"` with the onchain payer and
  *   settlement tx hash. The backend verifies the settlement directly.
  * - **EIP-3009-authenticated calls** (`event.callerAuthorization`, stashed by
  *   an auth gate): POSTs `verification_type: "eip3009_authorization"`,
@@ -125,7 +125,7 @@ export function createEip3009UsageReporter(
 
     try {
       if (event.paid && event.settlementTxHash) {
-        // Paid x402 call: attribute to the on-chain payer. `callerAddress` is
+        // Paid x402 call: attribute to the onchain payer. `callerAddress` is
         // only set when an auth gate ran; otherwise fall back to the x402
         // payer (the actual caller).
         const caller =

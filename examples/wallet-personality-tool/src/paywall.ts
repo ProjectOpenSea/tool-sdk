@@ -37,8 +37,9 @@ export function buildSubscriberGates({
   rpcUrl?: string
   /**
    * Tool operator address (the manifest `creatorAddress`). The gate
-   * advertises it as the `payTo` in its zero-value x402 402 challenge so
-   * the caller knows whom to bind the identity authorization to.
+   * combines it with the endpoint URL and tool ID to derive the `payTo` of
+   * its zero-value 402 challenge, which the caller signs the identity
+   * authorization to.
    */
   operatorAddress: `0x${string}`
 }): GateMiddleware[] {

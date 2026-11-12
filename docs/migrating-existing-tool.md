@@ -1,8 +1,8 @@
-# Migrating an Existing Tool
+# Migrating an existing tool
 
-This guide covers moving a tool between deployment targets — most commonly Vercel → Cloudflare Workers. The key insight: `@opensea/tool-sdk` uses a **factory pattern** where `createToolHandler`, `defineManifest`, and gate constructors are pure factories that return platform-agnostic objects. Only the thin runtime-specific entry adapter changes.
+This guide covers moving a tool between deployment targets, most often from Vercel to Cloudflare Workers. `createToolHandler`, `defineManifest`, and the gate constructors are pure factories that return platform-agnostic objects, so only the small runtime-specific entry adapter changes.
 
-## Architecture: Pure Factories + Thin Adapters
+## Architecture: pure factories and thin adapters
 
 ```
 ┌──────────────────────────────────────────┐
@@ -17,18 +17,18 @@ This guide covers moving a tool between deployment targets — most commonly Ver
   toVercelHandler  toCloudflareHandler
 ```
 
-Your manifest, handler, input/output schemas, and gates live in shared `src/` files. The entry point is a one-liner adapter that wires the handler to the runtime.
+The manifest, handler, input and output schemas, and gates live in shared `src/` files. The entry point is a one-line adapter that connects the handler to the runtime.
 
-## The Key Difference: Environment Threading
+## The main difference: passing env in
 
 On **Vercel**, `process.env` is available at module-init time:
 
 ```typescript
-// src/handler.ts — works on Vercel (and Express)
+// src/handler.ts: works on Vercel (and Express)
 import { createToolHandler, payaiX402Gate } from "@opensea/tool-sdk"
 
 const gate = payaiX402Gate({
-  recipient: process.env.PAYOUT_ADDRESS!,  // ✅ available at import time
+  recipient: process.env.PAYOUT_ADDRESS!,  // available at import time
   amountUsdc: "0.01",
 })
 
@@ -41,10 +41,10 @@ export const toolHandler = createToolHandler({
 })
 ```
 
-On **Cloudflare Workers**, env is **not** available at module scope — it arrives as the second argument to `fetch(request, env)`:
+On **Cloudflare Workers**, env is **not** available at module scope. It arrives as the second argument to `fetch(request, env)`:
 
 ```typescript
-// src/index.ts — Cloudflare Workers entry
+// src/index.ts: Cloudflare Workers entry
 import { createWellKnownHandler } from "@opensea/tool-sdk"
 import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
 import { manifest } from "./manifest.js"
@@ -68,7 +68,7 @@ export default {
 ```
 
 ```typescript
-// src/handler.ts — factory pattern for Cloudflare
+// src/handler.ts: factory pattern for Cloudflare
 import { createToolHandler, payaiX402Gate } from "@opensea/tool-sdk"
 import { manifest } from "./manifest.js"
 
@@ -78,7 +78,7 @@ interface Env {
 
 export function buildToolHandler(env: Env) {
   const gate = payaiX402Gate({
-    recipient: env.PAYOUT_ADDRESS,  // ✅ env threaded in at request time
+    recipient: env.PAYOUT_ADDRESS,  // env passed in at request time
     amountUsdc: "0.01",
   })
 
@@ -92,13 +92,13 @@ export function buildToolHandler(env: Env) {
 }
 ```
 
-> **Performance note:** Constructing the handler on every request is cheap — `createToolHandler` does no I/O. If profiling shows it matters, cache the handler per unique env shape using a module-scoped `Map`.
+> Building the handler on every request is cheap, because `createToolHandler` does no I/O. If profiling shows a cost, cache one handler per distinct env in a module-scoped `Map`.
 
-## Migration Checklist: Vercel → Cloudflare Workers
+## Checklist: Vercel to Cloudflare Workers
 
 1. **Scaffold the Cloudflare entry point.** Create `src/index.ts` with the `export default { fetch }` pattern shown above. Install `wrangler` and create a `wrangler.toml`.
 
-2. **Convert env access to factory pattern.** Any code that reads `process.env` at module scope must move into a factory function that receives `env` as a parameter. This is the most common migration pain point.
+2. **Move env access into a factory.** Code that reads `process.env` at module scope must move into a function that takes `env` as a parameter. This is where most migrations get stuck.
 
 3. **Update the adapter import.** Replace:
    ```typescript
@@ -112,30 +112,30 @@ export function buildToolHandler(env: Env) {
    import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
    export default toCloudflareHandler(toolHandler)
    ```
-   Or use the manual `fetch` entry point if you need env threading (see above).
+   Use the manual `fetch` entry point shown above if the handler needs env.
 
-4. **Move secrets to `wrangler.toml` / Workers dashboard.** Vercel env vars become Workers secrets (`wrangler secret put <NAME>`) or `[vars]` in `wrangler.toml` for non-sensitive values.
+4. **Move secrets to Workers.** Vercel env vars become Workers secrets (`wrangler secret put <NAME>`), or `[vars]` in `wrangler.toml` for values that are not sensitive.
 
-5. **Check duration limits.** Cloudflare Workers has a 30 s CPU time limit. If your handler does heavy computation, consider offloading to a Durable Object or queue.
+5. **Check duration limits.** Workers allow 30 s of CPU time. Move heavy computation to a Durable Object or a queue.
 
-6. **Test locally.** Run `wrangler dev` and verify your `/.well-known/ai-tool/<slug>.json` and tool endpoint both respond correctly.
+6. **Test locally.** Run `wrangler dev` and check that `/.well-known/ai-tool/<slug>.json` and the tool endpoint both respond.
 
-7. **Update onchain metadata URI.** After deploying, update the `metadataURI` in the ToolRegistry if your endpoint URL changed.
+7. **Update the onchain metadata URI.** If the endpoint URL changed, update `metadataURI` in the ToolRegistry after deploying.
 
-## Migration Checklist: Cloudflare Workers → Vercel
+## Checklist: Cloudflare Workers to Vercel
 
-The reverse migration is simpler — flatten the factory back to module-scope:
+The reverse is simpler: move the factory body back to module scope.
 
 1. Replace the `buildToolHandler(env)` factory with a direct `createToolHandler` call that reads `process.env`.
 2. Create `api/index.ts` with `toVercelHandler(toolHandler)`.
 3. Move secrets to Vercel Environment Variables.
 4. Remove `wrangler.toml`.
 
-## Shared Code Stays Shared
+## Shared code stays the same
 
-Regardless of direction, these files should not change during migration:
+In either direction, these should not change:
 
-- `src/manifest.ts` — manifest definition (pure data, no env access)
-- Input/output Zod schemas
-- Gate configurations (unless they read env, in which case they move into the factory)
-- Test files (they test the handler directly, not the adapter)
+- `src/manifest.ts`, the manifest definition (pure data, no env access)
+- Input and output Zod schemas
+- Gate configurations, unless they read env (then they move into the factory)
+- Tests, since they exercise the handler rather than the adapter

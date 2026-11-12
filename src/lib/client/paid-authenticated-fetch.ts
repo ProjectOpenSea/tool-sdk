@@ -17,7 +17,7 @@ import { toX402PaymentRequired } from "./x402-scheme.js"
 export interface PaidAuthenticatedFetchOptions extends RequestInit {
   account: Account
   signer?: WalletAdapter | Account
-  /** @deprecated Ignored — EIP-3009 does not use expiration minutes. */
+  /** @deprecated Ignored. EIP-3009 does not use expiration minutes. */
   expirationMinutes?: number
   maxAmount?: string
   allowedRecipients?: string[]
@@ -84,7 +84,7 @@ export async function paidAuthenticatedFetch(
 
   // maxAmount is a per-invocation spending cap. The two-challenge loop only
   // exists for the legacy predicate-gate flow (zero-value challenge, then the
-  // real paid challenge) — so at most one nonzero authorization may be signed
+  // real paid challenge), so at most one nonzero authorization may be signed
   // per invocation, and cumulative authorized value may never exceed maxAmount.
   let cumulativeAuthorized = 0n
   let nonzeroAuthorizationSigned = false

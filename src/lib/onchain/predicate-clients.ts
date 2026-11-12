@@ -73,7 +73,7 @@ abstract class BasePredicateClient<const TAbi extends Abi> {
       const addr = deploymentAddress(defaultDeployment, this.chain.id)
       if (!addr) {
         throw new Error(
-          `${contractName} is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/opensea-devtools/blob/main/packages/tool-registry/README.md for supported chains.`,
+          `${contractName} is not deployed on chain ${this.chain.id}. See https://github.com/ProjectOpenSea/tool-registry#readme for supported chains.`,
         )
       }
       this.predicateAddress = addr
@@ -174,7 +174,7 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient<
    * Convenience method: reads the current list, appends the new collection, and writes back.
    *
    * **Not safe for concurrent use on the same `toolId`.** This method uses a
-   * read-then-write pattern — if two calls race, the second transaction reads
+   * read-then-write pattern: if two calls race, the second transaction reads
    * stale state and overwrites the first. For concurrent workflows, use
    * {@link setCollections} directly with the full desired list.
    */
@@ -192,7 +192,7 @@ export class ERC721OwnerPredicateClient extends BasePredicateClient<
    * Convenience method: reads the current list, removes the collection, and writes back.
    *
    * **Not safe for concurrent use on the same `toolId`.** This method uses a
-   * read-then-write pattern — if two calls race, the second transaction reads
+   * read-then-write pattern: if two calls race, the second transaction reads
    * stale state and overwrites the first. For concurrent workflows, use
    * {@link setCollections} directly with the full desired list.
    */
@@ -267,7 +267,7 @@ export class ERC1155OwnerPredicateClient extends BasePredicateClient<
 }
 
 /**
- * CompositePredicate has no canonical deployment — each tool creator deploys
+ * CompositePredicate has no canonical deployment; each tool creator deploys
  * their own instance. Pass `predicateAddress` explicitly.
  */
 const NO_CANONICAL_DEPLOYMENT: Deployment = {

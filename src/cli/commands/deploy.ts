@@ -296,7 +296,7 @@ async function deployToVercel(options: DeployOptions): Promise<void> {
         }
       }
     } catch {
-      // Malformed package.json — fall through with empty projectName
+      // Malformed package.json: fall through with empty projectName
     }
 
     const linkArgs = ["vercel", "link", "--yes"]

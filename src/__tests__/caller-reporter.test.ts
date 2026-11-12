@@ -145,7 +145,7 @@ describe("reportCallerX402Usage", () => {
 
   it("skips the report when only partial composite coordinates are given", async () => {
     const result = await reportCallerX402Usage(
-      // chainId without registry/onchainId — must be all-or-nothing.
+      // chainId without registry/onchainId; must be all-or-nothing.
       makeX402Event({ toolChainId: 8453 }),
       makeConfig(),
     )
@@ -468,7 +468,7 @@ describe("reportCallerEip3009Usage", () => {
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("non-zero value"),
     )
-    // Telemetry is still sent — the warning surfaces misuse without dropping data.
+    // Telemetry is still sent: the warning surfaces misuse without dropping data.
     expect(fetchSpy).toHaveBeenCalledOnce()
   })
 

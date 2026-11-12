@@ -304,7 +304,7 @@ describe("createEip3009UsageReporter", () => {
   })
 
   // -------------------------------------------------------------------------
-  // Config validation — no signing config (walletClient/operator) required
+  // Config validation: no signing config (walletClient/operator) required
   // -------------------------------------------------------------------------
 
   it("constructs with only composite key + apiKey (no signing wallet)", () => {

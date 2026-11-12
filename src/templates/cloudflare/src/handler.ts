@@ -1,4 +1,4 @@
-// To paywall this tool, use defineToolPaywall — it returns both `pricing`
+// To paywall this tool, use defineToolPaywall. It returns both `pricing`
 // (for the manifest) and `gate` (for the handler) from a single config,
 // preventing accidental drift between the advertised price and the enforced
 // charge.

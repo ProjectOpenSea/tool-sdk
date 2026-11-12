@@ -45,7 +45,7 @@ export function createEip3009AuthHeader(
  *
  * This is an identity-only flow: the signed authorization always has
  * `value: 0`, so no USDC can move. If the challenge requests a non-zero
- * amount, nothing is signed and the 402 response is returned as-is — use
+ * amount, nothing is signed and the 402 response is returned as-is. Use
  * `paidFetch` or `paidAuthenticatedFetch` for endpoints that require real
  * payment.
  *
@@ -84,7 +84,7 @@ export async function eip3009AuthenticatedFetch(
       try {
         isZeroAmount = BigInt(requirements.maxAmountRequired ?? "0") === 0n
       } catch {
-        // unparseable amount — treat as non-zero and refuse to sign
+        // unparseable amount: treat as non-zero and refuse to sign
       }
       if (!isZeroAmount) {
         // The endpoint is asking for a real payment. This flow only proves
@@ -202,7 +202,7 @@ async function extractPaymentRequirements(
       return reqs
     }
   } catch {
-    // non-JSON body — nothing to extract
+    // non-JSON body: nothing to extract
   }
   return null
 }

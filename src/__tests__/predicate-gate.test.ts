@@ -1002,7 +1002,7 @@ describe("predicateGate", () => {
     })
     const ctx: Partial<ToolContext> = { gates: {} }
 
-    // Base64 of a non-JSON string — decodes cleanly but JSON.parse throws.
+    // Base64 of a non-JSON string: decodes cleanly but JSON.parse throws.
     const header = Buffer.from("not-json-at-all").toString("base64")
     const request = new Request("https://example.com/api", {
       method: "POST",

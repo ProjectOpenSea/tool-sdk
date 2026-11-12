@@ -30,11 +30,11 @@ const REJECTED_ADDRESSES = new Set([
 /**
  * Thrown when a signed x402 payment was sent but the server responded with a
  * 5xx error (e.g. 502 Bad Gateway, 504 Gateway Timeout). The caller should
- * **not** blindly retry — the payment authorization may have already been
- * settled on-chain even though the HTTP response indicates failure.
+ * **not** blindly retry: the payment authorization may have already been
+ * settled onchain even though the HTTP response indicates failure.
  *
  * Inspect {@link settled} to determine whether settlement headers were
- * present on the response. When `true`, the facilitator confirmed on-chain
+ * present on the response. When `true`, the facilitator confirmed onchain
  * settlement before the transport error occurred; when `false`, settlement
  * likely did not happen but is not guaranteed (a reverse proxy may have
  * dropped the response after the server settled).
@@ -54,7 +54,7 @@ export class X402PaymentError extends Error {
 /**
  * Throw if a paid response came back with a server error (5xx). The signed
  * authorization was already transmitted, so the caller must not silently
- * swallow the failure — retrying could result in a double charge.
+ * swallow the failure: retrying could result in a double charge.
  */
 export function rejectServerErrorAfterPayment(res: Response): void {
   if (res.status < 500) return
@@ -107,8 +107,8 @@ export interface PaymentRequirements {
  * `PAYMENT-SIGNATURE` (v2) or `X-PAYMENT` (v1).
  *
  * The payload envelope differs by version:
- *  - **v1** — `{ x402Version, scheme, network, payload }`
- *  - **v2** — `{ x402Version, payload, resource, accepted }`, where `accepted`
+ *  - v1: `{ x402Version, scheme, network, payload }`
+ *  - v2: `{ x402Version, payload, resource, accepted }`, where `accepted`
  *    echoes the server's `accepts[0]` verbatim. Pass `accepted`/`resource`
  *    from the parsed challenge so the facilitator can match the payment.
  */
@@ -203,7 +203,7 @@ export interface PaidFetchOptions extends RequestInit {
   /**
    * When set, sends a fire-and-forget caller-side usage report to the
    * OpenSea usage endpoint after a successful x402 payment. The tool is
-   * identified by its endpoint URL — no onchain registry coordinates needed.
+   * identified by its endpoint URL; no onchain registry coordinates are needed.
    */
   reportCallerUsage?: CallerUsageReporterConfig | boolean
   /**
@@ -354,7 +354,7 @@ export function extractSettlementTxHash(res: Response): string | undefined {
  * Build the x402 settlement-response header a tool server returns after it
  * settles a payment. The encoding is the inverse of {@link extractSettlementTxHash}:
  * a base64-encoded JSON settle response. The header name tracks the protocol
- * version — v2 uses `PAYMENT-RESPONSE`, v1 used `X-PAYMENT-RESPONSE` — matching
+ * version (v2 uses `PAYMENT-RESPONSE`, v1 used `X-PAYMENT-RESPONSE`), matching
  * the request header named by {@link x402PaymentHeaderName}.
  */
 export function buildSettlementResponseHeader(params: {

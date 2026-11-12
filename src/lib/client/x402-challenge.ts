@@ -42,7 +42,7 @@ export function resolveNetwork(
  * spending cap or encoded into an EIP-3009 authorization: a signed
  * comparison would let a negative value slip under a positive `maxAmount`
  * cap, and the EIP-712 `uint256` encoder wraps a negative value into a huge
- * positive integer via two's complement — producing an authorization far
+ * positive integer via two's complement, producing an authorization far
  * larger than the caller intended.
  *
  * Only plain decimal digit strings are accepted (`"0"`, `"10000"`).
@@ -109,9 +109,9 @@ function normalizeRequirements(raw: RawRequirements): PaymentRequirements {
  * Parse an x402 402 challenge from a response, transparently handling both
  * wire formats:
  *
- *  - **v1** — the challenge JSON (`{ x402Version, accepts: [...] }`) is the
+ *  - v1: the challenge JSON (`{ x402Version, accepts: [...] }`) is the
  *    response body.
- *  - **v2** — the challenge is a base64-encoded JSON in the
+ *  - v2: the challenge is a base64-encoded JSON in the
  *    `PAYMENT-REQUIRED` response header and the body may be empty.
  *
  * Consumes the response body. The caller must have already confirmed the

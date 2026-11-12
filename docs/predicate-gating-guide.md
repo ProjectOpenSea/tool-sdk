@@ -1,21 +1,21 @@
-# Predicate-Gated Tools Guide
+# Predicate-gated tools guide
 
-Gate your tool using the onchain access predicate system. The gate uses a unified 402 challenge flow: it returns `PaymentRequirements` with `maxAmountRequired: "0"`, and the caller signs a zero-value `X-Payment` header (an EIP-3009 `TransferWithAuthorization` with `value=0`). The signed recipient is derived from the endpoint URL, tool ID, and operator. The SDK checks that audience binding, recovers the caller's address, and delegates the access decision to the `ToolRegistry` contract.
+A predicate gate restricts a tool to callers who pass an onchain access predicate. It uses the same 402 challenge as paid tools: the gate returns `PaymentRequirements` with `maxAmountRequired: "0"`, and the caller signs a zero-value `X-Payment` header (an EIP-3009 `TransferWithAuthorization` with `value=0`). The signed recipient is derived from the endpoint URL, tool ID, and operator. The SDK checks that audience binding, recovers the caller's address, and asks the `ToolRegistry` contract for the access decision.
 
 ## Overview
 
-The tool-sdk supports two independent gating mechanisms:
+The SDK has two independent kinds of gate:
 
 | Gate | Purpose | How it works |
 |------|---------|--------------|
-| **Predicate gate** | Identity-based access control | The gate returns 402 with `PaymentRequirements` (`maxAmountRequired: "0"`). The caller verifies the endpoint binding, signs a zero-value `X-Payment`, and retries. The middleware recovers the address via `ecrecover` and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate. Supports [delegated agent access](#delegated-agent-access-delegatexyz) via `X-Delegate-For` header. |
-| **x402 gate** | Payment-based access control | Caller includes an `X-Payment` header with a signed USDC transfer authorization; a facilitator verifies and settles the payment |
+| **Predicate gate** | Identity-based access control | The gate returns 402 with `PaymentRequirements` (`maxAmountRequired: "0"`). The caller verifies the endpoint binding, signs a zero-value `X-Payment`, and retries. The middleware recovers the address via `ecrecover` and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)` to check the registered predicate. Supports [delegated agent access](#delegated-agent-access-delegatexyz) through the `X-Delegate-For` header. |
+| **x402 gate** | Payment-based access control | The caller sends an `X-Payment` header with a signed USDC transfer authorization, and a facilitator verifies and settles the payment |
 
-Use predicate gating when access should be tied to **who the caller is**. Use x402 when access should be tied to **per-call payment**. You can [combine both](#combining-predicate-gating-with-x402-payment).
+Use a predicate gate when access depends on **who the caller is**, and x402 when it depends on **paying per call**. You can [combine both](#combining-predicate-gating-with-x402-payment).
 
 ### Architecture
 
-`predicateGate` is **predicate-agnostic**. It works with any predicate registered against the `ToolRegistry`:
+`predicateGate` works with any predicate registered against the `ToolRegistry`:
 
 | Predicate | Use case |
 |-----------|----------|
@@ -23,20 +23,20 @@ Use predicate gating when access should be tied to **who the caller is**. Use x4
 | `ERC1155OwnerPredicate` | Gate to holders of ERC-1155 tokens |
 | `SubscriptionPredicate` | Gate to active subscribers (ERC-5643) |
 | `CompositePredicate` | Combine multiple predicates with AND/OR logic |
-| Future predicates | Any contract implementing `IAccessPredicate` works automatically |
+| Future predicates | Any contract implementing `IAccessPredicate` works without SDK changes |
 
-Tool creators configure the predicate onchain (via `register --access-predicate` or direct contract calls). The `predicateGate` middleware picks it up at runtime — no code changes needed when the access policy changes.
+Tool creators set the predicate onchain, with `register --access-predicate` or a direct contract call. `predicateGate` reads it at runtime, so changing the access policy needs no code change.
 
 The canonical `ERC721OwnerPredicate` (v0.2) is deployed on Ethereum mainnet, Base, Shape, Abstract, Monad, and Robinhood Chain at `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` (see `src/lib/onchain/chains.ts`).
 
 ## Prerequisites
 
-- An access predicate configured onchain for your tool (e.g., an ERC-721 collection deployed on Base)
-- Your tool already deployed and serving its manifest at a `/.well-known/ai-tool/<slug>.json` endpoint
+- An access predicate configured onchain for your tool (for example, an ERC-721 collection on Base)
+- The tool deployed and serving its manifest at `/.well-known/ai-tool/<slug>.json`
 
 ## Step 1: Configure the gate in your handler
 
-Add `predicateGate({ toolId, operatorAddress })` to the `gates` array in `createToolHandler`. The `toolId` is the numeric ID returned from the `ToolRegistered` event when you registered your tool.
+Add `predicateGate({ toolId, operatorAddress })` to the `gates` array in `createToolHandler`. `toolId` is the numeric ID from the `ToolRegistered` event emitted when you registered the tool.
 
 ```typescript
 import { z } from "zod/v4"
@@ -71,7 +71,7 @@ const handler = createToolHandler({
     predicateGate({
       toolId: 42n, // your onchain tool ID
       operatorAddress: "0xYourOperatorAddress",
-      // rpcUrl is optional — defaults to https://mainnet.base.org
+      // rpcUrl is optional; defaults to the chain's public RPC (https://mainnet.base.org on Base)
       // audience is optional unless a proxy rewrites the public request URL
       // audience: "https://my-tool.vercel.app/api",
     }),
@@ -84,35 +84,34 @@ const handler = createToolHandler({
 })
 ```
 
-The middleware (`src/lib/middleware/predicate-gate.ts`) does the following on each request:
+On each request, the middleware (`src/lib/middleware/predicate-gate.ts`):
 
-1. Checks for an `X-Payment` header (preferred) or `Authorization: EIP-3009 <token>` header (also accepts deprecated `Authorization: SIWE <token>` for backward compatibility)
-2. If no auth is present, returns 402 with a `payTo` derived from the endpoint URL, tool ID, and operator
-3. The client verifies that binding before it signs
-4. Decodes and validates the authorization from the `X-Payment` header
-5. Checks `validBefore` (must be in the future, and at most 1 hour ahead) and `validAfter` (must be in the past)
-6. Recovers the signer via `ecrecover` on the EIP-712 typed data, with no RPC call needed
-7. Calls `registry.tryHasAccess(toolId, recoveredAddress, data)`, a staticcall to the onchain `ToolRegistry`
-8. If `(ok=true, granted=true)`, reserves the authorization through `replayGuard` when configured, then sets `ctx.callerAddress` and `ctx.gates.predicate.granted = true`
+1. Looks for an `X-Payment` header. It reads no other auth header.
+2. If the header is missing, returns 402 with a `payTo` derived from the endpoint URL, tool ID, and operator. The client verifies that binding before it signs.
+3. Decodes and validates the authorization in `X-Payment`.
+4. Checks that `validBefore` is in the future and at most 1 hour ahead, and that `validAfter` is in the past.
+5. Recovers the signer with `ecrecover` on the EIP-712 typed data. No RPC call is needed.
+6. Calls `registry.tryHasAccess(toolId, recoveredAddress, data)`, a staticcall to the onchain `ToolRegistry`.
+7. On `(ok=true, granted=true)`, reserves the authorization through `replayGuard` if one is configured, then sets `ctx.callerAddress` and `ctx.gates.predicate.granted = true`.
 
 Status code mapping:
 
 | Outcome | Status | Body |
 |---------|--------|------|
-| No auth, `operatorAddress` configured | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
-| No auth, no `operatorAddress` | `401` | `{ error, hint }` |
-| Malformed `X-Payment` or `Authorization` | `401` | `{ error }` |
+| No `X-Payment` header | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
+| Malformed, expired, or mis-bound `X-Payment` | `401` | `{ error }` |
+| Unsupported `x402Version` in `X-Payment` | `400` | `{ error }` |
 | `tryHasAccess` returned `(true, true)` | (passes) | n/a |
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "predicate misbehaved..." }` |
 
-The `predicate` field in the 403 body is the registered access predicate's address, so callers can self-diagnose what they need to satisfy.
+The `predicate` field in the 403 body is the registered access predicate's address, so callers can see what they need to satisfy.
 
-The gate bounds the `validBefore` window server-side: the authorization must not be expired and must be at most 1 hour in the future. SDK clients sign a shorter window. The audience binding prevents cross-endpoint replay. Configure `replayGuard` with an atomic shared store when the same authorization must not run the intended endpoint twice. See the "Replay protection" section of the [tool-sdk README](../README.md#replay-protection).
+The 1-hour cap on `validBefore` is enforced server-side, and SDK clients sign a shorter window. The audience binding stops replay against other endpoints. To stop the same authorization from running the intended endpoint twice, configure `replayGuard` with an atomic shared store. See [Replay protection](../README.md#replay-protection) in the tool-sdk README.
 
 ## Step 2: Register with `--access-predicate`
 
-Register your tool onchain with the `--access-predicate` flag, passing your predicate contract address:
+Register the tool onchain and pass the predicate contract address with `--access-predicate`:
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk register \
@@ -121,9 +120,9 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk registe
   --access-predicate 0xYourPredicateAddress
 ```
 
-This calls **`registerTool`** on the `ToolRegistry` contract and sets `accessPredicate` to the provided address.
+This calls `registerTool` on the `ToolRegistry` contract with `accessPredicate` set to that address.
 
-Use `--dry-run` to preview the registration without sending transactions:
+Add `--dry-run` to preview the registration without sending a transaction:
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk register \
@@ -133,26 +132,26 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk registe
   --dry-run
 ```
 
-For ERC-721 gating, use the canonical v0.2 `ERC721OwnerPredicate` at `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` (Ethereum mainnet, Base, Shape, Abstract, Monad, Robinhood Chain). After registration, call `setCollections(toolId, [collectionAddress])` on the predicate to configure which collections gate the tool.
+For ERC-721 gating, use the canonical v0.2 `ERC721OwnerPredicate` at `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` (Ethereum mainnet, Base, Shape, Abstract, Monad, Robinhood Chain). After registering, call `setCollections(toolId, [collectionAddress])` on the predicate to choose which collections gate the tool.
 
 ## Step 3: Verify the setup
 
-After registration, use `inspect` to confirm the onchain state:
+Confirm the onchain state with `inspect`:
 
 ```bash
 npx @opensea/tool-sdk inspect --tool-id <id> --network base
 ```
 
-This reads the tool config from the `ToolRegistry` and displays:
+It reads the tool config from the `ToolRegistry` and prints:
 
-- **Creator** — your wallet address
-- **Metadata URI** — the manifest URL
-- **Manifest Hash** — the onchain hash (cross-checked against the live manifest)
-- **Access Predicate** — should show the predicate address (e.g., `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` for the v0.2 ERC721OwnerPredicate)
+- Creator: your wallet address
+- Metadata URI: the manifest URL
+- Manifest Hash: the onchain hash, cross-checked against the live manifest
+- Access Predicate: the predicate address (for example `0xc8721c9A776958FfFfEb602DA1b708bf1D318379` for the v0.2 ERC721OwnerPredicate)
 
 ### Client-side access preview
 
-Use `checkToolAccess` to preview whether a wallet has access without invoking the tool. This makes the same `tryHasAccess` staticcall as `predicateGate`, but without requiring authentication — useful for graying out "Use Tool" affordances in UIs:
+`checkToolAccess` tells you whether a wallet has access without calling the tool. It makes the same `tryHasAccess` staticcall as `predicateGate` but needs no authentication, which makes it useful for disabling a "Use Tool" button in a UI:
 
 ```typescript
 import { checkToolAccess } from "@opensea/tool-sdk"
@@ -168,28 +167,28 @@ if (ok && granted) {
 }
 ```
 
-`ok === false` means the predicate misbehaved upstream — treat it as a transient failure, not a denial.
+`ok === false` means the predicate misbehaved upstream. Treat it as a transient failure, not a denial.
 
 ## Step 4: Client-side authentication
 
-The gate returns a 402 challenge. The client handles this automatically via `eip3009AuthenticatedFetch`: it sends a bare request, reads the `PaymentRequirements`, verifies that `payTo` is bound to the final endpoint URL, tool ID, and operator, signs a zero-value `X-Payment`, and retries.
+`eip3009AuthenticatedFetch` answers the gate's 402 challenge for you. It sends a bare request, reads the `PaymentRequirements`, verifies that `payTo` is bound to the final endpoint URL, tool ID, and operator, signs a zero-value `X-Payment`, and retries.
 
 ### Preferred flow (402 + X-Payment)
 
-The `X-Payment` header carries a base64-encoded JSON payload containing an EIP-3009 `TransferWithAuthorization` (value=0) signed for the derived audience recipient from the 402 challenge.
+The `X-Payment` header is base64-encoded JSON holding an EIP-3009 `TransferWithAuthorization` (value=0), signed for the derived audience recipient from the 402 challenge.
 
-Key constraints enforced by the middleware:
+The middleware enforces:
 
-- **`validBefore`** must be in the future and at most 1 hour ahead (SDK clients default to `now + 5 minutes`)
-- **`validAfter`** must be in the past (typically `0`)
-- **`value`** must be exactly the string `"0"` (zero-value transfer — used for identity proof, not payment; the free `predicateGate` rejects any non-`"0"` value, so third-party clients must emit the canonical `"0"`, not e.g. `"0x0"` or `"00"`)
-- **`from`** is recovered via `ecrecover` and used as the caller address
-- **`to`** must match the address derived from the endpoint URL, tool ID, and operator (the 402 challenge advertises this as `payTo`)
-- the authorization's resolved **chainId** (from its declared `network`) must match the gate's configured chain
+- `validBefore` must be in the future and at most 1 hour ahead. `eip3009AuthenticatedFetch` signs `now + 10 minutes`.
+- `validAfter` must be in the past (usually `0`).
+- `value` must be exactly the string `"0"`. The transfer proves identity and moves no funds. The free `predicateGate` rejects anything else, so third-party clients must send `"0"`, not `"0x0"` or `"00"`.
+- `from` is recovered with `ecrecover` and becomes the caller address.
+- `to` must match the address derived from the endpoint URL, tool ID, and operator (the challenge's `payTo`).
+- The chainId resolved from the authorization's `network` must match the gate's identity chain: the registry chain when it is Base or Base Sepolia, otherwise Base.
 
 ### Example client code (SDK)
 
-The simplest approach is `eip3009AuthenticatedFetch`, which handles the 402 challenge automatically:
+`eip3009AuthenticatedFetch` handles the 402 challenge:
 
 ```typescript
 import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
@@ -206,13 +205,13 @@ const response = await eip3009AuthenticatedFetch(toolUrl, {
 })
 ```
 
-`eip3009AuthenticatedFetch` rejects zero-value challenges from older servers that do not provide audience-binding metadata. Update the client and server together.
+`eip3009AuthenticatedFetch` rejects zero-value challenges from older servers that omit the audience-binding metadata, so update client and server together.
 
 ## Step 5: Test end-to-end
 
-Run your tool locally and send a request with a valid EIP-3009 authorization header to verify the full flow. Use the client code from Step 4 against your local or deployed endpoint.
+Point the client code from Step 4 at your local or deployed endpoint to exercise the full flow.
 
-For a quick smoke test of the gate rejecting unauthenticated requests, `curl` the endpoint without any auth headers:
+To check that the gate rejects unauthenticated requests, `curl` the endpoint with no `X-Payment` header:
 
 ```bash
 curl -X POST https://my-tool.vercel.app/api \
@@ -248,18 +247,18 @@ HTTP status: `402`.
 
 ## Delegated agent access (delegate.xyz)
 
-An AI agent can call a predicate-gated tool **on behalf of** an NFT holder without the holder sharing their private key. The holder sets up a delegation at [delegate.xyz](https://delegate.xyz), and the agent presents the holder's address alongside its own EIP-3009 authentication.
+An AI agent can call a predicate-gated tool **on behalf of** an NFT holder without the holder's private key. The holder creates a delegation at [delegate.xyz](https://delegate.xyz), and the agent sends the holder's address along with its own EIP-3009 authorization.
 
 ### How it works
 
-1. **Holder** visits [delegate.xyz](https://delegate.xyz), connects their wallet, and delegates to the agent's address ("Delegate All" for full access)
-2. **Agent** authenticates with EIP-3009 (proving it controls the agent wallet) and includes an `X-Delegate-For` header with the holder's address
-3. **Server** verifies the agent's EIP-3009 signature via `ecrecover`, then calls `checkDelegateForAll(agent, holder)` on the [DelegateRegistry V2](https://docs.delegate.xyz) contract to confirm the delegation exists onchain
-4. If valid, the access predicate runs against the **holder** (not the agent)
+1. The holder connects a wallet at [delegate.xyz](https://delegate.xyz) and delegates to the agent's address ("Delegate All" for full access).
+2. The agent signs an EIP-3009 authorization, proving it controls the agent wallet, and adds an `X-Delegate-For` header with the holder's address.
+3. The server verifies the agent's signature with `ecrecover`, then calls `checkDelegateForAll(agent, holder)` on the [DelegateRegistry V2](https://docs.delegate.xyz) contract to confirm the delegation exists onchain.
+4. If it does, the access predicate runs against the **holder**, not the agent.
 
 ### Agent-side code
 
-The simplest approach is `eip3009AuthenticatedFetch` with an extra `X-Delegate-For` header:
+Use `eip3009AuthenticatedFetch` with an extra `X-Delegate-For` header:
 
 ```typescript
 import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
@@ -280,7 +279,7 @@ const response = await eip3009AuthenticatedFetch(toolUrl, {
 
 ### Server-side behavior
 
-No server code changes are needed — `predicateGate` handles the `X-Delegate-For` header automatically. When delegation is verified via `ecrecover` + `checkDelegateForAll`:
+The server needs no code changes: `predicateGate` handles `X-Delegate-For` itself. Once `ecrecover` and `checkDelegateForAll` confirm the delegation:
 
 - `ctx.callerAddress` is set to the **holder's** address (the predicate subject)
 - `ctx.agentAddress` is set to the **agent's** address (the EIP-3009 signer)
@@ -297,24 +296,25 @@ No server code changes are needed — `predicateGate` handles the `X-Delegate-Fo
 
 ### Configuration
 
-The delegate.xyz DelegateRegistry V2 is deployed at `0x00000000000000447e69651d841bD8D104Bed493` on 30+ EVM chains (including Base, Ethereum, Arbitrum, Optimism, Polygon). The middleware uses this address by default.
+The middleware defaults to the delegate.xyz DelegateRegistry V2 at `0x00000000000000447e69651d841bD8D104Bed493`, deployed on 30+ EVM chains including Base, Ethereum, Arbitrum, Optimism, and Polygon.
 
 For local development against a forked Anvil node, override the address:
 
 ```typescript
 const gate = predicateGate({
   toolId: 42n,
+  operatorAddress: "0xYourOperatorAddress",
   delegateRegistryAddress: "0xYourLocalForkAddress",
 })
 ```
 
 ### Revoking a delegation
 
-The holder can revoke the delegation at any time by visiting [delegate.xyz](https://delegate.xyz) and removing the agent. The revocation is immediate — the next request from the agent will receive a 403.
+The holder can remove the agent at [delegate.xyz](https://delegate.xyz) at any time. Revocation takes effect immediately, and the agent's next request gets a 403.
 
 ## Combining predicate gating with x402 payment
 
-Use `paidPredicateGate` to require **identity verification and per-call payment** in a single 402 round trip (2 requests total instead of 3):
+`paidPredicateGate` requires **identity and per-call payment** in one 402 round trip, two requests instead of three:
 
 ```typescript
 import {
@@ -343,7 +343,7 @@ const handler = createToolHandler({
     }),
   ],
   handler: async (input, ctx) => {
-    // ctx.callerAddress — verified wallet (recovered from X-Payment)
+    // ctx.callerAddress: verified wallet (recovered from X-Payment)
     // ctx.gates.predicate.granted === true
     // ctx.gates.x402.paid === true
     return { result: "access granted and payment received" }
@@ -353,21 +353,20 @@ const handler = createToolHandler({
 
 ### How `paidPredicateGate` works
 
-The combined gate issues a single 402 with the **real payment amount** (not zero). The caller's `X-Payment` signature simultaneously:
-- Proves identity (the recovered `from` address)
-- Authorizes the USDC transfer (via the facilitator)
+The combined gate issues one 402 with the **real payment amount**, not zero. The caller's single `X-Payment` signature both proves identity (the recovered `from` address) and authorizes the USDC transfer through the facilitator.
 
 The gate runs these checks in order:
-1. Verify the EIP-712 signature and recover the caller's address
-2. Check the onchain predicate (`tryHasAccess`) — returns 403 if denied
-3. Verify the payment with the facilitator — returns 402 if invalid
-4. After the handler succeeds: settle the payment via the facilitator
 
-This ordering ensures **no funds move** if the predicate denies access.
+1. Verify the EIP-712 signature and recover the caller's address.
+2. Check the onchain predicate (`tryHasAccess`). Returns 403 if denied.
+3. Verify the payment with the facilitator. Returns 402 if invalid.
+4. After the handler succeeds, settle the payment through the facilitator.
+
+Because the predicate runs first, **no funds move** when access is denied.
 
 ### Client requirements
 
-`paidAuthenticatedFetch` handles the 402 challenge automatically. Since `paidPredicateGate` issues only one 402, the client signs once and the call completes:
+`paidAuthenticatedFetch` handles the 402 challenge. `paidPredicateGate` issues only one 402, so the client signs once:
 
 ```typescript
 import { paidAuthenticatedFetch } from "@opensea/tool-sdk"
@@ -384,7 +383,7 @@ const response = await paidAuthenticatedFetch(toolUrl, {
 
 ### Legacy: separate gates (3 requests)
 
-For backward compatibility, you can still chain `predicateGate` + x402 gate as separate middleware. The client handles both 402s in a retry loop. However, `paidPredicateGate` is preferred for new tools.
+You can still chain `predicateGate` and an x402 gate as separate middleware, and `paidAuthenticatedFetch` answers both 402s in a retry loop. New tools should use `paidPredicateGate`.
 
 ```typescript
 gates: [

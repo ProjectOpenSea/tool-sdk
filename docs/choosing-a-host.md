@@ -1,8 +1,8 @@
-# Choosing a Host
+# Choosing a host
 
-Your tool is a standard HTTP endpoint — any platform that can serve a `POST` request works. This guide compares the most common deployment targets and their trade-offs.
+A tool is a plain HTTP endpoint, so any platform that can serve a `POST` request works. This page compares the common targets.
 
-## Decision Matrix
+## Decision matrix
 
 | | Vercel Hobby | Vercel Pro | Cloudflare Workers Paid | Self-host (Express) |
 |---|---|---|---|---|
@@ -12,43 +12,43 @@ Your tool is a standard HTTP endpoint — any platform that can serve a `POST` r
 | **Cold Start** | Minimal on production | Minimal on production | None (isolate model) | None (long-running process) |
 | **Env Model** | `process.env` at module init | `process.env` at module init | `env` arg in `fetch(req, env)` | `process.env` at module init |
 
-## Platform Details
+## Platform details
 
 ### Vercel Hobby
 
-- **Duration:** 300 s per function invocation — plenty for most tool handlers.
-- **DX:** `npx vercel` deploys in seconds. Preview URLs on every push.
-- **Limits:** 100 GB-hours/mo compute, 100 GB bandwidth, no team features.
-- **Best for:** Solo developers, prototyping, low-traffic tools.
+- 300 s per function invocation, enough for most tool handlers.
+- `npx vercel` deploys in seconds, with a preview URL on every push.
+- Limits: 100 GB-hours/mo compute, 100 GB bandwidth, no team features.
+- Fits solo developers, prototypes, and low-traffic tools.
 
 ### Vercel Pro
 
-- **Duration:** 60 s default, configurable up to 300 s via `maxDuration` in `vercel.json`.
-- **DX:** Same as Hobby — git push deploys, preview URLs, logs dashboard.
-- **Extras:** Team access, more bandwidth, analytics, Vercel Firewall.
-- **Best for:** Production tools that need team collaboration or higher limits.
+- 60 s default, configurable up to 300 s with `maxDuration` in `vercel.json`.
+- Same workflow as Hobby: git push deploys, preview URLs, a logs dashboard.
+- Adds team access, more bandwidth, analytics, and Vercel Firewall.
+- Fits production tools that need team access or higher limits.
 
 ### Cloudflare Workers Paid
 
-- **Duration:** 30 s CPU time (wall-clock time can be longer if waiting on I/O).
-- **Edge:** Runs in 300+ locations. Sub-50 ms cold start via V8 isolate model.
-- **Env model:** Environment variables are **not** available at module scope — they arrive as the second argument to `fetch(request, env)`. This requires a factory pattern for any code that needs env at init time (see [Migrating an Existing Tool](./migrating-existing-tool.md)).
-- **Best for:** Latency-sensitive tools, global user bases, cost-conscious teams.
+- 30 s of CPU time. Wall-clock time can run longer while waiting on I/O.
+- Runs in 300+ locations, with sub-50 ms cold starts from the V8 isolate model.
+- Environment variables are **not** available at module scope. They arrive as the second argument to `fetch(request, env)`, so any code that needs env at init time has to use a factory (see [Migrating an existing tool](./migrating-existing-tool.md)).
+- Fits latency-sensitive tools, global callers, and tight budgets.
 
 ### Self-host (Express)
 
-- **Duration:** Unlimited — you control the server process.
-- **Control:** Full access to the filesystem, long-running connections, background jobs.
-- **Trade-off:** You manage deployment, scaling, TLS, health checks, and uptime.
-- **Best for:** Tools that need persistent state, long-running computations, or integration with internal services.
+- No duration limit: you own the server process.
+- Full access to the filesystem, long-lived connections, and background jobs.
+- You also own deployment, scaling, TLS, health checks, and uptime.
+- Fits tools that need persistent state, long computations, or access to internal services.
 
 ## Recommendations
 
-1. **Starting out?** Use **Vercel Hobby**. Zero cost, generous limits, and the `init --template vercel` scaffold works out of the box.
-2. **Need edge performance?** Use **Cloudflare Workers**. Lowest latency for globally distributed callers.
-3. **Need long-running handlers?** Use **Self-host (Express)** or **Vercel Hobby** (300 s is usually enough).
-4. **Team with existing Vercel org?** Use **Vercel Pro** for unified billing and team access.
+1. Starting out: use Vercel Hobby. It is free, and the `init --template vercel` scaffold works as generated.
+2. Callers spread across the world: use Cloudflare Workers for the lowest latency.
+3. Long-running handlers: self-host with Express, or use Vercel Hobby if 300 s is enough.
+4. A team that already has a Vercel org: use Vercel Pro for shared billing and team access.
 
-All four targets are supported by `@opensea/tool-sdk` via framework adapters (`toVercelHandler`, `toCloudflareHandler`, `toExpressHandler`). The core handler logic (`createToolHandler`) is platform-agnostic — only the thin entry-point adapter changes between targets.
+`@opensea/tool-sdk` supports all four through adapters (`toVercelHandler`, `toCloudflareHandler`, `toExpressHandler`). The handler built by `createToolHandler` is platform-agnostic; only the entry-point adapter changes between targets.
 
-Predicate-gated tools work on all supported hosts. The `predicateGate` middleware is purely HTTP-header-based (it reads the `Authorization: EIP-3009 ...` header and recovers the caller via `ecrecover` + makes an onchain `tryHasAccess` staticcall), so it requires no platform-specific APIs or persistent state. See [predicate-gating-guide.md](predicate-gating-guide.md) for the full setup walkthrough.
+Predicate-gated tools run on every supported host. The `predicateGate` middleware works from HTTP headers alone: it reads the `X-Payment` header, recovers the caller with `ecrecover`, and makes an onchain `tryHasAccess` staticcall. It needs no platform-specific APIs or persistent state. See [predicate-gating-guide.md](predicate-gating-guide.md) for setup.

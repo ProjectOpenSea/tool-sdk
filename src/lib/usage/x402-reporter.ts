@@ -78,7 +78,7 @@ function validateX402Config(config: X402UsageReporterConfig): void {
  * Creates a reporter for x402 settlement-based tool usage verification.
  *
  * Use this when the tool is paid via x402 and you have the onchain
- * settlement transaction hash. No wallet signing is required — the
+ * settlement transaction hash. No wallet signing is required; the
  * backend verifies the settlement tx directly.
  */
 export function createX402UsageReporter(

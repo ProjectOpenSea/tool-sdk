@@ -943,7 +943,7 @@ describe("createToolHandler", () => {
     )
     expect(response.status).toBe(200)
 
-    // Awaited before the response resolves — no waitFor needed.
+    // Awaited before the response resolves, so no waitFor is needed.
     expect(mockReporter).toHaveBeenCalledOnce()
     const event: InvocationEvent = mockReporter.mock.calls[0]![0]
     expect(event.paid).toBe(false)

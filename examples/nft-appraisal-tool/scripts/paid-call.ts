@@ -181,15 +181,14 @@ if (paidRes.status === 200) {
 
 // Step 4: confirm the SDK gate auto-settled.
 //
-// History: dogfood finding #25 originally observed that the SDK's x402
-// gate called /verify but never /settle, so paid calls succeeded but
-// USDC never moved. opensea-devtools PR #171 fixed this — the gate now
-// settles after the handler succeeds and the output validates.
+// History: an early SDK x402 gate called /verify but never /settle, so
+// paid calls succeeded but USDC never moved. The gate now settles after
+// the handler succeeds and the output validates.
 //
 // Test logic: try to settle the same payment manually after step 3.
 // With the fixed SDK, step 3 already consumed the nonce, so this
 // manual settle MUST fail with a duplicate-nonce error. A 200 here
-// would mean the gate didn't settle in step 3 — that's a regression
+// would mean the gate didn't settle in step 3, which is a regression
 // and we fail the script.
 console.log("\n--- step 4: confirm SDK gate settled in step 3 ---")
 const facilitatorUrl = "https://facilitator.payai.network"

@@ -14,7 +14,7 @@ export interface ProbeResult {
 // range-checked; other names fall back to a literal-name regex. This guard
 // alone does not resolve DNS, so a hostname that itself looks public but
 // resolves to a private/internal address (or is rebound to one) would slip
-// past it -- see `classifyResolvedHostname` below, which every caller applies
+// past it. See `classifyResolvedHostname` below, which every caller applies
 // in addition to this check before anything is fetched. A fully
 // connect-time-pinned request (resolve once, dial the validated IP directly)
 // would close the remaining DNS-rebinding TOCTOU window and is tracked as
@@ -220,7 +220,7 @@ export async function probeEndpoint(endpoint: string): Promise<ProbeResult> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
-      // Don't follow redirects — the manifest endpoint field should be the final URL
+      // Don't follow redirects: the manifest endpoint field should be the final URL
       redirect: "manual",
       signal: AbortSignal.timeout(10_000),
     })

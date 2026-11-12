@@ -5,7 +5,7 @@
 
 /** Onchain deployment of a contract addressed via deterministic CREATE2. */
 export type Deployment = {
-  /** Canonical CREATE2 address — identical on every EVM-equivalent chain. */
+  /** Canonical CREATE2 address, identical on every EVM-equivalent chain. */
   address: `0x${string}`
   /** Chain IDs where the canonical address has been deployed. */
   chains: readonly number[]

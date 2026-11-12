@@ -46,7 +46,7 @@ export interface MockFetchCall {
 
 /** A single handler entry for {@link mockFetch}. */
 export interface MockFetchHandler {
-  /** URL pattern to match — plain string uses `includes`, RegExp uses `.test()`. */
+  /** URL pattern to match. A plain string uses `includes`, a RegExp uses `.test()`. */
   pattern: string | RegExp
   /**
    * Canned response. A `Response` is returned as-is (cloned); a plain object
@@ -73,7 +73,7 @@ export interface MockFetchResult {
  * Replaces `globalThis.fetch` with a lightweight mock that matches requests
  * against the provided handlers.
  *
- * Returns `{ cleanup, calls }` — call `cleanup()` to restore the original
+ * Returns `{ cleanup, calls }`. Call `cleanup()` to restore the original
  * `fetch`, and inspect `calls` to assert on what was fetched.
  *
  * Handlers are evaluated in order; the first match wins. Unmatched requests
@@ -155,7 +155,7 @@ export interface TestHandler<TIn> {
   /** The raw request handler produced by `createToolHandler`. */
   handler: (request: Request) => Promise<Response>
   /**
-   * Convenience helper — builds a POST Request with the given input as JSON
+   * Builds a POST Request with the given input as JSON
    * body and passes it to the handler.
    */
   invoke: (input: TIn, opts?: { headers?: HeadersInit }) => Promise<Response>

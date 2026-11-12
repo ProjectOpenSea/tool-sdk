@@ -54,7 +54,7 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
     const text = await infoRes.text()
     throw new Error(`Bankr /wallet/me failed (${infoRes.status}): ${text}`)
   }
-  // `/wallet/me` returns `{ wallets: [{ chain, address }, ...] }` — one entry
+  // `/wallet/me` returns `{ wallets: [{ chain, address }, ...] }`, one entry
   // per chain (e.g. "evm", "solana"). There is no top-level `address` field.
   const info = (await infoRes.json()) as {
     wallets?: Array<{ chain: string; address: string }>
@@ -95,7 +95,7 @@ export async function createBankrAccount(apiKey: string): Promise<Account> {
         primaryType: string
         message: Record<string, unknown>
       }
-      // Bankr API expects JSON — convert BigInt values to strings
+      // Bankr API expects JSON, so convert BigInt values to strings
       const replacer = (_k: string, v: unknown) =>
         typeof v === "bigint" ? v.toString() : v
       const signRes = await fetch(`${BANKR_API_BASE}/wallet/sign`, {

@@ -85,6 +85,17 @@ describe("ERC721OwnerPredicateClient", () => {
           },
         }),
     ).toThrow("ERC721OwnerPredicate is not deployed on chain 999999")
+    expect(
+      () =>
+        new ERC721OwnerPredicateClient({
+          chain: {
+            id: 999999,
+            name: "test",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: { default: { http: [] } },
+          },
+        }),
+    ).toThrow("https://github.com/ProjectOpenSea/tool-registry#readme")
   })
 
   describe("getCollections", () => {

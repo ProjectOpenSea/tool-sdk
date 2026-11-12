@@ -191,7 +191,7 @@ export const inspectCommand = new Command("inspect")
         }
       } else {
         // Fall through to generic getRequirements()-based introspection.
-        // Dispatch on each requirement's kind, not the predicate's name —
+        // Dispatch on each requirement's kind, not the predicate's name:
         // third-party predicates (e.g. attestation issuers) pick their own
         // name() but the kind selector is the stable identifier for the
         // requirement shape.

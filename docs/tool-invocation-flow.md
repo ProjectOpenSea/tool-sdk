@@ -1,10 +1,10 @@
-# Tool Invocation Flow
+# Tool invocation flow
 
-Unified 402 challenge-response for both free and paid tools.
+Free and paid tools share one 402 challenge-response flow.
 
 ![Unified 402 Tool Usage Flow](tool-invocation-flow.png)
 
-## Sequence Diagram
+## Sequence diagram
 
 ```
 Caller                    Tool Server                 ToolRegistry (onchain)     Facilitator        OpenSea API
@@ -59,12 +59,12 @@ Caller                    Tool Server                 ToolRegistry (onchain)    
   │ <──────────────────────── │                            │                       │                   │
 ```
 
-### Key details
+### Details
 
-- **Unified 402 pattern** — free and paid tools use the same challenge-response. The only difference is `maxAmountRequired` (`"0"` vs actual USDC price).
-- **X-Payment = EIP-3009 `TransferWithAuthorization`** — signed EIP-712 typed data in the USDC domain. `value=0` for identity proof only; `value=price` for paid tools.
-- **Pure ecrecover** — server-side identity verification is `recoverTypedDataAddress()`, no RPC needed.
-- **Combined predicate + payment** — `paidPredicateGate` resolves identity and payment in a single 402 round trip. The real-value signature proves identity (`from`) and authorizes payment simultaneously. Predicate is checked before settlement — if access denied, 403 and no funds move.
-- **Usage reporting is awaited** — the report completes before the 200 is returned (survives serverless freeze). 5-second timeout; errors never fail the tool response.
-- **10-minute TTL** — `validBefore = now + 600s`, `validAfter = 0`.
-- **Single signature** — the caller's original EIP-3009 auth is forwarded to the usage API as-is; the tool server never re-signs.
+- Free and paid tools use the same challenge-response. Only `maxAmountRequired` differs: `"0"` for free, the USDC price for paid.
+- `X-Payment` carries an EIP-3009 `TransferWithAuthorization`, signed as EIP-712 typed data in the USDC domain. `value=0` proves identity only; `value=price` also pays.
+- The server verifies identity with `recoverTypedDataAddress()` alone, without an RPC call. For `predicateGate`, the signed `to` must equal the recipient derived from the endpoint URL, tool ID, and operator. For `paidPredicateGate`, it must equal the operator address.
+- `paidPredicateGate` resolves identity and payment in one 402 round trip: the real-value signature proves who the caller is (`from`) and authorizes the payment. The predicate is checked before settlement, so a denied caller gets a 403 and no funds move.
+- Without a platform `waitUntil`, usage reporting is awaited, so the report finishes before the 200 goes out and survives a serverless freeze. With `waitUntil` (detected on Vercel, wired by `toCloudflareHandler`), it runs after the response. It has a 5-second timeout, and its errors never fail the tool response.
+- SDK clients sign with a 10-minute TTL: `validBefore = now + 600s`, `validAfter = 0`.
+- The tool server forwards the caller's original EIP-3009 authorization to the usage API unchanged. It never re-signs.

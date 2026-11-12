@@ -6,7 +6,7 @@ const NUMERIC_STRING_RE = /^\d+$/
 
 /**
  * Configuration for caller-side usage reporting. Unlike the server-side
- * reporters, this identifies the tool by its canonical endpoint URL — the
+ * reporters, this identifies the tool by its canonical endpoint URL, and the
  * backend resolves the onchain registry coordinates automatically.
  */
 export interface CallerUsageReporterConfig {
@@ -31,11 +31,11 @@ export interface CallerUsageReporterConfig {
  * return one of these so callers (e.g. the `pay` CLI) can surface an accurate
  * status instead of assuming success.
  *
- * - `reported` — the aggregator accepted the report.
- * - `already-reported` — the tool's own server-side reporter recorded this
+ * - `reported`: the aggregator accepted the report.
+ * - `already-reported`: the tool's own server-side reporter recorded this
  *   settlement first; the usage is counted, the caller's report was a duplicate.
- * - `skipped` — nothing was sent (failed validation, no API key, insecure URL).
- * - `failed` — sent but rejected, or a network/timeout error.
+ * - `skipped`: nothing was sent (failed validation, no API key, insecure URL).
+ * - `failed`: sent but rejected, or a network/timeout error.
  */
 export type CallerUsageReportOutcome =
   | "reported"
@@ -62,7 +62,7 @@ export interface CallerX402UsageEvent {
   latencyMs?: number
   /**
    * ERC-8257 composite key identifying the tool onchain. Provide ALL THREE to
-   * disambiguate when several tools are registered to the same endpoint URL —
+   * disambiguate when several tools are registered to the same endpoint URL;
    * the aggregator rejects an endpoint-only report with 400 in that case. When
    * present, these are sent in place of `toolEndpoint`, matching the
    * server-side reporter's payload.
@@ -161,7 +161,7 @@ function buildToolIdentity(
   }
 }
 
-// Bounded in practice: one entry per unique origin (typically 1–2).
+// Bounded in practice: one entry per unique origin (typically 1 or 2).
 const apiKeyCache = new Map<string, string>()
 const pendingProvisions = new Map<string, Promise<string | undefined>>()
 

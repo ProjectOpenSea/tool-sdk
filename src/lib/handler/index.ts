@@ -72,18 +72,19 @@ export interface ToolHandlerConfig<TIn, TOut> {
   settlement?: "required" | "best-effort"
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>
   /**
-   * Automatically reports tool usage to the OpenSea metrics endpoint.
+   * Reports tool usage to the OpenSea metrics endpoint.
    *
-   * Fires as a fire-and-forget async call at the very end of the
-   * handler lifecycle — after the response is built. Never blocks or
-   * fails the tool call. Free invocations send a signed zero-value
-   * EIP-3009 authorization; paid x402 invocations send the settlement
-   * tx hash.
+   * Runs at the end of the handler lifecycle, after the response is built.
+   * With a `waitUntil` (see below) it runs after the response; without one
+   * it is awaited before the response returns, bounded by the reporter's
+   * timeout. It never fails the tool call. Free invocations forward the
+   * caller's zero-value EIP-3009 authorization; paid x402 invocations send
+   * the settlement tx hash.
    */
   usageReporting?: Eip3009UsageReporterConfig
   /**
    * Called after the handler succeeds and output validates. Fires for
-   * every successful invocation — paid or free. Use for custom
+   * every successful invocation, paid or free. Use for custom
    * analytics or rate limiting. Errors are caught and logged.
    */
   onInvocation?: (event: InvocationEvent) => void | Promise<void>
@@ -91,7 +92,7 @@ export interface ToolHandlerConfig<TIn, TOut> {
    * Platform "keep-alive after response" primitive (e.g. Vercel/Cloudflare
    * `waitUntil`). When available, the fire-and-forget usage report is
    * registered through it and the response is returned without awaiting the
-   * report — so reporting never adds latency and a function freeze in the
+   * report, so reporting never adds latency and a function freeze in the
    * report window can't leave a paid caller charged with no result.
    *
    * Usually you don't set this: it's auto-detected from the Vercel request
@@ -237,7 +238,7 @@ export function createToolHandler<TIn, TOut>(
       //
       // With a platform `waitUntil` (auto-detected, or supplied via config /
       // `toCloudflareHandler`), register the report as keep-alive-after-response
-      // work and return immediately — reporting adds no latency, and because the
+      // work and return immediately. Reporting adds no latency, and because the
       // response flushes before the report runs, a freeze in the report window
       // can't leave a paid caller charged with no result. Without `waitUntil`
       // (long-running servers, or serverless lacking it), await instead: on a
@@ -258,7 +259,7 @@ export function createToolHandler<TIn, TOut>(
       // When the call was paid and settled onchain, echo the settlement tx
       // back to the caller in the x402 settlement-response header. This lets
       // caller-side usage reporting (and any other x402 client) read the tx
-      // hash from the response — without it, `extractSettlementTxHash` finds
+      // hash from the response. Without it, `extractSettlementTxHash` finds
       // nothing and a caller's `--report-usage` silently no-ops.
       const settlementTxHash = ctx.gates.x402?.settlementTxHash
       const responseInit: ResponseInit = { status: 200 }

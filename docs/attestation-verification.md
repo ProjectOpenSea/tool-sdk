@@ -1,21 +1,21 @@
-# Consumer-Side Attestation Verification — Design Proposal
+# Consumer-side attestation verification: design proposal
 
 > **Status:** Draft proposal  
 > **Package:** `@opensea/tool-sdk`  
-> **ERC reference:** `packages/tool-registry/eip-draft-tool-registry.md` (Section 5 — Verifiability)  
+> **ERC reference:** ERC-8257, Section 5 (Verifiability)  
 > **Date:** 2026-05-07
 
 ## Summary
 
-The ERC spec defines three verifiability tiers — `"self-attested"`, `"hardware-attested"`, and `"verifiable"` — but the tool-sdk today only validates the manifest schema. This document proposes a `verifyAttestation()` consumer-side API that lets agents cryptographically verify a tool's verifiability claims before invocation.
+The ERC defines three verifiability tiers (`"self-attested"`, `"hardware-attested"`, and `"verifiable"`), but tool-sdk only validates the manifest schema. This document proposes a consumer-side `verifyAttestation()` API that lets an agent cryptographically check a tool's verifiability claims before calling it.
 
 ---
 
-## 1. Attestation Protocol Landscape
+## 1. Attestation protocols
 
-### 1.1 Protocols in Scope
+### 1.1 Protocols in scope
 
-The spec's `attestation.type` field is an opaque string. The three protocols most likely to appear in practice are:
+The spec's `attestation.type` field is an opaque string. These three protocols are the most likely to appear:
 
 | Protocol | Platform | Measurement field | Report format | Quote size |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@ The spec's `attestation.type` field is an opaque string. The three protocols mos
 
 TDX attestation uses the same DCAP v3 quote format as SGX (the quote header distinguishes TEE type), so a DCAP v3 verifier handles both SGX and TDX.
 
-### 1.2 JS/TS Libraries
+### 1.2 JS/TS libraries
 
 | Library | Protocols | Runtime | Maturity | Notes |
 |---|---|---|---|---|
@@ -34,9 +34,9 @@ TDX attestation uses the same DCAP v3 quote format as SGX (the quote header dist
 | [`secretvm-verify`](https://npm.im/secretvm-verify) | TDX, SEV-SNP, NVIDIA GPU | Node (depends on ethers) | 23 versions, actively maintained by Secret Network | Multi-platform verifier. Wraps `@phala/dcap-qvl` for TDX. Has SEV-SNP and NVIDIA GPU support. |
 | [`@cardinal-cryptography/enclaves`](https://npm.im/@cardinal-cryptography/enclaves) | AWS Nitro | Node + browser | v0.3.0, maintained | Nitro attestation document verification. CBOR/COSE parsing, cert chain validation against AWS Nitro root CA. |
 | [`@dashlane/nsm-attestation`](https://npm.im/@dashlane/nsm-attestation) | AWS Nitro | Node | v1.0.2, stable | Nitro NSM attestation parsing/verification. Uses `cbor` + `cose-js`. Battle-tested at Dashlane. |
-| [`@automata-network/automata-dcap-attestation`](https://npm.im/@automata-network/automata-dcap-attestation) | DCAP v3 | EVM (onchain) | v1.1.0 | Solidity contracts for onchain DCAP quote verification. Useful as a reference but not directly usable in a JS client — relevant for hybrid onchain/offchain verification. |
+| [`@automata-network/automata-dcap-attestation`](https://npm.im/@automata-network/automata-dcap-attestation) | DCAP v3 | EVM (onchain) | v1.1.0 | Solidity contracts for onchain DCAP quote verification. Useful as a reference but not directly usable in a JS client. Relevant for hybrid onchain/offchain verification. |
 
-### 1.3 Unified Verification Services
+### 1.3 Verification services
 
 | Service | Model | Protocols |
 |---|---|---|
@@ -45,21 +45,21 @@ TDX attestation uses the same DCAP v3 quote format as SGX (the quote header dist
 | **Gramine / RA-TLS** | Framework for running unmodified apps in SGX enclaves. RA-TLS embeds the attestation quote in a TLS certificate's X.509 extension. Verification is done at TLS handshake time. The `@xnetx/sgx-ra-tls-verify` library extracts and verifies these. | DCAP v3 (SGX only) |
 | **Sigstore Rekor** | Append-only transparency log. Not a verifier itself, but the spec's `transparencyLogURI` field points here. The `@sigstore/rekor-types` package provides TypeScript types for the Rekor API. The `sigstore` npm package provides full verification (inclusion proof, signed tree head). | Protocol-agnostic (logs any attestation) |
 
-### 1.4 Key Takeaway
+### 1.4 Takeaway
 
-There is no single unified JS library that verifies all three protocols. The closest is `secretvm-verify` (TDX + SEV-SNP), but it does not cover Nitro. A pluggable provider architecture is necessary.
+No single JS library verifies all three protocols. The closest, `secretvm-verify` (TDX + SEV-SNP), does not cover Nitro. The SDK needs pluggable providers.
 
 ---
 
-## 2. `maxAge` Freshness Check
+## 2. `maxAge` freshness check
 
 ### 2.1 Feasibility
 
-A provider-agnostic freshness check is **tractable** because every attestation protocol embeds a timestamp or nonce in its report, and the manifest schema already defines `attestation.maxAge` (seconds).
+A provider-agnostic freshness check is feasible: every attestation protocol embeds a timestamp or nonce in its report, and the manifest schema already defines `attestation.maxAge` (seconds).
 
-### 2.2 Expected Response Format
+### 2.2 Expected response format
 
-The spec does not define a response format for `attestation.endpoint`. We propose the following convention (non-normative, recommended):
+The spec does not define a response format for `attestation.endpoint`. We propose this non-normative convention:
 
 ```
 GET <attestation.endpoint>
@@ -80,7 +80,7 @@ Accept: application/json           (structured envelope)
 
 **Raw binary:** The endpoint returns the raw attestation report bytes (e.g., SGX Quote v3 binary, COSE_Sign1 CBOR bytes) with `Content-Type: application/octet-stream`.
 
-### 2.3 Timestamp Extraction by Protocol
+### 2.3 Timestamp extraction by protocol
 
 | Protocol | Timestamp source | Extraction method |
 |---|---|---|
@@ -88,22 +88,22 @@ Accept: application/json           (structured envelope)
 | Nitro | The NSM attestation document contains a `timestamp` field (milliseconds since epoch) in the CBOR payload. | Decode CBOR → read `timestamp` field |
 | SEV-SNP | The attestation report contains a `REPORT_DATA` field (64 bytes) that can embed a nonce/timestamp, and the VCEK certificate has validity dates. The report structure itself includes a `VERSION` and platform-specific fields but no standardized timestamp. | Parse VCEK cert `notBefore`, or extract nonce from `REPORT_DATA` |
 
-### 2.4 Provider-Agnostic Freshness Strategy
+### 2.4 Provider-agnostic freshness strategy
 
 1. If the JSON envelope includes a `timestamp` field, use it as the report time.
 2. If the raw report is returned, delegate to the provider-specific parser to extract the timestamp.
-3. Fall back to the fetch time (`Date.now()`) as an upper bound — the report cannot be newer than when we received it, but it could be older.
+3. Otherwise fall back to the fetch time (`Date.now()`) as an upper bound. The report cannot be newer than when we received it, but it could be older.
 4. Compare: `if (Date.now() / 1000 - reportTimestamp > maxAge) → stale`.
 
-The `maxAge` check itself is trivial; the complexity is in extracting the timestamp, which is provider-specific. This is another argument for the pluggable provider architecture.
+The `maxAge` comparison is trivial. Extracting the timestamp is the hard part, and it is provider-specific, which is another reason for pluggable providers.
 
 ---
 
-## 3. `enclaveHash` Verification
+## 3. `enclaveHash` verification
 
-### 3.1 Measurement Comparison
+### 3.1 Measurement comparison
 
-After parsing the attestation report, the consumer extracts the enclave measurement and compares it to `attestation.enclaveHash` from the manifest. This is a **byte comparison**, but the field to extract is provider-specific:
+After parsing the report, the consumer extracts the enclave measurement and byte-compares it to the manifest's `attestation.enclaveHash`. Which field to extract depends on the provider:
 
 | Protocol | Measurement field | Size | Extraction |
 |---|---|---|---|
@@ -112,7 +112,7 @@ After parsing the attestation report, the consumer extracts the enclave measurem
 | Nitro | `PCR0` (enclave image measurement) | 48 bytes (SHA-384) | Decode CBOR → `pcrs` map → key `0` |
 | SEV-SNP | `MEASUREMENT` (launch digest) | 48 bytes | Parse SNP report → bytes [144..192] |
 
-### 3.2 Comparison Logic
+### 3.2 Comparison logic
 
 ```
 reportHash = provider.extractMeasurement(parsedReport)
@@ -120,17 +120,17 @@ manifestHash = hexToBytes(manifest.verifiability.attestation.enclaveHash)
 match = constantTimeEqual(reportHash, manifestHash)
 ```
 
-The comparison is straightforward after parsing but **parsing is entirely provider-specific**. Each provider plugin must implement `extractMeasurement(report: Uint8Array): Uint8Array`.
+The comparison is simple once the report is parsed, but **parsing is entirely provider-specific**. Each provider plugin implements `extractMeasurement(report: Uint8Array): Uint8Array`.
 
-### 3.3 Hash Length Mismatch
+### 3.3 Hash length mismatch
 
-The manifest `enclaveHash` field is variable-length hex (`^0x([0-9a-f]{2})+$`). SGX uses 32-byte SHA-256 measurements; Nitro and SEV-SNP use 48-byte SHA-384. The comparison must check length equality first and reject on mismatch.
+The manifest `enclaveHash` field is variable-length hex (`^0x([0-9a-f]{2})+$`). SGX uses 32-byte SHA-256 measurements; Nitro and SEV-SNP use 48-byte SHA-384. The comparison checks lengths first and rejects a mismatch.
 
 ---
 
-## 4. `reproducibleBuild` Verification
+## 4. `reproducibleBuild` verification
 
-### 4.1 What Verification Looks Like
+### 4.1 What verification involves
 
 The `"verifiable"` tier requires the full chain: `source → binary → enclave measurement → attestation report`. Verifying `reproducibleBuild` means:
 
@@ -139,35 +139,35 @@ The `"verifiable"` tier requires the full chain: `source → binary → enclave 
 3. Hash the output binary → compare to `reproducibleBuild.buildHash`.
 4. Compare `buildHash` to `attestation.enclaveHash` to close the chain.
 
-### 4.2 Is This a Runtime Client Operation?
+### 4.2 Is this a runtime client operation?
 
-**No.** Reproducible build verification is inherently an **offline/CI process**:
+No. Reproducible build verification is an **offline or CI process**:
 
-- It requires cloning a Git repository, installing build toolchains (Nix, Docker, Gramine, etc.), and executing arbitrary build commands.
-- Build times range from seconds to hours depending on the project.
-- It requires trusting the build environment (a compromised build host defeats the purpose).
-- It is not something an agent should block on before making an API call.
+- It clones a Git repository, installs build toolchains (Nix, Docker, Gramine), and runs arbitrary build commands.
+- Builds take anywhere from seconds to hours.
+- It has to trust the build environment. A compromised build host defeats the purpose.
+- An agent should not block on it before an API call.
 
-### 4.3 Practical Approach
+### 4.3 Practical approach
 
 | Actor | Responsibility |
 |---|---|
 | **CI/auditor** | Periodically runs the reproducible build, compares `buildHash` to the published `enclaveHash`, and publishes results (e.g., to the transparency log). |
-| **Runtime client (`verifyAttestation`)** | Checks that `reproducibleBuild.buildHash === attestation.enclaveHash` (byte comparison). This does NOT verify the build itself — it only checks that the manifest claims are internally consistent. |
+| **Runtime client (`verifyAttestation`)** | Checks that `reproducibleBuild.buildHash === attestation.enclaveHash` (byte comparison). This does NOT verify the build. It only checks that the manifest's claims agree with each other. |
 | **Indexer/registry** | Caches reproducible build verification results and surfaces them as a trust signal alongside the tool listing. |
 
-The `verifyAttestation()` function should:
+`verifyAttestation()` should:
 - Verify that `buildHash` is present when `tier === "verifiable"`.
 - Compare `buildHash` to `enclaveHash` for internal consistency.
 - **Not** attempt to execute `buildInstructions`.
 
-For deeper verification, a separate `verifyReproducibleBuild()` utility (or CI integration) could be provided in the future — but that is out of scope for the runtime SDK.
+A separate `verifyReproducibleBuild()` utility or CI integration could come later, outside the runtime SDK.
 
 ---
 
-## 5. Proposed API Shape
+## 5. Proposed API
 
-### 5.1 Core Function
+### 5.1 Core function
 
 ```typescript
 import type { ToolManifest, Attestation, Verifiability } from "@opensea/tool-sdk"
@@ -271,7 +271,7 @@ interface VerifyAttestationOptions {
  * For "hardware-attested" and "verifiable" tools, fetches the
  * attestation report and verifies it cryptographically.
  *
- * Returns a result object — does NOT throw on verification failure.
+ * Returns a result object and does NOT throw on verification failure.
  * Throws only on unrecoverable errors (network failure, malformed
  * response, no provider for the attestation type).
  */
@@ -281,7 +281,7 @@ declare function verifyAttestation(
 ): Promise<AttestationVerificationResult>
 ```
 
-### 5.2 Provider Plugin Interface
+### 5.2 Provider plugin interface
 
 ```typescript
 /**
@@ -317,10 +317,10 @@ interface ProviderVerifyOptions {
 }
 ```
 
-### 5.3 Built-in Providers (Future)
+### 5.3 Built-in providers (future)
 
 ```typescript
-// Phase 2 — shipped as separate entrypoints to keep the core bundle lean
+// Phase 2: shipped as separate entrypoints to keep the core bundle small
 import { DcapV3Provider } from "@opensea/tool-sdk/providers/dcap-v3"
 import { NitroProvider } from "@opensea/tool-sdk/providers/nitro"
 import { SevSnpProvider } from "@opensea/tool-sdk/providers/sev-snp"
@@ -330,54 +330,54 @@ const result = await verifyAttestation(manifest, {
 })
 ```
 
-### 5.4 Why Result Type, Not Throw
+### 5.4 Why a result type instead of throwing
 
 Attestation verification has **graduated outcomes**:
 - A stale report (maxAge exceeded) is less severe than a signature failure.
 - A missing `transparencyLogURI` is informational, not fatal.
 - An agent framework may want to invoke a tool with a degraded trust tier (e.g., allow `hardware-attested` even if the build consistency check fails).
 
-Throwing on any failure would force callers into try/catch and lose the granularity. The result type lets agents implement their own trust policies:
+Throwing on every failure would force callers into try/catch and lose that detail. A result type lets agents apply their own trust policies:
 
 ```typescript
 const result = await verifyAttestation(manifest)
 
 if (result.effectiveTier === "self-attested" && manifest.verifiability?.tier === "verifiable") {
-  // Tool claims verifiable but couldn't prove it — flag to user
+  // Tool claims verifiable but couldn't prove it; flag to user
   agent.warn(`Tool ${manifest.name} claims verifiable tier but verification degraded to self-attested`)
 }
 
 if (!result.checks.freshness?.passed) {
-  // Stale attestation — may still be acceptable for low-risk operations
+  // Stale attestation; may still be acceptable for low-risk operations
   agent.log(`Attestation for ${manifest.name} is stale (${result.checks.freshness?.reason})`)
 }
 ```
 
-The function **does** throw for truly unrecoverable errors: network failure when fetching the report, malformed/unparseable response, or no registered provider for the `attestation.type`. These are not verification failures — they are operational errors that prevent verification from running at all.
+The function **does** throw on unrecoverable errors: a network failure fetching the report, a malformed response, or no registered provider for the `attestation.type`. These are operational errors that stop verification from running, not verification failures.
 
 ---
 
-## 6. Phasing Recommendation
+## 6. Recommended phases
 
-### Phase 1 — Ship First (Low Complexity, High Value)
+### Phase 1: ship first (low complexity, high value)
 
 **Scope:** Consistency checks + maxAge freshness + enclaveHash comparison
 
 | Check | Implementation effort | Dependencies |
 |---|---|---|
-| **Manifest consistency** | Trivial — already partially done in `VerifiabilitySchema.superRefine()`. Extend to check `verifiable` tier requires both `attestation` and `reproducibleBuild`. | None (pure logic) |
-| **Attestation endpoint fetch** | Low — HTTP GET with timeout, `Content-Type` negotiation. | `fetch` (built-in) |
-| **maxAge freshness** | Low — parse envelope `timestamp` or use fetch time as fallback. | None |
-| **enclaveHash comparison** | Low — extract measurement from parsed report, byte-compare. Requires provider to have parsed the report. | Provider plugin |
-| **buildConsistency** | Trivial — compare two hex strings from the manifest. | None |
-| **Provider plugin interface** | Medium — define the `AttestationProvider` interface and registry. Ship with **zero** built-in providers initially; the interface is the deliverable. | None |
-| **`verifyAttestation()` orchestrator** | Medium — wire together the checks, fetch, provider dispatch. | Above pieces |
+| **Manifest consistency** | Trivial. Partly done in `VerifiabilitySchema.superRefine()`. Extend to check `verifiable` tier requires both `attestation` and `reproducibleBuild`. | None (pure logic) |
+| **Attestation endpoint fetch** | Low. HTTP GET with timeout, `Content-Type` negotiation. | `fetch` (built-in) |
+| **maxAge freshness** | Low. Parse envelope `timestamp`, or fall back to fetch time. | None |
+| **enclaveHash comparison** | Low. Extract measurement from parsed report, byte-compare. Requires provider to have parsed the report. | Provider plugin |
+| **buildConsistency** | Trivial. Compare two hex strings from the manifest. | None |
+| **Provider plugin interface** | Medium. Define the `AttestationProvider` interface and registry. Ship with **zero** built-in providers initially; the interface is the deliverable. | None |
+| **`verifyAttestation()` orchestrator** | Medium. Wire together the checks, fetch, and provider dispatch. | Above pieces |
 
-**Phase 1 does NOT include built-in provider implementations.** The plugin interface ships, and consumers bring their own provider (e.g., wrapping `@phala/dcap-qvl`). This lets us ship the API without taking a dependency on any specific attestation library.
+**Phase 1 ships no built-in providers.** The plugin interface ships, and consumers bring their own provider (for example, one wrapping `@phala/dcap-qvl`). The API ships without depending on any attestation library.
 
 **Estimated effort:** 1-2 weeks for one engineer.
 
-### Phase 2 — Built-in DCAP v3 Provider
+### Phase 2: built-in DCAP v3 provider
 
 **Scope:** Ship a `DcapV3Provider` that wraps `@phala/dcap-qvl`.
 
@@ -389,9 +389,9 @@ The function **does** throw for truly unrecoverable errors: network failure when
 
 **Estimated effort:** 2-3 weeks.
 
-**Dependency:** `@phala/dcap-qvl` (Apache-2.0, 124 KB unpacked, 8 deps). This is the strongest candidate — it's pure JS, isomorphic, and actively maintained. It handles the full DCAP v3 verification pipeline including TCB status.
+**Dependency:** `@phala/dcap-qvl` (Apache-2.0, 124 KB unpacked, 8 deps). It is the strongest candidate: pure JS, isomorphic, and actively maintained. It covers the full DCAP v3 verification pipeline, including TCB status.
 
-### Phase 3 — Built-in Nitro Provider
+### Phase 3: built-in Nitro provider
 
 **Scope:** Ship a `NitroProvider` that wraps `@cardinal-cryptography/enclaves` or `@dashlane/nsm-attestation`.
 
@@ -404,12 +404,12 @@ The function **does** throw for truly unrecoverable errors: network failure when
 **Estimated effort:** 2 weeks.
 
 **Library candidates:**
-- `@cardinal-cryptography/enclaves` (Apache-2.0, 37.5 KB) — Lighter, actively maintained.
-- `@dashlane/nsm-attestation` (proprietary license, 55.3 KB) — Battle-tested at Dashlane but proprietary license is a concern.
+- `@cardinal-cryptography/enclaves` (Apache-2.0, 37.5 KB): lighter, actively maintained.
+- `@dashlane/nsm-attestation` (proprietary license, 55.3 KB): battle-tested at Dashlane, but the proprietary license is a concern.
 
-**Recommendation:** Use `@cardinal-cryptography/enclaves` for the open-source license.
+**Recommendation:** `@cardinal-cryptography/enclaves`, for its open-source license.
 
-### Phase 4 — Transparency Log Verification
+### Phase 4: transparency log verification
 
 **Scope:** Verify that the attestation report appears in the Sigstore Rekor transparency log.
 
@@ -417,21 +417,21 @@ The function **does** throw for truly unrecoverable errors: network failure when
 |---|---|---|
 | Fetch Rekor log entry from `transparencyLogURI` | Low | HTTP GET, parse JSON |
 | Verify inclusion proof (Merkle tree) | Medium | The `sigstore` npm package provides this. Need to verify the signed tree head against Sigstore's root keys. |
-| Compare log entry body to fetched attestation report | Medium | Need to define what exactly gets logged — the raw report bytes? A hash? |
+| Compare log entry body to fetched attestation report | Medium | Need to define what gets logged: the raw report bytes, or a hash? |
 
 **Estimated effort:** 2 weeks.
 
 **Open question:** The spec does not define what format the transparency log entry should take. This needs to be specified before implementation.
 
-### Phase 5 — SEV-SNP Provider + Reproducible Build CI Tooling
+### Phase 5: SEV-SNP provider and reproducible build CI tooling
 
 **Scope:** SEV-SNP provider (wrapping `secretvm-verify`) and a CLI command for running reproducible build verification in CI.
 
-This is the lowest priority because:
+This is the lowest priority:
 - SEV-SNP is less common in the current AI tool ecosystem than SGX/Nitro.
 - Reproducible build verification is an offline/CI concern, not a runtime SDK concern.
 
-### Summary Table
+### Summary
 
 | Phase | Deliverable | Effort | Dependencies added |
 |---|---|---|---|
@@ -443,14 +443,14 @@ This is the lowest priority because:
 
 ---
 
-## 7. Blockers and Open Questions
+## 7. Blockers and open questions
 
-### Must Resolve Before Phase 1
+### Resolve before phase 1
 
-1. **Attestation endpoint response format.** The spec says `attestation.endpoint` returns a "fresh remote attestation report" but does not specify the HTTP response format. We need to either:
+1. **Attestation endpoint response format.** The spec says `attestation.endpoint` returns a "fresh remote attestation report" but does not specify the HTTP response format. Options:
    - Define a recommended JSON envelope format (as proposed in Section 2.2).
    - Accept raw binary with `Content-Type` negotiation.
-   - Or both (try JSON first, fall back to binary).
+   - Both: try JSON first, fall back to binary.
 
    **Recommendation:** Support both, with JSON envelope preferred. Document the recommended format in the spec or in tool-sdk docs.
 
@@ -458,7 +458,7 @@ This is the lowest priority because:
 
    **Recommendation:** Separate entrypoint (`@opensea/tool-sdk/verify`) to keep the server-side bundle lean. Providers ship as `@opensea/tool-sdk/providers/dcap-v3`, etc.
 
-### Must Resolve Before Phase 2
+### Resolve before phase 2
 
 3. **TCB collateral freshness.** DCAP v3 verification requires Intel PCS (Provisioning Certification Service) collateral (TCB info, QE identity, CRLs). `@phala/dcap-qvl` can fetch this automatically, but it means the verification step makes additional HTTP calls to Intel's servers. Should we:
    - Let the provider fetch collateral on demand? (simpler, adds latency)
@@ -469,15 +469,15 @@ This is the lowest priority because:
 
 4. **TCB status interpretation.** DCAP v3 reports include a TCB status (`UpToDate`, `SWHardeningNeeded`, `ConfigurationNeeded`, `OutOfDate`, `Revoked`). What should `verifyAttestation` do with non-`UpToDate` statuses?
 
-   **Recommendation:** Include `tcbStatus` in `ParsedAttestationReport` and let the caller decide. Only `Revoked` should cause `reportSignature.passed = false`. Other statuses are informational — the report is still cryptographically valid, it just indicates the platform firmware may need updates.
+   **Recommendation:** Include `tcbStatus` in `ParsedAttestationReport` and let the caller decide. Only `Revoked` should cause `reportSignature.passed = false`. Other statuses are informational: the report is still cryptographically valid, and the status only says the platform firmware may need updates.
 
-### Open Questions for the Team
+### Open questions for the team
 
 5. **Onchain vs. offchain verification.** Automata provides onchain DCAP v3 verification contracts. Should we support a mode where `verifyAttestation` submits the quote to an onchain verifier and checks the result? This would give trustless verification but at significant gas cost.
 
    **Recommendation:** Defer to Phase 5+. The primary use case is agents running offchain making pre-invocation trust decisions. Onchain verification is relevant for smart contract wallets that want to gate tool invocation onchain, which is a different integration surface.
 
-6. **RA-TLS integration.** Gramine-based enclaves can embed the attestation quote in a TLS certificate. If a tool uses RA-TLS, verification happens at TLS handshake time — no separate `attestation.endpoint` is needed. Should `verifyAttestation` support RA-TLS?
+6. **RA-TLS integration.** Gramine-based enclaves can embed the attestation quote in a TLS certificate. If a tool uses RA-TLS, verification happens at TLS handshake time and no separate `attestation.endpoint` is needed. Should `verifyAttestation` support RA-TLS?
 
    **Recommendation:** Not in the initial phases. RA-TLS verification requires intercepting the TLS handshake, which is a fundamentally different flow from fetching a report from an HTTP endpoint. Document it as a future extension. Tools using RA-TLS can set `attestation.type: "ra-tls"` and a future provider can handle it.
 

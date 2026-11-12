@@ -63,7 +63,7 @@ describe("ToolRegistryClient registryAddress override", () => {
       "0x2222222222222222222222222222222222222222" as `0x${string}`
     const { ToolRegistryClient } = await import("../lib/onchain/registry.js")
 
-    // Chain 999999 is not in TOOL_REGISTRY.chains — without override this
+    // Chain 999999 is not in TOOL_REGISTRY.chains, so without override this
     // would throw.
     expect(
       () =>
@@ -83,5 +83,11 @@ describe("ToolRegistryClient registryAddress override", () => {
           chain: { id: 999999, name: "unsupported" } as never,
         }),
     ).toThrow(/not deployed on chain 999999/i)
+    expect(
+      () =>
+        new ToolRegistryClient({
+          chain: { id: 999999, name: "unsupported" } as never,
+        }),
+    ).toThrow("https://github.com/ProjectOpenSea/tool-registry#readme")
   })
 })

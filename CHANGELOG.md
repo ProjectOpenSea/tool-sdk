@@ -1,5 +1,11 @@
 # @opensea/tool-sdk
 
+## 0.33.1
+
+### Patch Changes
+
+- 389bb50: Point not-deployed errors at the public tool-registry repo instead of a private one.
+
 ## 0.33.0
 
 ### Minor Changes

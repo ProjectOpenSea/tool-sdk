@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// Hardhat/Anvil account #0 — deterministic test key, never holds real funds
+// Hardhat/Anvil account #0: deterministic test key, never holds real funds
 const PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
@@ -392,7 +392,7 @@ describe("pay command", () => {
       "{}",
     ])
 
-    // Single call, no GET retry — the 404 is reported as-is.
+    // Single call, no GET retry: the 404 is reported as-is.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(calls[0].method).toBe("POST")
     logSpy.mockRestore()
@@ -428,7 +428,7 @@ describe("pay command", () => {
       ]),
     ).rejects.toThrow("process.exit")
 
-    // No second (paid) fetch happened — we bailed before signing.
+    // No second (paid) fetch happened; we bailed before signing.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const errOutput = errSpy.mock.calls.flat().join(" ")
     expect(errOutput).toContain("maxAmount")

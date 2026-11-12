@@ -381,7 +381,7 @@ const MAX_VALID_BEFORE_WINDOW_SECONDS = 3600
 interface VerifyXPaymentOptions {
   /**
    * Expected payment recipient. The authorization's `to` field must match.
-   * Required — verification fails closed (500) when unset so an authorization
+   * Required: verification fails closed (500) when unset, so an authorization
    * signed for an arbitrary recipient can never authenticate.
    */
   expectedRecipient: `0x${string}`
@@ -394,7 +394,7 @@ interface VerifyXPaymentOptions {
   expectedChainId: number
   /**
    * When true (free identity-only `predicateGate`), reject any authorization
-   * whose `value` is non-zero — a non-zero `TransferWithAuthorization` is a
+   * whose `value` is non-zero. A non-zero `TransferWithAuthorization` is a
    * live, executable USDC pull the operator must never receive on a free gate.
    * The paid `paidPredicateGate` sets this false because the facilitator
    * legitimately settles the non-zero value.
@@ -481,7 +481,7 @@ async function verifyXPaymentAuth(
   }
 
   // On the free identity gate, a non-zero value is an executable USDC pull
-  // authorization the operator should never receive — reject it. The paid gate
+  // authorization the operator should never receive, so reject it. The paid gate
   // legitimately receives non-zero values (settled by the facilitator).
   if (options.requireZeroValue && (auth.value ?? "0") !== "0") {
     return {
@@ -495,7 +495,7 @@ async function verifyXPaymentAuth(
   // `base-sepolia`) and the CAIP-2 / numeric forms the broader x402
   // ecosystem uses (`eip155:8453`, `8453`). A client may echo back whatever
   // `network` string the 402 challenge advertised, which is not always the
-  // short name — resolve it rather than requiring an exact short-name match.
+  // short name, so resolve it rather than requiring an exact short-name match.
   const network = paymentPayload.network ?? "base"
   const resolved = resolveNetwork(network)
   if (resolved === undefined) {
@@ -615,7 +615,7 @@ const BASE_CHAIN_ID = 8453
  * supported x402 networks (Base / Base-Sepolia); it is independent of the
  * chain the `ToolRegistry` is read from. A registry chain that is itself a
  * supported x402 network verifies identity against that network; any other
- * registry chain (e.g. mainnet, Monad) verifies against Base — matching the
+ * registry chain (e.g. mainnet, Monad) verifies against Base, matching the
  * `network=base` the 402 challenge advertises. Without this decoupling, a
  * non-Base registry chain would pin identity to a chainId no USDC
  * authorization is ever signed for, so every caller fails closed and the only

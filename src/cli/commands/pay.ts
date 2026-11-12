@@ -85,7 +85,7 @@ export function parseToolRef(ref: string): ToolRef {
   }
 }
 
-/** HTTP verbs that carry no request body — inputs go in the query string. */
+/** HTTP verbs that carry no request body; inputs go in the query string. */
 const BODYLESS_METHODS = new Set(["GET", "HEAD", "DELETE"])
 
 const DEFAULT_BASE_RPC_URL = "https://mainnet.base.org"
@@ -121,7 +121,7 @@ export const payCommand = new Command("pay")
     "Tool coordinates as chainId,registryAddress,onchainId (e.g. 8453,0x265b...2cf1,65 or 8453,x402_bazaar,123). x402:bazaar and x402:bankr are also accepted and normalized. Disambiguates usage reporting when multiple tools share one endpoint.",
   )
   .action(async (url: string, options: PayOptions) => {
-    // The x402 X-Payment signature is a gasless EIP-3009 authorization — it is
+    // The x402 X-Payment signature is a gasless EIP-3009 authorization that is
     // never broadcast, so no RPC is actually needed to sign. The private-key
     // adapter still requires RPC_URL, so default it to a public Base endpoint
     // rather than failing with a confusing error.

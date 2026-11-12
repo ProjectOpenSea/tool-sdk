@@ -20,7 +20,7 @@ export interface WellKnownHandlerOptions {
  * request so that `EnvResolver` fields are evaluated at request time, not at
  * module-load time.
  *
- * **Routing:** This handler does not perform pathname matching — mount it at
+ * This handler does no pathname matching. Mount it at
  * the exact well-known route in your framework (e.g.
  * `app.get('/.well-known/ai-tool/my-tool.json', handler)`).
  */

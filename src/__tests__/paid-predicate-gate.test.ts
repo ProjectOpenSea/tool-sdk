@@ -319,7 +319,7 @@ describe("paidPredicateGate", () => {
     const ctx: Partial<ToolContext> = { gates: {} }
     const request = new Request("https://example.com/api", {
       method: "POST",
-      // Explicit non-zero value — the identity-gate zero-value rule must NOT
+      // Explicit non-zero value. The identity-gate zero-value rule must NOT
       // apply here since the facilitator settles the payment.
       headers: { "X-Payment": makeXPaymentHeader({ value: "1000000" }) },
     })

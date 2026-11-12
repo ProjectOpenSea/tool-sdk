@@ -84,14 +84,15 @@ export interface AuthenticatedFetchOptions extends RequestInit {
 }
 
 /**
- * SIWE-authenticated fetch wrapper — the predicate-gate equivalent of
- * `paidFetch`. Works with both `predicateGate` (recommended) and the
- * deprecated `nftGate` middleware.
+ * SIWE-authenticated fetch wrapper. No gate in this SDK reads the
+ * `Authorization: SIWE` header any more (`predicateGate` accepts only
+ * `X-Payment`), so this only works against servers that still implement
+ * the legacy SIWE scheme.
  *
  * Derives `domain` and `uri` from the `url` parameter, builds a SIWE message,
  * signs it, and sends the request with an `Authorization: SIWE <token>` header.
  *
- * Does NOT retry on 401/403 — SIWE auth is one-shot since the gate is
+ * Does NOT retry on 401/403: SIWE auth is one-shot because the gate is
  * identity-based, not payment-based.
  *
  * @deprecated Use `eip3009AuthenticatedFetch` from `@opensea/tool-sdk` instead.

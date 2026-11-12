@@ -296,7 +296,7 @@ describe("inspect command", () => {
 
   it("renders wallet-state-attestation requirement fields when predicate name() is third-party", async () => {
     // Reference impl from douglasborthwick-crypto/insumer-examples returns
-    // "InsumerAccessPredicate", not "WalletStateAttestationPredicate" — the
+    // "InsumerAccessPredicate", not "WalletStateAttestationPredicate". The
     // renderer must dispatch on the requirement's kind (0x7a111640), not the
     // predicate's name.
     const predicateAddress = "0x1111111111111111111111111111111111111111"

@@ -443,7 +443,7 @@ function hostedX402Gate(
         // Nothing to settle: check() did not run for this ctx (gate
         // short-circuited or was never invoked). Out-of-WeakMap reads
         // mean a handler cannot trick settle into running by mutating
-        // ctx — the only path is a successful verify in check().
+        // ctx; the only path is a successful verify in check().
         return
       }
 

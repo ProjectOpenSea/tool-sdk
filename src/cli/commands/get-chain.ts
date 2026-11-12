@@ -10,7 +10,7 @@ import {
 
 /**
  * Monad mainnet, mirroring viem's definition. The pinned viem version
- * predates Monad mainnet — replace with `import { monad } from "viem/chains"`
+ * predates Monad mainnet. Replace with `import { monad } from "viem/chains"`
  * once viem is upgraded past 2.38.
  */
 const monad = defineChain({
@@ -43,7 +43,7 @@ const monad = defineChain({
 })
 
 /**
- * Robinhood Chain mainnet. Not yet in the pinned viem version — replace with
+ * Robinhood Chain mainnet. Not yet in the pinned viem version; replace with
  * `import { robinhoodChain } from "viem/chains"` once viem ships a definition.
  */
 const robinhood = defineChain({

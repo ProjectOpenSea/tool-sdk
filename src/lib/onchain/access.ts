@@ -61,7 +61,7 @@ export interface DescribeToolAccessOptions {
 }
 
 export interface AccessRequirementInfo {
-  /** ERC-165–style 4-byte selector identifying the requirement type. */
+  /** ERC-165-style 4-byte selector identifying the requirement type. */
   kind: `0x${string}`
   /** ABI-encoded payload whose layout is determined by `kind`. */
   data: `0x${string}`
@@ -126,7 +126,7 @@ export async function describeToolAccess(
     // Over-cap name() is treated as if the contract did not implement the
     // function, per ERC §Predicate Introspection Hardening.
   } catch {
-    // Predicate doesn't implement name() — degrade gracefully
+    // Predicate doesn't implement name(); degrade gracefully
   }
 
   let requirements: AccessRequirementInfo[] = []
@@ -141,7 +141,7 @@ export async function describeToolAccess(
     requirements = boundRequirements(result[0])
     logic = result[1] === 0 ? "AND" : "OR"
   } catch {
-    // Predicate doesn't implement getRequirements() — degrade gracefully
+    // Predicate doesn't implement getRequirements(); degrade gracefully
   }
 
   return {

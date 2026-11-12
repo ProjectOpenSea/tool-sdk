@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { derivePredicateGateRecipient } from "../lib/predicate-gate-audience.js"
 
-// Hardhat/Anvil account #0 — deterministic test key, never holds real funds
+// Hardhat/Anvil account #0: deterministic test key, never holds real funds
 const PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 const BANKR_ADDRESS = "0x8b8e1C20E0630De8C60f0e0D5C3e9C7c20F0c20e"

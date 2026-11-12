@@ -47,7 +47,7 @@ export interface ZeroValueAuthorization {
 /**
  * Signs a zero-value EIP-3009 `TransferWithAuthorization` for usage tracking.
  * The signed authorization proves the caller controls `from` without moving
- * any tokens — `value` is always 0. The aggregator verifies the EIP-712
+ * any tokens: `value` is always 0. The aggregator verifies the EIP-712
  * signature to attribute tool calls to unique callers.
  */
 export async function signZeroValueAuthorization(

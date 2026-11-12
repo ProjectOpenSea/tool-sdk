@@ -66,7 +66,7 @@ export class ExactEip3009Scheme implements SchemeNetworkClient {
 }
 
 /**
- * x402 "upto" scheme — ceiling-price variant of EIP-3009. The caller
+ * x402 "upto" scheme: ceiling-price variant of EIP-3009. The caller
  * authorizes up to `amount` but the facilitator may settle for less based
  * on the tool's response. Signing logic is identical to exact; only the
  * scheme identifier differs so the facilitator knows to apply variable

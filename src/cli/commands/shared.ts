@@ -16,7 +16,7 @@ export const RPC_URL_OPTION_DESCRIPTION =
  *
  * Returns `undefined` when none is configured (viem then uses the chain's
  * default public RPC) and prints a warning, since public RPCs can be slow,
- * rate-limited, or unreachable — a common cause of commands appearing to
+ * rate-limited, or unreachable, which often makes commands appear to
  * hang on onchain reads.
  */
 export function resolveRpcUrl(
