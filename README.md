@@ -1,10 +1,10 @@
 # @opensea/tool-sdk
 
-SDK and CLI for building [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) compliant AI agent tools. Provides manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
+SDK and CLI for building [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) AI agent tools: manifest validation, onchain registration, gating middleware, framework adapters, and project scaffolding.
 
-Pairs with the onchain reference implementation at [ProjectOpenSea/tool-registry](https://github.com/ProjectOpenSea/tool-registry) — the `ToolRegistry` contract and example access predicates this SDK reads from and writes to.
+The onchain side lives in [ProjectOpenSea/tool-registry](https://github.com/ProjectOpenSea/tool-registry), which holds the `ToolRegistry` contract and the example access predicates this SDK reads and writes.
 
-## Quick Start
+## Quick start
 
 ```bash
 # 1. Scaffold a new tool project
@@ -26,24 +26,24 @@ npx @opensea/tool-sdk register \
   --network base
 ```
 
-## CLI Reference
+## CLI reference
 
-For the latest commands and flags, run `npx @opensea/tool-sdk --help`. The reference below is a high-level guide and may lag the CLI.
+`npx @opensea/tool-sdk --help` lists the current commands and flags. This section can lag behind it.
+
+Every command that takes `--network` accepts `base` or `mainnet` and defaults to `base`. Commands that sign need a wallet; see [Wallet configuration](#wallet-configuration).
 
 ### `init [name]`
 
-Scaffold a new ERC-8257 tool project with interactive prompts.
+Scaffolds a tool project from a Vercel, Cloudflare Workers, or Express template, with interactive prompts.
 
 ```bash
 npx @opensea/tool-sdk init my-tool
 npx @opensea/tool-sdk init my-tool --no-interactive  # CI mode
 ```
 
-Supports Vercel, Cloudflare Workers, and Express templates.
-
 ### `validate [path]`
 
-Validate a tool manifest JSON file against the ERC-8257 schema. The schema is open: namespaced extension fields are allowed and preserved. The command warns about any bare (un-namespaced) extension fields, which should use a reverse-DNS prefix per ERC-8257.
+Validates a manifest JSON file against the ERC-8257 schema. Namespaced extension fields are allowed and kept. Bare (un-namespaced) extension fields produce a warning, since ERC-8257 expects a reverse-DNS prefix.
 
 ```bash
 npx @opensea/tool-sdk validate ./manifest.json
@@ -51,17 +51,17 @@ npx @opensea/tool-sdk validate ./manifest.json
 
 ### `hash [path]`
 
-Compute the JCS keccak256 hash of a tool manifest (RFC 8785 canonicalization).
+Computes the JCS keccak256 hash of a manifest (RFC 8785 canonicalization).
 
 ```bash
 npx @opensea/tool-sdk hash ./manifest.json
 ```
 
-The hash is taken over the full manifest as served, per ERC-8257 §2: every field is included (including namespaced extension fields), and no fields are stripped or defaulted before hashing. Verifiers reproduce it by JCS-canonicalizing the manifest and hashing that, so the SDK and any other RFC 8785 implementation agree. The command prints any bare-extension warning to stderr, so the hash itself stays on stdout and piping is unaffected.
+Per ERC-8257 §2, the hash covers the manifest exactly as served. Every field counts, namespaced extensions included, and nothing is stripped or defaulted first, so any RFC 8785 implementation gets the same result. Bare-extension warnings go to stderr, so piping stdout gives you only the hash.
 
 ### `export [path]`
 
-Load a TypeScript manifest and output it as JSON. Validates the manifest before printing.
+Loads a TypeScript manifest, validates it, and prints it as JSON.
 
 ```bash
 npx @opensea/tool-sdk export ./src/manifest.ts
@@ -69,7 +69,7 @@ npx @opensea/tool-sdk export ./src/manifest.ts
 
 ### `verify <url>`
 
-Verify a deployed well-known tool endpoint. Checks URL format, HTTP 200, schema validation, and origin binding.
+Checks a deployed well-known endpoint: URL format, HTTP 200, schema validation, and origin binding.
 
 ```bash
 npx @opensea/tool-sdk verify https://my-tool.vercel.app/.well-known/ai-tool/my-tool.json
@@ -77,7 +77,7 @@ npx @opensea/tool-sdk verify https://my-tool.vercel.app/.well-known/ai-tool/my-t
 
 ### `register`
 
-Register a tool onchain via the ToolRegistry contract.
+Registers a tool with the ToolRegistry contract, optionally configuring an access predicate in the same run.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
@@ -95,20 +95,20 @@ PRIVATE_KEY=0x... RPC_URL=https://... npx @opensea/tool-sdk register \
 | Flag | Description |
 |------|-------------|
 | `--metadata <url>` | Metadata URI (required) |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--nft-gate <address>` | ERC-721 collection address; gates the tool via the canonical ERC721OwnerPredicate (version auto-detected from registry) |
-| `--erc20-gate <address>` | ERC-20 token address; gates the tool via the canonical ERC20BalancePredicate. Requires `--erc20-min-balance`. Mutually exclusive with `--nft-gate` |
-| `--erc20-min-balance <amount>` | Minimum token balance in raw units (e.g. `1000000000000000000` for 1e18). Required with `--erc20-gate` |
-| `--access-predicate <address>` | Access predicate address (mutually exclusive with `--nft-gate` and `--erc20-gate`) |
-| `--predicate-config <json>` | JSON config for the access predicate (e.g. `'{"collections":["0x..."]}'` or `'{"token":"0x...","minBalance":"1000000000000000000"}'`). Bundles predicate setup with registration |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint for gas estimation and tx broadcast |
-| `--dry-run` | Print summary without transacting |
-| `-y, --yes` | Skip confirmation prompt |
+| `--network <network>` | `base` or `mainnet` |
+| `--nft-gate <address>` | ERC-721 collection to gate on, via the canonical ERC721OwnerPredicate (version detected from the registry) |
+| `--erc20-gate <address>` | ERC-20 token to gate on, via the canonical ERC20BalancePredicate. Needs `--erc20-min-balance`. Cannot be combined with `--nft-gate` |
+| `--erc20-min-balance <amount>` | Minimum balance in raw units (`1000000000000000000` for 1e18). Required with `--erc20-gate` |
+| `--access-predicate <address>` | Custom access predicate. Cannot be combined with `--nft-gate` or `--erc20-gate` |
+| `--predicate-config <json>` | Predicate config to set during registration, e.g. `'{"collections":["0x..."]}'` or `'{"token":"0x...","minBalance":"1000000000000000000"}'` |
+| `--wallet-provider <provider>` | Signing wallet provider |
+| `--rpc-url <url>` | RPC endpoint for gas estimation and broadcast |
+| `--dry-run` | Print a summary without sending transactions |
+| `-y, --yes` | Skip the confirmation prompt |
 
 ### `update-metadata`
 
-Update a tool's metadata URI and manifest hash onchain.
+Updates a tool's metadata URI and manifest hash onchain.
 
 ```bash
 npx @opensea/tool-sdk update-metadata \
@@ -121,15 +121,15 @@ npx @opensea/tool-sdk update-metadata \
 |------|-------------|
 | `--tool-id <id>` | Numeric tool ID (required) |
 | `--metadata <url>` | New metadata URI (required) |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint for gas estimation and tx broadcast |
-| `--dry-run` | Print summary without transacting |
-| `-y, --yes` | Skip confirmation prompt |
+| `--network <network>` | `base` or `mainnet` |
+| `--wallet-provider <provider>` | Signing wallet provider |
+| `--rpc-url <url>` | RPC endpoint for gas estimation and broadcast |
+| `--dry-run` | Print a summary without sending transactions |
+| `-y, --yes` | Skip the confirmation prompt |
 
 ### `inspect`
 
-Read onchain tool state and cross-check against the live manifest.
+Reads a tool's onchain state and cross-checks it against the live manifest.
 
 ```bash
 npx @opensea/tool-sdk inspect --tool-id 1 --network base
@@ -139,12 +139,13 @@ npx @opensea/tool-sdk inspect --tool-id 1 --check-access 0xYourAddress
 | Flag | Description |
 |------|-------------|
 | `--tool-id <id>` | Numeric tool ID (required) |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--check-access <address>` | Check whether an address has access to the tool |
+| `--network <network>` | `base` or `mainnet` |
+| `--rpc-url <url>` | RPC endpoint |
+| `--check-access <address>` | Report whether this address has access |
 
 ### `deploy`
 
-Deploy a tool-sdk project to a hosting platform.
+Deploys the project to a host. Vercel is the only host today.
 
 ```bash
 npx @opensea/tool-sdk deploy --host vercel
@@ -153,13 +154,13 @@ npx @opensea/tool-sdk deploy --host vercel --non-interactive -y
 
 | Flag | Description |
 |------|-------------|
-| `--host <host>` | Hosting platform (required; currently `vercel`) |
-| `--non-interactive` | Read env var values from environment (for CI) |
-| `-y, --yes` | Auto-confirm prompts (e.g., Vercel link) |
+| `--host <host>` | Hosting platform (required; `vercel`) |
+| `--non-interactive` | Read env var values from the environment (for CI) |
+| `-y, --yes` | Auto-confirm prompts such as the Vercel link step |
 
 ### `pay <url>`
 
-Make a paid call to a tool endpoint via x402. Probes the endpoint for payment requirements (402 challenge), signs an EIP-3009 `TransferWithAuthorization` as the `X-Payment` header, and replays the request. Works for both paid and gated tools — the 402 challenge determines the payment amount (real USDC for paid, zero-value for identity-only gating).
+Makes a paid x402 call. The command probes the endpoint for its 402 challenge, signs an EIP-3009 `TransferWithAuthorization` into the `X-Payment` header, and replays the request. It works for gated tools too: the challenge sets the amount, which is real USDC for a paid tool and zero for identity-only gating.
 
 ```bash
 npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
@@ -168,15 +169,15 @@ npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
 
 | Flag | Description |
 |------|-------------|
-| `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
-| `--method <verb>` | HTTP method (defaults to POST; falls back to GET if a POST probe 404/405s) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--max-amount <baseUnits>` | Reject challenges charging more than this (token base units). Pass `unlimited` to disable |
-| `--no-report-usage` | Disable the caller-side usage report sent to OpenSea after a successful payment |
-| `--api-key <key>` | API key for usage reporting (falls back to `OPENSEA_API_KEY`, then an auto-provisioned instant key) |
-| `--tool-ref <ref>` | Tool coordinates as `chainId,registryAddress,onchainId` (e.g. `8453,0x265b...2cf1,65`, or `8453,x402_bazaar,123` for x402 registries). The legacy `x402:bazaar` / `x402:bankr` forms are also accepted and normalized. Disambiguates usage reporting when multiple tools share one endpoint |
+| `--body <json>` | JSON body, inline or `@path/to/file.json` |
+| `--method <verb>` | HTTP method. Defaults to POST, and falls back to GET if the POST probe returns 404 or 405 |
+| `--wallet-provider <provider>` | Signing wallet provider |
+| `--max-amount <baseUnits>` | Reject challenges that charge more than this, in token base units. `unlimited` disables the cap |
+| `--no-report-usage` | Skip the usage report sent to OpenSea after a successful payment |
+| `--api-key <key>` | API key for usage reporting. Falls back to `OPENSEA_API_KEY`, then to an auto-provisioned instant key |
+| `--tool-ref <ref>` | Tool coordinates as `chainId,registryAddress,onchainId`, e.g. `8453,0x265b...2cf1,65`, or `8453,x402_bazaar,123` for x402 registries |
 
-When an endpoint URL maps to more than one registered tool, an endpoint-only usage report is rejected with `400 Multiple tools registered for endpoint`. Pass `--tool-ref` so the report identifies the exact tool by its composite key. The canonical public source tokens are `x402_bazaar` and `x402_bankr`; the legacy colon forms are accepted and normalized. The fields are comma-separated so the registry identifier stays unambiguous:
+If one endpoint URL maps to several registered tools, the usage report fails with `400 Multiple tools registered for endpoint`. Pass `--tool-ref` to name the exact tool. For x402 registries the source tokens are `x402_bazaar` and `x402_bankr`; the legacy `x402:bazaar` and `x402:bankr` forms are accepted and normalized. Fields are comma-separated so the registry part stays unambiguous.
 
 ```bash
 # Onchain (ERC-8257) registry:
@@ -192,7 +193,7 @@ npx @opensea/tool-sdk pay https://my-tool.vercel.app/api/tool \
 
 ### `auth <url>`
 
-Make an authenticated call to a predicate-gated tool endpoint via EIP-3009 zero-value authorization.
+Calls a predicate-gated endpoint with a zero-value EIP-3009 authorization.
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk auth https://my-tool.vercel.app/api/tool \
@@ -201,12 +202,12 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org npx @opensea/tool-sdk auth ht
 
 | Flag | Description |
 |------|-------------|
-| `--body <json>` | JSON body (inline string or `@path/to/file.json`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
+| `--body <json>` | JSON body, inline or `@path/to/file.json` |
+| `--wallet-provider <provider>` | Signing wallet provider |
 
 ### `dry-run-gate`
 
-Invoke a tool handler locally with no `X-Payment` header and assert a valid 402 response (x402 gate test).
+Runs the handler locally without an `X-Payment` header and asserts a valid x402 402 response.
 
 ```bash
 npx @opensea/tool-sdk dry-run-gate \
@@ -216,12 +217,12 @@ npx @opensea/tool-sdk dry-run-gate \
 
 | Flag | Description |
 |------|-------------|
-| `--manifest <path>` | Path to manifest `.ts` or `.json` file (required) |
-| `--input <json>` | JSON input body (inline or `@path`) |
+| `--manifest <path>` | Manifest `.ts` or `.json` file (required) |
+| `--input <json>` | JSON input body, inline or `@path` |
 
 ### `dry-run-predicate-gate`
 
-Invoke a tool handler locally with no auth header and assert a valid challenge response (402 when `operatorAddress` is configured, 401 otherwise).
+Runs the handler locally without an auth header and asserts a valid challenge: 402 when `operatorAddress` is configured, 401 otherwise.
 
 ```bash
 npx @opensea/tool-sdk dry-run-predicate-gate \
@@ -231,13 +232,13 @@ npx @opensea/tool-sdk dry-run-predicate-gate \
 
 | Flag | Description |
 |------|-------------|
-| `--manifest <path>` | Path to manifest `.ts` or `.json` file (required) |
+| `--manifest <path>` | Manifest `.ts` or `.json` file (required) |
 | `--tool-id <id>` | Onchain tool ID to configure in the gate |
-| `--input <json>` | JSON input body (inline or `@path`) |
+| `--input <json>` | JSON input body, inline or `@path` |
 
 ### `smoke`
 
-Smoke-test a live tool endpoint: sign an EIP-3009 authorization, send an authenticated request, and assert the HTTP status. Classifies 402 as "auth passed, payment required" for paywalled tools.
+Smoke-tests a live endpoint: signs an EIP-3009 authorization, sends the request, and checks the HTTP status. For paywalled tools, a 402 counts as "auth passed, payment required".
 
 ```bash
 PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
@@ -250,84 +251,44 @@ PRIVATE_KEY=0x... RPC_URL=https://mainnet.base.org \
 | Flag | Description |
 |------|-------------|
 | `--endpoint <url>` | Production endpoint URL (required) |
-| `--tool-id <id>` | Onchain tool ID (included in log output) |
-| `--input <json>` | JSON body (inline or `@path`; default: `{}`) |
-| `--expect <status>` | Expected HTTP status code |
-| `--chain <name>` | Chain for wallet client and EIP-3009 signature (default: `base`) |
-| `--paid` | Handle x402 payment challenge after EIP-3009 authentication |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--max-amount <amount>` | Maximum payment amount in base units (default: `1000000` = 1 USDC) |
+| `--tool-id <id>` | Onchain tool ID, shown in log output |
+| `--input <json>` | JSON body, inline or `@path` (default `{}`) |
+| `--expect <status>` | Expected HTTP status |
+| `--chain <name>` | Chain for the wallet client and EIP-3009 signature (default `base`) |
+| `--paid` | Pay the x402 challenge after authenticating |
+| `--wallet-provider <provider>` | Signing wallet provider |
+| `--max-amount <amount>` | Payment cap in base units (default `1000000`, 1 USDC) |
 
-### `set-collections <toolId> <addresses...>`
+### Predicate configuration commands
 
-Set the ERC-721 collection gate list for an already-registered tool.
+These configure or read the gate on a tool that is already registered. Write commands accept `--wallet-provider`, `--rpc-url`, and `--dry-run` (print a summary or the encoded calldata without sending). Read commands accept `--rpc-url`. Commands for the trait and ERC-20 predicates use the canonical predicate address for the network unless you pass `--predicate-address`.
+
+| Command | What it does |
+|---------|--------------|
+| `set-collections <toolId> <addresses...>` | Set the ERC-721 collection list |
+| `get-collections <toolId>` | Read the ERC-721 collection list |
+| `set-collection-tokens <toolId> <address> <tokenIds...>` | Set the ERC-1155 collection and token IDs |
+| `configure-subscription <toolId> <collection>` | Configure SubscriptionPredicate. `--min-tier <tier>` is a uint8 (0-255, default `0`) |
+| `configure-trait-gating <toolId> <collection> <traitKey> <allowedValues...>` | Configure TraitGatedPredicate (ERC-721 ownership plus ERC-7496 trait match). `--traits-contract <address>` points at a separate traits contract; it defaults to the collection |
+| `get-trait-config <toolId>` | Read the trait gating config |
+| `configure-erc20-gate <toolId> <token> <minBalance>` | Configure ERC20BalancePredicate. The signer must be the tool creator |
+| `get-erc20-config <toolId>` | Read the ERC-20 balance gating config |
 
 ```bash
 PRIVATE_KEY=0x... npx @opensea/tool-sdk set-collections 4 \
   0x07152bfde079b5319e5308c43fb1dbc9c76cb4f9 \
   --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint |
-| `--dry-run` | Print encoded calldata without transacting |
-
-### `get-collections <toolId>`
-
-Read the ERC-721 collection gate list for a registered tool (read-only).
-
-```bash
 npx @opensea/tool-sdk get-collections 4 --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--rpc-url <url>` | RPC endpoint |
-
-### `set-collection-tokens <toolId> <address> <tokenIds...>`
-
-Set the ERC-1155 collection + token ID gate for an already-registered tool.
-
-```bash
 PRIVATE_KEY=0x... npx @opensea/tool-sdk set-collection-tokens 4 \
   0xCOLLECTION_ADDRESS 1 2 3 \
   --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint |
-| `--dry-run` | Print encoded calldata without transacting |
-
-### `configure-subscription <toolId> <collection>`
-
-Configure the SubscriptionPredicate gate for an already-registered tool.
-
-```bash
 PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-subscription 4 \
   0x6c9974ce02ddc6dc7786f7540613ad2a4f7ff626 \
   --min-tier 0 --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--min-tier <tier>` | Minimum subscription tier (uint8, 0-255; default: `0`) |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint |
-| `--dry-run` | Print summary without transacting |
-
-### `configure-trait-gating <toolId> <collection> <traitKey> <allowedValues...>`
-
-Configure the TraitGatedPredicate gate for an already-registered tool. Uses ERC-721 ownership + ERC-7496 dynamic trait matching.
-
-```bash
 PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-trait-gating 4 \
   0xNFT_COLLECTION tier Rare Legendary \
   --network base
@@ -336,83 +297,34 @@ PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-trait-gating 4 \
 PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-trait-gating 4 \
   0xNFT_COLLECTION tier Rare Legendary \
   --traits-contract 0xRENDERER --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--predicate-address <address>` | Override the canonical TraitGatedPredicate address |
-| `--traits-contract <address>` | ERC-7496 traits contract address (defaults to collection if omitted) |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint |
-| `--dry-run` | Print summary without transacting |
-
-**Bytes32 encoding:** `traitKey` and `allowedValues` are encoded as left-aligned, zero-padded bytes32 values. They must match exactly how the traits contract stores them. `bytes32(0)` is not allowed in `allowedValues` (it is the default return for unset traits).
-
-### `get-trait-config <toolId>`
-
-Read the trait gating configuration for a registered tool (read-only).
-
-```bash
 npx @opensea/tool-sdk get-trait-config 4 --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--predicate-address <address>` | Override the canonical TraitGatedPredicate address |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--rpc-url <url>` | RPC endpoint |
-
-### `configure-erc20-gate <toolId> <token> <minBalance>`
-
-Configure the ERC20BalancePredicate gate for an already-registered tool. Requires the caller to be the tool creator.
-
-```bash
 PRIVATE_KEY=0x... npx @opensea/tool-sdk configure-erc20-gate 4 \
   0xTOKEN_ADDRESS 1000000000000000000 \
   --network base
-```
 
-| Flag | Description |
-|------|-------------|
-| `--predicate-address <address>` | Override the canonical ERC20BalancePredicate address |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--wallet-provider <provider>` | Wallet provider to use for signing |
-| `--rpc-url <url>` | RPC endpoint |
-| `--dry-run` | Print summary without transacting |
-
-### `get-erc20-config <toolId>`
-
-Read the ERC-20 balance gating configuration for a registered tool (read-only).
-
-```bash
 npx @opensea/tool-sdk get-erc20-config 4 --network base
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--predicate-address <address>` | Override the canonical ERC20BalancePredicate address |
-| `--network <network>` | `base` or `mainnet` (default: `base`) |
-| `--rpc-url <url>` | RPC endpoint |
+`configure-trait-gating` encodes `traitKey` and each allowed value as a left-aligned, zero-padded bytes32, which must match how the traits contract stores them. `bytes32(0)` is rejected as an allowed value because it is what an unset trait returns.
 
-## Wallet Configuration
+### Wallet configuration
 
-All commands that sign transactions (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`, `configure-trait-gating`, `configure-erc20-gate`) need a wallet. You can configure one in two ways:
+Signing commands (`register`, `update-metadata`, `pay`, `auth`, `smoke`, `set-collections`, `set-collection-tokens`, `configure-subscription`, `configure-trait-gating`, `configure-erc20-gate`) pick a wallet in one of two ways:
 
-1. **Environment variables** — set the env vars for your provider and the CLI auto-detects it (priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey).
-2. **`--wallet-provider` flag** — explicitly select a provider by name.
+1. Pass `--wallet-provider <name>`.
+2. Set the env vars for a provider and let the CLI detect it. When several are set, the order is Privy, Fireblocks, Turnkey, Bankr, then private key.
 
-| Provider | `--wallet-provider` value | Required env vars |
-|----------|--------------------------|-------------------|
+| Provider | `--wallet-provider` value | Env vars |
+|----------|--------------------------|----------|
 | Privy | `privy` | `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_WALLET_ID` |
 | Fireblocks | `fireblocks` | `FIREBLOCKS_API_KEY`, `FIREBLOCKS_API_SECRET`, `FIREBLOCKS_VAULT_ID` |
 | Turnkey | `turnkey` | `TURNKEY_API_PUBLIC_KEY`, `TURNKEY_API_PRIVATE_KEY`, `TURNKEY_ORGANIZATION_ID`, `TURNKEY_WALLET_ADDRESS`, `TURNKEY_RPC_URL` |
 | Bankr | `bankr` | `BANKR_API_KEY` |
-| Private Key | `private-key` | `PRIVATE_KEY`, `RPC_URL` |
+| Private key | `private-key` | `PRIVATE_KEY`, plus `RPC_URL` for sending transactions |
 
-See [`.env.example`](.env.example) for a full annotated template.
-
-### Examples
+[`.env.example`](.env.example) is an annotated template.
 
 ```bash
 # Auto-detect from env vars (simplest)
@@ -432,7 +344,7 @@ PRIVY_APP_ID=... PRIVY_APP_SECRET=... PRIVY_WALLET_ID=... npx @opensea/tool-sdk 
 
 ### `defineManifest(manifest)`
 
-Type-narrowing identity function for manifest definitions.
+Identity function that narrows the manifest type.
 
 ```typescript
 import { defineManifest } from "@opensea/tool-sdk"
@@ -457,7 +369,7 @@ export const manifest = defineManifest({
 
 ### `validateManifest(data)`
 
-Validates unknown data against the ERC-8257 manifest schema.
+Validates unknown data against the ERC-8257 manifest schema. Namespaced extension fields are kept and no defaults are injected, so the result still matches what you serve and hash.
 
 ```typescript
 import { validateManifest } from "@opensea/tool-sdk"
@@ -470,11 +382,9 @@ if (result.success) {
 }
 ```
 
-The schema is open: namespaced extension fields are preserved, and no defaults are injected, so the validated manifest still matches what gets served and hashed.
-
 ### `findBareExtensionKeys(data)`
 
-Returns the top-level fields in `data` that are neither defined by the ERC-8257 schema nor namespaced as extensions (for example `paymentHint`). These fields are committed by the manifest hash since the manifest is hashed as served, but ERC-8257 requires extension fields to be namespaced (reverse-DNS, e.g. `io.opensea.paymentHint`, or the legacy `x-` prefix) so they cannot collide with future normative fields. Returns an empty array when `data` is not a JSON object.
+Returns top-level fields that are neither in the ERC-8257 schema nor namespaced, such as `paymentHint`. The manifest hash still covers them, but ERC-8257 requires extensions to be namespaced (reverse-DNS like `io.opensea.paymentHint`, or the legacy `x-` prefix) so they cannot collide with future spec fields. Returns an empty array when `data` is not a JSON object.
 
 ```typescript
 import { findBareExtensionKeys } from "@opensea/tool-sdk"
@@ -487,7 +397,7 @@ if (bare.length > 0) {
 
 ### `createToolHandler(config)`
 
-Creates a Web Request/Response handler for your tool.
+Builds a Web `Request`/`Response` handler for your tool. See [Input validation](#input-validation) for what it checks.
 
 ```typescript
 import { z } from "zod/v4"
@@ -507,7 +417,7 @@ const handler = createToolHandler({
 
 ### `createWellKnownHandler(manifest)`
 
-Creates a handler for the `/.well-known/ai-tool/<slug>.json` endpoint.
+Serves the manifest at `/.well-known/ai-tool/<slug>.json`.
 
 ```typescript
 import { createWellKnownHandler } from "@opensea/tool-sdk"
@@ -518,7 +428,7 @@ const wellKnown = createWellKnownHandler(manifest)
 
 ### `computeManifestHash(manifest)`
 
-Computes the JCS keccak256 hash of a manifest (RFC 8785 canonicalization + keccak256). Per ERC-8257 §2 the manifest is hashed as served: pass the raw served or authored object (for example the fetched response body), with every field intact and no defaults injected. Do not pass a schema-stripped copy, or an independently computed hash will not match.
+Computes the JCS keccak256 hash (RFC 8785 canonicalization, then keccak256). Pass the manifest as served or authored, such as the fetched response body, with every field intact. A schema-stripped or defaulted copy produces a hash that other verifiers will not reproduce.
 
 ```typescript
 import { computeManifestHash } from "@opensea/tool-sdk"
@@ -529,7 +439,7 @@ const hash = computeManifestHash(manifest)
 
 ### `ToolRegistryClient`
 
-Client for interacting with the onchain ToolRegistry contract.
+Client for the onchain ToolRegistry contract.
 
 ```typescript
 import { ToolRegistryClient } from "@opensea/tool-sdk"
@@ -546,26 +456,44 @@ const { toolId, txHash } = await client.registerTool({
 })
 ```
 
-## Invocation Flow
+### Framework adapters
 
-For a visual walkthrough of the full 402 challenge-response lifecycle (identity verification, access check, payment settlement, and usage reporting), see [docs/tool-invocation-flow.md](docs/tool-invocation-flow.md).
+Wrap a `createToolHandler` handler for your runtime. `toCloudflareHandler` also passes the Worker's `ctx.waitUntil` to the handler.
+
+```typescript
+// Vercel
+import { toVercelHandler } from "@opensea/tool-sdk"
+
+export default toVercelHandler(handler)
+```
+
+```typescript
+// Cloudflare Workers
+import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
+
+export default toCloudflareHandler(handler)
+```
+
+```typescript
+// Express
+import { toExpressHandler } from "@opensea/tool-sdk"
+
+app.post("/api", toExpressHandler(handler))
+```
 
 ## Gating
 
-### Predicate Gate (recommended)
+[docs/tool-invocation-flow.md](docs/tool-invocation-flow.md) diagrams the full 402 challenge-response lifecycle: identity check, access check, payment settlement, and usage reporting.
 
-Delegates the access decision to the onchain `ToolRegistry`. When
-`operatorAddress` is configured, the gate returns a 402 challenge with
-`PaymentRequirements` (`maxAmountRequired: "0"`); the caller signs a
-zero-value `X-Payment` and retries. The challenge derives its `payTo` address
-from the endpoint URL, tool ID, and operator. The client checks that binding
-before signing, so an authorization captured by another endpoint cannot be
-replayed here. The middleware
-recovers the caller's address from the `X-Payment` signature via `ecrecover`
-and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)`. Whatever
-predicate the tool's creator registered (single-collection ERC-721,
-multi-collection, ERC-1155, subscription, composite, anything future) is the
-policy enforced.
+### Predicate gate (recommended)
+
+`predicateGate` hands the access decision to the onchain `ToolRegistry`, so whatever predicate the tool creator registered is the policy: ERC-721, multi-collection, ERC-1155, subscription, ERC-20 balance, composite, or one written later.
+
+The flow:
+
+1. With `operatorAddress` configured, a request without auth gets a 402 whose `PaymentRequirements` has `maxAmountRequired: "0"`. The `payTo` address is derived from the endpoint URL, tool ID, and operator.
+2. The client checks that binding, signs a zero-value `X-Payment`, and retries. An authorization captured by another endpoint cannot be replayed here.
+3. The middleware recovers the caller with `ecrecover` and staticcalls `IToolRegistry.tryHasAccess(toolId, caller, data)`.
 
 ```typescript
 import { predicateGate } from "@opensea/tool-sdk"
@@ -590,8 +518,6 @@ const handler = createToolHandler({
 })
 ```
 
-Status code mapping:
-
 | Outcome | Status | Body |
 | --- | --- | --- |
 | No auth, `operatorAddress` configured | `402` | `{ accepts: [{ payTo, maxAmountRequired: "0", scheme: "exact", ... }] }` |
@@ -601,26 +527,36 @@ Status code mapping:
 | `tryHasAccess` returned `(true, false)` | `403` | `{ error, toolId, predicate }` |
 | `tryHasAccess` returned `(false, *)` | `502` | `{ error: "Predicate misbehaved..." }` |
 
-The `predicate` field in the 403 body is the registered access predicate's
-address, fetched lazily from `getToolConfig` on first denial and cached
-in-process. Callers can read the predicate's onchain config to learn what
-they need to satisfy.
+`predicate` in the 403 body is the registered predicate's address, read from `getToolConfig` on the first denial and cached in-process. Callers can read that predicate's onchain config to see what they need.
 
-Preferred auth mechanism: `X-Payment` header (zero-value EIP-3009 `TransferWithAuthorization` via the 402 challenge flow). Also accepts `Authorization: EIP-3009 <base64url(json)>` and deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility.
+`X-Payment` (a zero-value EIP-3009 `TransferWithAuthorization` from the 402 flow) is the preferred auth. The gate also accepts `Authorization: EIP-3009 <base64url(json)>`, and the deprecated `SIWE <base64url(message)>.<signature>` for backward compatibility.
 
-> **Note:** The gate bounds the `validBefore` window server-side: the
-> authorization must not be expired and must be at most 1 hour in the future
-> (SDK clients sign a much shorter window — 5 min zero-value / 10 min paid).
-> Each authorization includes a random nonce bound into the signature. Configure
-> `replayGuard` with an atomic shared store when one authorization must run the
-> handler at most once. See [Replay protection](#replay-protection).
+The gate rejects expired authorizations and any `validBefore` more than 1 hour out. SDK clients sign shorter windows: 5 minutes for zero-value, 10 minutes for paid. Each authorization carries a random signed nonce. If one authorization must run the handler at most once, configure `replayGuard`; see [Replay protection](#replay-protection).
+
+#### Predicate plus payment (`paidPredicateGate`)
+
+For tools that need both predicate access and an x402 payment, `paidPredicateGate` settles identity and payment in one 402 round trip (2 requests instead of 3):
+
+```typescript
+import { paidPredicateGate } from "@opensea/tool-sdk"
+import { mainnet } from "viem/chains"
+
+gates: [
+  paidPredicateGate({
+    toolId: 1n,
+    operatorAddress: "0xYOUR_WALLET",
+    amountUsdc: "0.05",
+    chain: mainnet,
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
+  }),
+]
+```
+
+The 402 challenge advertises the real price. The caller's `X-Payment` signature proves identity (`from`) and authorizes the payment at once. The gate checks the predicate before settling, so a denied caller pays nothing.
 
 #### Delegated agent access (delegate.xyz)
 
-An AI agent can call a predicate-gated tool **on behalf of** an NFT holder
-without the holder's private key. The holder delegates to the agent at
-[delegate.xyz](https://delegate.xyz) (onchain, one TX, revocable anytime),
-and the agent includes the holder's address in the request:
+An agent can call a predicate-gated tool for an NFT holder without the holder's key. The holder delegates to the agent at [delegate.xyz](https://delegate.xyz) (one onchain transaction, revocable), and the agent sends the holder's address:
 
 ```typescript
 import { eip3009AuthenticatedFetch } from "@opensea/tool-sdk"
@@ -635,12 +571,12 @@ const response = await eip3009AuthenticatedFetch(toolUrl, {
 })
 ```
 
-When `X-Delegate-For` is present, the middleware:
+With `X-Delegate-For` set, the middleware:
 
-1. Verifies the agent's identity (via `X-Payment` or `Authorization: EIP-3009`) normally
-2. Calls `checkDelegateForAll(agent, holder)` on the [delegate.xyz DelegateRegistry](https://docs.delegate.xyz)
-3. If valid, runs the access predicate against the **holder** (not the agent)
-4. Sets `ctx.callerAddress = holderAddress` and `ctx.agentAddress = agentAddress`
+1. Verifies the agent's identity as usual (`X-Payment` or `Authorization: EIP-3009`).
+2. Calls `checkDelegateForAll(agent, holder)` on the [delegate.xyz DelegateRegistry](https://docs.delegate.xyz).
+3. Runs the access predicate against the holder, not the agent.
+4. Sets `ctx.callerAddress` to the holder and `ctx.agentAddress` to the agent.
 
 | Outcome | Status | Body |
 | --- | --- | --- |
@@ -648,13 +584,11 @@ When `X-Delegate-For` is present, the middleware:
 | Delegation not found onchain | `403` | `{ error, hint }` |
 | Delegate registry call failed | `502` | `{ error }` |
 
-See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the
-full delegation walkthrough.
+[docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) walks through predicate setup and delegation end to end.
 
 ### Client-side access preview
 
-Off-chain helper for clients that want to gate UI before invocation. Same
-staticcall as `predicateGate`, no authentication required.
+`checkToolAccess` runs the same staticcall as `predicateGate` without authentication, so a client can gate UI before invoking.
 
 ```typescript
 import { checkToolAccess } from "@opensea/tool-sdk"
@@ -670,39 +604,22 @@ if (ok && granted) {
 }
 ```
 
-`ok === false` means the predicate misbehaved upstream and the result is
-indeterminate; treat it as a transient failure, not a denial.
+`ok === false` means the predicate misbehaved and the answer is unknown. Treat it as a transient failure, not a denial.
 
-### x402 Gate (hosted facilitator)
+### x402 gate (hosted facilitator)
 
-The SDK ships two hosted-facilitator gates with the same shape:
-`payaiX402Gate` (PayAI hosted facilitator — free, no auth required) and
-`cdpX402Gate` (Coinbase Developer Platform facilitator — requires a CDP API
-key and JWT auth). Pick one based on the trade-offs:
+Two gates share the same shape and differ in which facilitator verifies and settles payments:
 
-| Gate | Facilitator | Auth | Best for |
+| Gate | Facilitator | Auth | Use it for |
 | --- | --- | --- | --- |
-| `payaiX402Gate` | PayAI (`https://facilitator.payai.network`) | None | Prototyping, dogfooding, anything you want to deploy today |
-| `cdpX402Gate` | Coinbase Developer Platform (`https://api.cdp.coinbase.com/platform/v2/x402`) | CDP JWT (you supply via `createAuthHeaders`) | Production, when you have CDP credentials |
+| `payaiX402Gate` | PayAI (`https://facilitator.payai.network`) | None | Prototypes and first deploys |
+| `cdpX402Gate` | Coinbase Developer Platform (`https://api.cdp.coinbase.com/platform/v2/x402`) | CDP JWT, supplied through `createAuthHeaders` | Production, once you have CDP credentials |
 
-Both emit an x402-protocol-compliant 402 response with
-`accepts: [PaymentRequirements]` when `X-Payment` is missing, and verify the
-payload against the facilitator's `/verify` endpoint when present. The
-manifest-side helper `x402UsdcPricing` is shared — the advertised price is
-identical regardless of which facilitator enforces it.
+PayAI is community-operated, free, and has no uptime SLA. Evaluate CDP before real volume flows through it. CDP needs a JWT signed with your `CDP_API_KEY_SECRET`; the SDK does not bundle a signer, so you pass a `createAuthHeaders` callback that mints headers per request.
 
-**Trade-offs:**
+Both gates return a spec-compliant 402 with `accepts: [PaymentRequirements]` when `X-Payment` is missing, and verify the payload against the facilitator's `/verify` endpoint when it is present. Use `x402UsdcPricing` to advertise the price in the manifest; it is the same for either gate.
 
-- **PayAI** is community-operated. It is free and requires no credentials,
-  which is exactly the right fit for a first deploy. It comes with no
-  uptime SLA and its operational maturity is whatever the community has
-  built. For real money flowing at volume, evaluate CDP.
-- **CDP** is operated by Coinbase. It requires JWT auth signed with your
-  `CDP_API_KEY_SECRET`. The SDK does not bundle a JWT signer; pass a
-  `createAuthHeaders` callback that mints headers per request. A built-in
-  helper that wraps `@coinbase/cdp-sdk` is a planned follow-up.
-
-#### PayAI (recommended for first deploys)
+#### PayAI
 
 ```typescript
 import {
@@ -737,7 +654,7 @@ const handler = createToolHandler({
 })
 ```
 
-#### CDP (production)
+#### CDP
 
 ```typescript
 import { cdpX402Gate, x402UsdcPricing } from "@opensea/tool-sdk"
@@ -757,41 +674,24 @@ const gate = cdpX402Gate({
 })
 ```
 
-If you omit `createAuthHeaders` on `cdpX402Gate`, every verify call returns
-401/403 from CDP and the gate surfaces 502. PayAI is the unauthenticated
-fallback for development.
+Without `createAuthHeaders`, CDP rejects every verify call with 401 or 403 and the gate returns 502.
 
-**Common defaults:** USDC on Base mainnet, `maxTimeoutSeconds: 60`,
-description `"Tool invocation"`. `network: "base-sepolia"` is supported for
-testing. Override any default via the config; `facilitatorUrl` is also
-overridable if you want to pin to a specific facilitator instance.
+#### Defaults and settlement
 
-**Settlement.** Both gates settle on chain automatically: the gate verifies
-the payment before your handler runs, then calls the facilitator's `/settle`
-endpoint after your handler succeeds and the output validates. USDC moves
-from payer to `recipient` once `/settle` confirms. The settled tx hash is
-stashed on `ctx.gates.x402.settlementTxHash` for downstream observability.
+Both gates default to USDC on Base mainnet, `maxTimeoutSeconds: 60`, and the description `"Tool invocation"`. `network: "base-sepolia"` works for testing. Any default, including `facilitatorUrl`, can be overridden in the config.
 
-**Latency.** Settlement runs synchronously: the SDK awaits `/settle` before
-returning the response, so a slow or unreachable facilitator adds up to 10
-seconds (the per-call timeout) to the worst-case response time. Truly
-non-blocking settlement requires runtime-specific primitives (Cloudflare
-Workers and Vercel `waitUntil`) that are not portable across the runtimes
-this SDK supports, and fire-and-forget risks dropped settlements when a
-serverless process is killed after the response is sent. Blocking is the
-safest cross-runtime default; if you need lower-latency settlement, plumb
-the runtime's `waitUntil` into your handler and wrap the gate yourself.
+The gate verifies payment before your handler runs. After the handler succeeds and its output validates, the gate calls the facilitator's `/settle`, and USDC moves from payer to `recipient`. The settlement tx hash lands on `ctx.gates.x402.settlementTxHash`.
 
-**Failure handling.** If `/settle` fails (network blip, facilitator outage,
-nonce already used), the failure is logged via `console.error` with prefix
-`[tool-sdk] gate.settle failed:` and the response still returns 200 with
-the handler's output. Operators replay failed settlements out-of-band using
-the verified payment payload from logs.
+Settlement is synchronous: the response waits for `/settle`, so a slow facilitator can add up to 10 seconds (the per-call timeout). Non-blocking settlement would need runtime-specific `waitUntil`, and fire-and-forget can lose settlements when a serverless process is killed after responding. If you need lower latency, wire your runtime's `waitUntil` into a wrapper gate yourself.
 
-### x402 Gate (advanced: custom facilitator)
+When `/settle` fails, the SDK logs `[tool-sdk] gate.settle failed:` with `console.error`. What the caller gets depends on the `settlement` option of `createToolHandler`:
 
-The lower-level `x402Gate` accepts a `verifyPayment` callback for callers who
-want to run their own facilitator or verify payments without an HTTP round-trip.
+- `"required"` (default) withholds the output and returns `502 { error: "Payment settlement failed" }`, since the caller was not charged. With several settling gates, an earlier one may have settled before a later one failed, so prefer a single settling gate.
+- `"best-effort"` returns the handler's output with a 200. Use it only if you replay failed settlements out-of-band from the logged payment payload. A settlement that failed because the nonce was already spent can never be replayed.
+
+### x402 gate (custom facilitator)
+
+`x402Gate` takes a `verifyPayment` callback, for running your own facilitator or verifying payments without an HTTP round trip.
 
 ```typescript
 import { x402Gate } from "@opensea/tool-sdk"
@@ -811,20 +711,15 @@ const gate = x402Gate({
 })
 ```
 
-If `verifyPayment` is omitted, the gate rejects every request with an `X-Payment`
-header with a 501 error. Use `payaiX402Gate` (or `cdpX402Gate`) if you do not
-have a reason to run your own facilitator.
+Without `verifyPayment`, every request that carries `X-Payment` gets a 501. Use `payaiX402Gate` or `cdpX402Gate` unless you have a reason to run your own facilitator.
 
 ### Client-side x402
 
-Two helpers for **callers** of x402-gated tools — sign EIP-3009
-`TransferWithAuthorization` payments and replay requests automatically.
+Helpers for callers of x402-gated tools.
 
 #### `signX402Payment`
 
-Signs a USDC payment authorization and returns a base64-encoded `X-Payment`
-header value. Requires a viem `Account` with `signTypedData` support (e.g.
-`privateKeyToAccount`).
+Signs a USDC `TransferWithAuthorization` and returns the base64 `X-Payment` header value. The viem `Account` must support `signTypedData` (for example `privateKeyToAccount`).
 
 ```typescript
 import { signX402Payment } from "@opensea/tool-sdk"
@@ -851,16 +746,9 @@ const res = await fetch(toolUrl, {
 
 #### `paidFetch`
 
-Drop-in fetch wrapper that handles the 402 → sign → replay flow
-automatically. If the server does not return 402, the response is passed
-through unchanged.
+A `fetch` wrapper that handles 402, signs, and replays. Non-402 responses pass through unchanged.
 
-**Security:** `paidFetch` trusts the server's 402 response to determine
-the payment recipient, token, and amount. Use `maxAmount`,
-`allowedRecipients`, and `allowedAssets` to constrain what gets signed.
-By default, `asset` is validated against the known USDC contract address
-for the network, and `payTo` is rejected if it is the zero address or a
-known burn address.
+`paidFetch` takes the recipient, token, and amount from the server's 402, so constrain what it will sign with `maxAmount`, `allowedRecipients`, and `allowedAssets`. By default it requires the network's known USDC contract as the asset and rejects a `payTo` that is the zero address or a known burn address.
 
 ```typescript
 import { paidFetch, USDC_BASE_ADDRESS } from "@opensea/tool-sdk"
@@ -881,58 +769,21 @@ const res = await paidFetch("https://tool.example.com/api", {
 const data = await res.json()
 ```
 
-**Retries:** without `idempotencyKey`, every `paidFetch` call signs a fresh
-EIP-3009 nonce, so retrying a purchase after a lost response or a crash can
-settle twice. With a key, the payment is signed with a nonce derived from it
-(`idempotencyNonce(key)`), and the token settles a nonce at most once per
-payer, so a retry cannot be charged twice. The nonce is spent per token
-contract on each chain, so a key requires `allowedAssets` to be exactly one
-USDC contract (`USDC_BASE_ADDRESS` or `USDC_BASE_SEPOLIA_ADDRESS`), and
-`paidFetch` refuses a challenge for any other network: every attempt pays the
-same token on the same chain. Use one key per logical purchase, such as a
-UUID stored with the request. `paidAuthenticatedFetch` takes the same option. To let a seller that dedups return the original result, also
-send your own `Idempotency-Key` header.
+Without `idempotencyKey`, each call signs a fresh EIP-3009 nonce, so retrying after a lost response or a crash can pay twice. With a key, the nonce is derived from it (`idempotencyNonce(key)`), and the token settles a given nonce at most once per payer. Nonces are per token contract per chain, so a key requires `allowedAssets` to be exactly one USDC contract (`USDC_BASE_ADDRESS` or `USDC_BASE_SEPOLIA_ADDRESS`), and `paidFetch` refuses challenges on any other network. Use one key per logical purchase, such as a UUID stored with the order. `paidAuthenticatedFetch` takes the same option. To let a deduplicating seller return the original result, also send your own `Idempotency-Key` header.
 
-### Predicate-Gated Tools
+## Usage reporting
 
-Gate your tool using the onchain access predicate system. `predicateGate` returns `PaymentRequirements` with `maxAmountRequired: "0"` and a recipient derived from the endpoint URL, tool ID, and operator. The client verifies that binding, signs a zero-value `X-Payment`, and the middleware recovers the caller's address via `ecrecover`. Access is then delegated to `IToolRegistry.tryHasAccess`; it works with ERC721OwnerPredicate, ERC1155OwnerPredicate, SubscriptionPredicate, ERC20BalancePredicate, CompositePredicate, or any future predicate automatically.
-
-#### Combined predicate + payment (`paidPredicateGate`)
-
-For tools that require **both** predicate access and x402 payment, use `paidPredicateGate` to resolve identity and payment in a single 402 round trip (2 requests instead of 3):
-
-```typescript
-import { paidPredicateGate } from "@opensea/tool-sdk"
-import { mainnet } from "viem/chains"
-
-gates: [
-  paidPredicateGate({
-    toolId: 1n,
-    operatorAddress: "0xYOUR_WALLET",
-    amountUsdc: "0.05",
-    chain: mainnet,
-    rpcUrl: "https://ethereum-rpc.publicnode.com",
-  }),
-]
-```
-
-The gate advertises the real payment amount in the 402 challenge. The caller's `X-Payment` signature proves identity (`from`) AND authorizes payment in one step. The predicate is verified before payment settles — if access is denied, no funds move.
-
-See [docs/predicate-gating-guide.md](docs/predicate-gating-guide.md) for the full setup walkthrough.
-
-## Usage Reporting
-
-Report tool invocations to OpenSea's analytics endpoint (`POST /api/v2/tools/usage`). For each call the SDK reports the **verified caller**: the on-chain **payer** for paid x402 calls, or the caller's **own EIP-3009 authorization** for calls authenticated by `predicateGate`. A tool server never signs on the caller's behalf.
+The SDK can report each invocation to OpenSea (`POST /api/v2/tools/usage`). The reported caller is always one the tool verified: the onchain payer for paid x402 calls, or the caller's own EIP-3009 authorization for calls through `predicateGate`. The tool server never signs for the caller.
 
 ### Setup
 
-1. **Get an API key** at [docs.opensea.io/reference/api-keys](https://docs.opensea.io/reference/api-keys) and set it in your environment:
+1. Get an API key at [docs.opensea.io/reference/api-keys](https://docs.opensea.io/reference/api-keys) and export it:
 
 ```bash
 export OPENSEA_API_KEY="your-api-key"
 ```
 
-2. **Add `usageReporting` to your handler config** — both free (EIP-3009 auth) and paid (x402) invocations are reported automatically:
+2. Add `usageReporting` to the handler config. Free (EIP-3009) and paid (x402) calls are both reported:
 
 ```typescript
 import { createToolHandler } from "@opensea/tool-sdk"
@@ -955,34 +806,32 @@ const handler = createToolHandler({
 })
 ```
 
-> **Reporting is the service's job, never the caller's.** The `apiKey` authenticates *you* (the operator) as the reporter. The caller is identified by data they already supplied (the x402 payer, or the EIP-3009 authorization `predicateGate` verified), so no caller wallet, signing, or `walletClient` is involved.
+The `apiKey` authenticates you, the operator, as the reporter. The caller is identified from data they already sent, so no caller wallet or `walletClient` is involved.
 
-That's it: the handler runs the reporter at the very end of the lifecycle, after the output is computed and gates have settled. It is **awaited** before the response is returned (bounded by the reporter's `timeoutMs`, default 5s) so the report reliably completes even on serverless runtimes that freeze the function the moment the response flushes. Reporter failures are caught and logged; they never fail the tool call.
+The report runs last, after the output is computed and gates have settled. When the runtime has a `waitUntil` (detected on Vercel, wired by `toCloudflareHandler`, or passed as `waitUntil` in the config), the report is registered there and the response returns without waiting. Otherwise the handler awaits it, bounded by `timeoutMs` (default 5s), so it completes before a serverless runtime freezes. Reporter failures are logged and never fail the call. If settlement fails under `settlement: "required"`, no report is sent.
 
-### How it works
+### What gets reported
 
-- **Paid (x402) calls** report `verification_type: "x402_settlement"` with the on-chain payer address and the settlement transaction hash. The backend verifies the settlement directly, so no signature is needed.
-- **EIP-3009-authenticated calls** (e.g. behind `predicateGate`) report `verification_type: "eip3009_authorization"` by **forwarding the caller's original zero-value `TransferWithAuthorization`** (USDC domain, `value = 0`). The caller already signed it to authenticate; the SDK passes that exact signature through, so the reported identity is the real caller, not the server. No tokens are transferred.
+- Paid x402 calls report `verification_type: "x402_settlement"` with the payer address and settlement tx hash. The backend verifies the settlement directly.
+- EIP-3009 calls (for example behind `predicateGate`) report `verification_type: "eip3009_authorization"` and forward the caller's original zero-value `TransferWithAuthorization` (USDC domain, `value = 0`). The caller signed it to authenticate, so the reported identity is the caller, not the server. No tokens move.
 
-### Configuration reference
+### Configuration
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `chainId` | Yes | Chain ID for the EIP-712 USDC domain / x402 `chain_id` fallback (1, 8453, 137, 42161, 10, 43114) |
+| `chainId` | Yes | Chain for the EIP-712 USDC domain and the x402 `chain_id` fallback (1, 8453, 137, 42161, 10, 43114) |
 | `toolChainId` | Yes | ERC-8257 composite key: chain of registration |
 | `toolRegistryAddress` | Yes | ERC-8257 composite key: registry contract |
 | `toolOnchainId` | Yes | ERC-8257 composite key: numeric tool ID |
-| `apiKey` | Yes | OpenSea API key ([get one here](https://docs.opensea.io/reference/api-keys)). Authenticates the tool service as the reporter |
-| `aggregatorUrl` | No | Override endpoint URL (default: `https://api.opensea.io/api/v2/tools/usage`) |
-| `timeoutMs` | No | Request timeout in ms (default: 5000) |
+| `apiKey` | Yes | OpenSea API key ([get one](https://docs.opensea.io/reference/api-keys)), identifying the tool service as reporter |
+| `aggregatorUrl` | No | Endpoint override (default `https://api.opensea.io/api/v2/tools/usage`) |
+| `timeoutMs` | No | Request timeout in ms (default 5000) |
 
-### Standalone Reporters
+### Standalone reporters
 
-If you report usage outside the handler flow (a custom pipeline or a separate reporting service), use the standalone reporter functions directly.
+To report from outside the handler, such as a separate pipeline, call the reporters directly.
 
-#### EIP-3009 Reporter
-
-Forwards a caller's already-collected EIP-3009 authorization. Pass an `InvocationEvent` whose `callerAuthorization` holds the authorization your auth layer verified:
+The EIP-3009 reporter forwards an authorization your auth layer already verified, passed as `callerAuthorization` on the `InvocationEvent`:
 
 ```typescript
 import { createEip3009UsageReporter } from "@opensea/tool-sdk"
@@ -1003,9 +852,7 @@ await reportUsage({
 })
 ```
 
-#### x402 Settlement Reporter
-
-For paid tools using x402, report usage with the onchain settlement transaction hash — no wallet signing needed:
+The x402 reporter sends the settlement tx hash and needs no signing:
 
 ```typescript
 import { createX402UsageReporter } from "@opensea/tool-sdk"
@@ -1025,55 +872,47 @@ await reportX402Usage({
 })
 ```
 
-## Security Considerations
+## Security considerations
 
-### Input Validation
+### Input validation
 
-`createToolHandler` validates every request automatically:
+`createToolHandler` checks every request before and after your handler:
 
-1. **Method check** — only `POST` is accepted (405 otherwise).
-2. **Body parsing** — malformed JSON returns 400.
-3. **Input schema** — the request body is validated against your Zod `inputSchema` before reaching your handler. Invalid payloads return 400 with structured error details.
-4. **Output schema** — handler return values are validated against `outputSchema` before being sent. Schema mismatches return 500 without leaking internal state.
+1. Only `POST` is accepted (405 otherwise).
+2. Malformed JSON returns 400.
+3. The body must pass your Zod `inputSchema`, or the caller gets a 400 with structured error details.
+4. The return value must pass `outputSchema`, or the caller gets a 500 that leaks no internal state.
 
-The `ToolManifestSchema` enforces structural invariants on manifests: HTTPS-only endpoints, lowercase hex addresses, bounded field lengths, JSON Schema depth limits, and cross-field consistency (e.g. `hardware-attested` tier requires an `attestation` block).
+`ToolManifestSchema` enforces HTTPS-only endpoints, lowercase hex addresses, bounded field lengths, JSON Schema depth limits, and cross-field rules (a `hardware-attested` tier requires an `attestation` block).
 
-### Rate Limiting
+### Rate limiting
 
-The SDK does not ship a built-in rate limiter. Rate limiting is inherently deployment-specific — Cloudflare Workers, Vercel, AWS API Gateway, and self-hosted Node all have different preferred mechanisms, and in-memory counters do not work in serverless environments where each invocation may run in a separate isolate.
+The SDK has no built-in rate limiter. The right mechanism depends on the platform, and in-memory counters do not work on serverless runtimes where each invocation may get its own isolate.
 
-Recommended approaches by platform:
+- Cloudflare Workers: [Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) at the edge, or [Durable Objects](https://developers.cloudflare.com/durable-objects/) for per-key counters.
+- Vercel: [Vercel WAF rate limiting](https://vercel.com/docs/security/vercel-waf) or [Upstash Ratelimit](https://github.com/upstash/ratelimit) with Redis.
+- Express or self-hosted: [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit), or a reverse proxy (nginx, Caddy) in front.
 
-- **Cloudflare Workers** — [Rate Limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/) at the edge, or [Durable Objects](https://developers.cloudflare.com/durable-objects/) for per-key counters.
-- **Vercel** — [Vercel WAF rate limiting](https://vercel.com/docs/security/vercel-waf) or [Upstash Ratelimit](https://github.com/upstash/ratelimit) with Redis.
-- **Express / self-hosted** — [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) or a reverse proxy (nginx, Caddy) in front of your process.
-
-You can also implement a custom `GateMiddleware` that performs rate-limit checks in the `check()` hook and returns a 429 response when limits are exceeded.
+You can also write a `GateMiddleware` whose `check()` hook returns 429 when a limit is hit.
 
 ### Replay protection
 
-`predicateGate` binds each zero-value authorization to the endpoint URL, tool ID, and operator through the signed EIP-3009 `to` field. `eip3009AuthenticatedFetch` verifies that binding before signing. It permits same-origin redirects and rejects cross-origin redirects before creating a signature. This prevents a phishing endpoint from collecting a valid header for another tool, even when both tools name the same operator.
+`predicateGate` binds each zero-value authorization to the endpoint URL, tool ID, and operator through the signed EIP-3009 `to` field. `eip3009AuthenticatedFetch` checks that binding before signing, follows same-origin redirects, and rejects cross-origin redirects before any signature exists. A phishing endpoint therefore cannot collect a header that works on another tool, even one with the same operator.
 
-The header remains reusable against its intended endpoint until `validBefore` unless the server configures `replayGuard`. The guard atomically reserves the authorization's `(payer, nonce)` key before the handler runs. Its storage must be shared across instances and its TTL must cover the accepted authorization window. The SDK does not provide a default store because deployments use different storage systems. See `skill/references/x402.md` for the interface and a Redis example.
+Without `replayGuard`, the header stays reusable against its intended endpoint until `validBefore`. The guard atomically reserves the authorization's `(payer, nonce)` key before the handler runs. Its store must be shared across instances, and its TTL must cover the accepted authorization window. The SDK ships no default store; `skill/references/x402.md` has the interface and a Redis example.
 
-### Sensitive Data Handling
+### Sensitive data
 
-- **Private keys** are never handled directly by the SDK runtime. They flow through `@opensea/wallet-adapters`, which supports Privy, Turnkey, Fireblocks, and local key signing. The SDK accepts a `WalletAdapter` interface — it never reads or stores raw key material.
-- **Environment variables** — the `deploy` command detects sensitive env vars (names ending in `_KEY`, `_SECRET`, `_TOKEN`, `_PASSWORD`, `_PRIVATE`) and masks their values during interactive prompts.
-- **EIP-3009 auth:** The `predicateGate` middleware verifies EIP-3009 zero-value authorizations via `ecrecover` (no RPC call needed). It rejects a non-zero `value`, binds the signature to the endpoint URL, tool ID, and operator, pins it to the configured identity chain, and caps `validBefore` to at most 1 hour ahead. Use `replayGuard` for single-use semantics.
-- **x402 payments** — the `paidFetch` client validates payment parameters before signing: `maxAmount` caps the spend, `allowedRecipients` restricts payees, and `allowedAssets` defaults to the canonical USDC contract for the network. These guard against malicious 402 responses.
+- The SDK runtime never reads or stores raw private keys. Signing goes through the `WalletAdapter` interface from `@opensea/wallet-adapters` (Privy, Turnkey, Fireblocks, or a local key).
+- `deploy` masks values of env vars whose names end in `_KEY`, `_SECRET`, `_TOKEN`, `_PASSWORD`, or `_PRIVATE` during interactive prompts.
+- `predicateGate` verifies EIP-3009 authorizations with `ecrecover` (no RPC call). It rejects a non-zero `value`, binds the signature to the endpoint URL, tool ID, and operator, pins it to the configured identity chain, and caps `validBefore` at 1 hour ahead. Add `replayGuard` for single-use semantics.
+- `paidFetch` checks a 402 before signing: `maxAmount` caps the spend, `allowedRecipients` limits payees, and `allowedAssets` defaults to the network's USDC contract.
 
 ## Tips
 
-### `ai@4` + `zod@4` type mismatch
+### `ai@4` with `zod@4`
 
-`ai@4` (Vercel AI SDK) ships its own `jsonSchema()` helper that expects a
-JSON Schema object, **not** a Zod schema. If you pass a `zod@4` schema to
-`generateObject`'s `schema` parameter it will typecheck but the return type
-is `unknown` because `ai@4` does not recognise Zod 4's schema brand.
-
-The working pattern is to define a hand-written JSON Schema for `ai`, then
-validate the result at runtime with Zod:
+`ai@4` (Vercel AI SDK) expects a JSON Schema object from its own `jsonSchema()` helper. A `zod@4` schema passed to `generateObject`'s `schema` typechecks, but the result is typed `unknown`, because `ai@4` does not recognize Zod 4's schema brand. Give `ai` a hand-written JSON Schema and validate the result with Zod:
 
 ```typescript
 import { generateObject } from "ai"
@@ -1102,40 +941,14 @@ const { object } = await generateObject({
   prompt: "...",
 })
 
-// 3. Validate at runtime — `object` is typed as `unknown` from ai@4
+// 3. Validate at runtime: `object` is typed as `unknown` from ai@4
 const parsed = MySchema.parse(object)
 // `parsed` is now fully typed as { name: string; score: number }
 ```
 
-## Framework Adapters
+## ERC spec
 
-### Vercel
-
-```typescript
-import { toVercelHandler } from "@opensea/tool-sdk"
-
-export default toVercelHandler(handler)
-```
-
-### Cloudflare Workers
-
-```typescript
-import { toCloudflareHandler } from "@opensea/tool-sdk/cloudflare"
-
-export default toCloudflareHandler(handler)
-```
-
-### Express
-
-```typescript
-import { toExpressHandler } from "@opensea/tool-sdk"
-
-app.post("/api", toExpressHandler(handler))
-```
-
-## ERC Spec
-
-See the full [ERC-8257 Tool Registry specification](https://github.com/ethereum/ERCs/pull/1723) for details on manifest schema, origin binding, creator binding, and consumer verification.
+The [ERC-8257 Tool Registry specification](https://github.com/ethereum/ERCs/pull/1723) defines the manifest schema, origin binding, creator binding, and consumer verification.
 
 ## Contributing
 
